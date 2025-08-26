@@ -56,17 +56,23 @@ def upload_string():
     - Via UI: stored in "stringName" and "stringBody" in html form
     """
     # Handle API call: 
+    is_api_call = False
     if request.is_json:
         body = request.json
         if body:
             name = body.get("name")
             data = body.get("data")
+            is_api_call = True
     # Handle UI: stored in html form
     else:
         name = request.form.get("stringName")
         data = request.form.get("stringBody")
-        
-    return handle_insert_str(name, data)
+    
+    if is_api_call:
+        return handle_insert_str(name, data)
+    return Response(stream_with_context(handle_insert_str(name, data)),
+        mimetype="text/event-stream"
+    )
 
 # =================================================================================
 

@@ -1,9 +1,16 @@
 function showFileName() {
-  // Get element from HTML
   // `const` means a var that won't be reassign, their properties are still mutable!
   const input = document.getElementById('fileInput');
   const fileInfo = document.getElementById('fileInfo');
-  const fileName = document.getElementById('fileName'); // <span id="fileName"></span>
+  const fileName = document.getElementById('fileName');
+  const stringBoxCont = document.getElementById('stringBoxContainer');
+  const stringProgressLine = document.getElementById('stringProgressLine');
+  const stringNotice = document.getElementById('stringNotice');
+
+  // Disable display of the `Enter String` option if choose `Choose File`
+  stringBoxCont.style.display = "none"
+  stringProgressLine.style.display = "none"
+  stringNotice.style.display = "none"
 
   // Note that a file is chosen through <input type="file" ... onchange="showFileName()">
   // If a file is chosen
@@ -11,16 +18,44 @@ function showFileName() {
     fileName.textContent = "📄 " + input.files[0].name; // update the span fileName to show the file name
     fileInfo.style.display = "flex";    // change display from 'none' to 'flex' to show the div box
   }
+  //TODO: Need to fix, if a file already chosen, then choose `Enter String`, need to discard chosen file
 }
 
 document.getElementById("fileForm").addEventListener("submit", async function(e) {
   e.preventDefault(); // no page reload
+  handleFormSubmit(this, "fileNotice", "fileProgressLine");
+});
 
+
+
+function showTextBox() {
+  const stringBoxCont = document.getElementById('stringBoxContainer');
+  const fileInfo = document.getElementById('fileInfo');  
+  const fileProgressLine = document.getElementById('fileProgressLine');
+  const fileNotice = document.getElementById('fileNotice');
+
+  // Disable display of the `Choose File` option if choose `Enter String`
+  fileInfo.style.display = "none"
+  fileProgressLine.style.display = "none"
+  fileNotice.style.display = "none"
+
+  // Display string text box
+  stringBoxCont.style.display = "block"
+}
+
+document.getElementById("stringForm").addEventListener("submit", async function(e) {
+  e.preventDefault(); // no page reload
+  handleFormSubmit(this, "stringNotice", "stringProgressLine");
+});
+
+
+
+async function handleFormSubmit(form, noticeId, progressId) {
   // Get the backend response from `main_ep.upload_file`
-  const formData = new FormData(this);
-  const response = await fetch(this.action, { method: "POST", body: formData });
-  const notice = document.getElementById("fileNotice");
-  const progressLine = document.getElementById("fileProgressLine");
+  const formData = new FormData(form);
+  const response = await fetch(form.action, { method: "POST", body: formData });
+  const notice = document.getElementById(noticeId);
+  const progressLine = document.getElementById(progressId);
 
   notice.style.display = "none";
   progressLine.style.display = "block";
@@ -59,28 +94,4 @@ document.getElementById("fileForm").addEventListener("submit", async function(e)
     notice.style.color = "green";
   }
   notice.textContent = finalText;
-});
-
-
-
-function showTextBox() {
-  const stringBoxCont = document.getElementById('stringBoxContainer');
-  stringBoxCont.style.display = "block"
 }
-
-document.getElementById("stringForm").addEventListener("submit", async function(e) {
-  e.preventDefault();
-
-  const formData = new FormData(this);
-  const response = await fetch(this.action, {method: "POST", body: formData});
-  const notice = document.getElementById("stringNotice");
-  const resultText = await response.text();
-
-  notice.style.display = "block";
-  if (response.ok) {
-    notice.style.color = "green";
-  } else {
-    notice.style.color = "red";
-  }
-  notice.textContent = resultText;
-});

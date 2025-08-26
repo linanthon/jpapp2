@@ -63,7 +63,7 @@ class ProcessData():
                 words.append(row)
         return words
 
-    def stream_sentences_file(self, filename: str, chunk_size: int = 30):
+    def stream_sentences_file(self, filename: str, chunk_size: int = 30, auto_strip: bool = True):
         """
         Read file splitted into chunks, return is a generator, 1 sentence at a time.
         A sentence is a not empty string of words that ends with one of [。, \\n, ！, ？, ：, ., !, ?, :].
@@ -86,7 +86,11 @@ class ProcessData():
                               buffer.find("?") + 1,  buffer.find(":") + 1)
                     if end == 0:
                         break
-                    sentence = buffer[:end].strip("\n").strip()
+                    
+                    sentence = buffer[:end]
+                    if auto_strip:
+                        sentence = buffer[:end].strip("\n").strip()
+                        
                     buffer = buffer[end:]
                     if sentence:
                         yield sentence

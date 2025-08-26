@@ -139,19 +139,28 @@ class DBHandling:
         return -1
 
     def update_book(self, book_id: int = 0, name: str = "", append_content: str = "") -> bool:
-        """"""
-        if not id and not name:
-            log.error("")
+        """
+        Append data to an existing record's `content` column.
+
+        Input:
+        - book_id: the book's ID
+        - name: the book's name
+        - append_content: the data to append to the `content` column's value
+
+        Output: return True if success, False otherwise.
+        """
+        if not book_id and not name:
+            log.error("Must have either book ID or name to update content.")
             return False
         
-        query = sql.SQL("UPDATE {table} SET content = content + %s").format(
+        query = sql.SQL("UPDATE {table} SET content = COALESCE(content, '') || %s").format(
             table=sql.Identifier(TABLE_BOOKS)
         )
         params = [append_content]
 
-        if id:
-            query += sql.SQL(" WHERE id = {record_id};").format(
-                record_id=sql.Literal(book_id)
+        if book_id:
+            query += sql.SQL(" WHERE id = {book_id};").format(
+                book_id=sql.Literal(book_id)
             )
         else:
             query += sql.SQL(" WHERE name = %s;")
