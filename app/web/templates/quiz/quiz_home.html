@@ -1,0 +1,22 @@
+<!doctype html>
+<html>
+<head>
+  <title>Quiz</title>
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='style.css') }}">
+</head>
+<body>
+  <h2>Quiz</h2>
+
+  <form id="quizJP" method="GET" action="{{ url_for('main_ep.quiz_jp') }}">
+    <button type="submit">JP -> EN</button>
+  </form>
+
+  <form id="quizEN" method="GET" action="{{ url_for('main_ep.quiz_en') }}">
+    <button type="submit">EN -> JP</button>
+  </form>
+
+  <form id="quizSentence" method="GET" action="{{ url_for('main_ep.quiz_sentence') }}">
+    <button type="submit">JP sentence</button>
+  </form>
+</body>
+</html>

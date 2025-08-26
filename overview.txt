@@ -1,0 +1,128 @@
+Do not forget !!!
+
+The purpose is to familiarize yourself with the words, input through the text given
+
+!!! Forget it not
+
+
+Input text:
+    - [X] accept text file (e.g., a novel, article, NHK Easy News)
+    - [X] accept string input
+    
+    - Process: Split to sentences. For each sentence
+        + [X] tokenize to words, ignore stop words
+        + [X] lookup spelling, meaning, part-of-speech
+        + [X] get audio mapping
+        + [X] save to DB (book, sentence, word, all their refs)
+
+
+Lookup:
+    - Search in Japanese, return the whole record(s):
+        + [X] words by %word% -> show info
+        + [X] sentences by %<multiple words>% -> show sentences
+        + [X] books by %name% -> show book names (no content)
+        
+        + [X] Search without specifying the name (CLI)
+        + [X] View words filter by JLPT_LEVEL and non-JLPT_LEVEL
+
+    - Find specific in Japanese, return the whole record/content:
+        + [X] word
+            - [X] with audio: store audio in cache after getting it one time until session is terminated
+            - [X] get 3 top sentences with this words for example
+            - [X] Update to use word_sentence ref table instead of doing sentence LIKE %word%
+        + [X] book
+        
+    - [X] Search words in English
+        Locate the words by matching the english word to senses, prio earlier senses matching position
+    - [X] Only allow EN or JP (well, can't distinguish CN)
+
+    - Limit the number of records return
+        + [X] word
+        + [X] sentence
+        + [X] book
+        + [X] allow input limit (CLI)
+
+
+Extra functionalities - fixing tasks:
+    - [X] update word JLPT_LEVEL
+    - [X] update word star
+    - [X] update sentence star
+    - [X] update the LIMIT to use sql.Literal instead of param
+
+
+Quiz:
+    - Need a formula to determine how often a word should show up in quiz, not sorted
+        + [X] priority UP if `occurrence` high, DOWN if `quized` high
+        + [X] figure out to store, insert and update priority -> a new column in words
+
+    - [X] Get meanings list, regex it from `senses`
+
+    - Meaning matching
+        + [X] Show JP, guess EN
+        + [X] Show EN, guess JP
+
+    - Receive input - Get records
+        + [X] filtered by JLPT_LEVEL
+        + [X] filtered by "star"
+        + [X] sorted by word: will sort by the underlying byte values
+        + [X] sorted by occurrence (asc/desc)
+        + [X] sorted by quized (asc/desc) 
+        + [X] sorted by last_tested timestamp (asc/desc)
+        + [X] sorted by priority value -> default is this with desc
+        + [X] Can sort multi cols, can filter multi cols. Sort and filter cols must not overlap.
+            Can use priority value, but can not use along with sort.
+        + [X] exclude a list of JP
+        + [X] exclude a list of EN
+
+    - [X] Fill in the blank (only in JP)
+        Get random sentence, drop 1-3 word (is not stopword, is not number)
+        The number of words dropped has to be <= 50% of JP words in the sentence
+        Does not drop adjacent words
+        If can not drop word in gotten sentence -> need to get new one
+        Generate 3 incorrect answers for each correct word
+
+    - If "quized" > a certain amount
+        + [X] > softcap: will still show up, when "last_tested" is long enough
+        + [X] > hardcap: will no longer show up, this is count as "known"
+    - [X] Mark word as "known", Instant `priority` = 0 and `quized` = QUIZ_HARD_CAP+1
+
+    - [X] Add to get random words from Jamdict DB
+        + [X] Also get the EN first meaning from Jamdict DB
+    - [X] Unify the QuizJP and QuizEN struct
+    - [X] Allow to choose method to get distractors for JP or EN, get by our DB or Jamdict DB
+
+
+Progress - summary:
+    - % words user "known"
+        + Filter:
+            - [X] % accross all words
+            - [X] % on each JLPT_LEVEL, and on non JLPT categorized 
+        + Coverage:
+            - [X] % for > QUIZ_SOFT_CAP
+            - [X] % for > QUIZ_HARD_CAP
+
+
+DLC:
+    - [ ] Export selected words into anki-droid compatible format
+    - [ ] Lookup words in inserted documents, via hover or click
+    - [ ] Import from different file format
+        + [ ] EPUB
+        + [ ] PDF
+        + [ ] DOC
+    - [ ] Import from URL??? Unclear where to scrape tho
+    - [ ] For sentence quiz, if get distractors from DB, choose to get from the same book as the sentence or not.
+        + [ ] Ofc 1 sentence can appear in many books. Can specify which one, random otherwise.
+    Eventho there should be a version of this for word too, but I think they appear in way too many different books.
+
+
+Process:
+- get the ideas
+- get the infrastructures: the tables, the support packages
+- implement basic functions
+- fix basic functions
+- implement more advance functions
+
+
+TODO:
+- fix get sentence
+- add more sound

@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+<head>
+  <title>Quiz</title>
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='style.css') }}">
+</head>
+<body>
+  <h2>Quiz JP -> EN</h2>
+  
+  <h1>What is the Japanese word for 'book'?</h1>
+  <form method="POST" action="{{ url_for('main_ep.quiz_check') }}">
+      <input type="text" name="answer">
+      <button type="submit">Submit</button>
+  </form>
+</body>
+</html>
