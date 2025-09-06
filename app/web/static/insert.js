@@ -73,12 +73,7 @@ async function handleFormSubmit(form, noticeId, progressId) {
     chunk.split("\n\n").forEach(line => {
       if (line.startsWith("data: ")) {
         const msg = line.replace("data: ", "").trim();
-
-        if (msg.includes()) {
-          progressLine.textContent = "";
-        } else {
-          progressLine.textContent = msg;
-        }
+        progressLine.textContent = msg;
       } else {
         finalText = line.trim()
       }

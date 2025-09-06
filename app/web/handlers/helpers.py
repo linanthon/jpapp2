@@ -1,4 +1,4 @@
-from flask import Flask, g, current_app, Response
+from flask import Flask, g, current_app, Response, request
 
 from typing import Tuple
 
@@ -91,3 +91,5 @@ def do_insert_book(db: "DBHandling", name: str, data: str = "") -> Tuple[int, Re
 def str_2_byte(input_str: str):
     return input_str.encode("utf-8")
 
+def is_api_request():
+    return request.is_json or request.accept_mimetypes.best == "application/json"

@@ -282,13 +282,17 @@ class ProcessData():
 
             # If is Sokuon (small tsu) 
             elif i > 0 and kana in ["っ", "ッ"] and i < len(kana_list):
-                # i.e.: word = "学校" -> "ガ" "っ"... -> "ga" "っ"... -> "ga" "k"... -> "gak" ...
+                # We needs the word after small tsu to determine what kind it is, among k, s, t, p
+                new_romaji = ROMAJI_MAP.get(kana + kana_list[i+1][0])
+
+                # Approach #2: for more natural, requires more audio files
+                # i.e.: word = "学校" -> "ガ" "っ" "こ" -> "ga" "っ"... -> "ga" "k"... -> "gak" ...
                 # very important to only get the FIRST character of the next segment
                 # because ROMAJI_MAP does not have 'っぴょ'
-                temp_mapping = ROMAJI_MAP.get(kana + kana_list[i+1][0])
-                if temp_mapping:
-                    prev_romaji = audio_romaji_list.pop() 
-                    new_romaji = prev_romaji + temp_mapping
+                # temp_mapping = ROMAJI_MAP.get(kana + kana_list[i+1][0])
+                # if temp_mapping:
+                #     prev_romaji = audio_romaji_list.pop() 
+                #     new_romaji = prev_romaji + temp_mapping
             else:
                 new_romaji = ROMAJI_MAP.get(kana)
 

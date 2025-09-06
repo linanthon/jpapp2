@@ -41,7 +41,7 @@ def main():
     parser.add_argument("--star_sentence", "-sts", nargs="+", help="A list of sentence (exact match) separated by ' '. Stars sentences, this really is just extra function.")
     # 3. View collection
     parser.add_argument("--view_word", "-vw", help="View an exact word in Japanese")
-    parser.add_argument("--search_word", "-sw", nargs="+", help="Search a word in English or Japanese. Can not be empty string. Can provide an addition integer value for the amount of records to get (default 10).")
+    parser.add_argument("--search_word", "-sw", nargs="+", help="Search a word in Japanese. Can not be empty string. Can provide an addition integer value for the amount of records to get (default 10).")
     parser.add_argument("--view_level", "-vl", nargs="+", help="Name of a level, i.e.: 'N5'. List all words of this level. There are words that are not categorized into a level, use 'N0' for them. Can provide an addition integer value for the amount of records to get (default 10)")
     parser.add_argument("--search_sentence", "-ss", nargs="+", help="Search a JP sentence containing this string. If want to search all, use empty string (''). Can provide an addition integer value for the amount of records to get (default 10).")
     parser.add_argument("--view_book", "-vb", help="View content of a book with exact name")

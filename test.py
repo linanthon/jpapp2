@@ -6,7 +6,7 @@ import jamorasep
 import re
 
 from utils.process_data import ProcessData
-from utils.data import is_japanese_word
+from utils.data import is_japanese_word, ROMAJI_MAP
 
 
 fugashi_tagger = Tagger()
@@ -41,13 +41,38 @@ def random_jmdict_entries(n: int):
                 break
     return out  # map each entry to (word, english_gloss) per your schema
 
-a = random_jmdict_entries(3)
+# a = random_jmdict_entries(3)
 # print(a)
 
-# a = jam.lookup("フォン")
+a = jam.lookup("学校")
 # print("entries: ", a.entries[0].kana_forms)
-# b = jamorasep.parse(a.entries[0].kana_forms[0].text)
-# print(b)
+b = jamorasep.parse(a.entries[0].kana_forms[0].text)
+print(b)
+audio_romaji_list = []
+for i, kana in enumerate(b):
+    if i > 0 and kana in ["ん", "ン"]:
+        prev_romaji = audio_romaji_list.pop()
+        new_romaji = prev_romaji + "n"
+    elif i > 0 and kana == "ー":
+        new_romaji = audio_romaji_list[-1][-1]
+    elif i > 0 and kana in ["っ", "ッ"] and i < len(b):
+        temp_mapping = ROMAJI_MAP.get(kana + b[i+1][0])
+        print(temp_mapping, "\t", b[i+1][0], "\t", audio_romaji_list)
+        if temp_mapping:
+            prev_romaji = audio_romaji_list.pop() 
+            new_romaji = prev_romaji + temp_mapping
+        print(new_romaji)
+    else:
+        new_romaji = ROMAJI_MAP.get(kana)
+
+    if new_romaji:
+        audio_romaji_list.append(new_romaji)
+    else:
+        print("bruh")
+    i += 1
+
+
+print(audio_romaji_list)
 
 # for word in fugashi_tagger(sen4):
 #     print("=======\nWord:", word.surface)

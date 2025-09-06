@@ -3,7 +3,10 @@ from flask import (Blueprint, request, render_template_string,
 import tempfile, os
 
 from handlers.insert import handle_insert_file, handle_insert_str
-from handlers.helpers import get_filename_from_path
+from handlers.view import handle_search_word
+from handlers.helpers import get_filename_from_path, is_api_request
+
+from schemas.constants import DEFAULT_LIMIT
 
 # Need specify template folder because this is not main.py
 bp = Blueprint(
@@ -79,7 +82,34 @@ def upload_string():
 # ===== VIEW COLLECTION ===========================================================
 @bp.route("/view")
 def view():
-    return "View collection here"
+    return render_template("view/view.html")
+
+@bp.route("/view/search-word")
+def search_word():
+    word = request.args.get("word", "")
+    try:
+        limit = int(request.args.get("limit"))
+    except:
+        limit = DEFAULT_LIMIT
+    is_api_call = is_api_request()
+
+    # If UI and not word, that means it's the first time enter this page
+    # Just render it, when provided a word, it'll call this function again
+    if not word:
+        if is_api_call:
+            return Response("Error: missing a JP or EN word", 400)
+        return render_template("view/word/search_word.html")
+
+    if is_api_call:
+        return handle_search_word(word, limit, True)
+    # The `search_res` below will be catch in HTML
+    return handle_search_word(word, limit, False)
+    # return render_template("view/word/search_word.html", search_res=handle_search_word(word, limit, False))
+
+# @bp.route("/view/word")
+# def view_word():
+    # word = request.args.get("word")
+    # return render_template("view/word/view_word.html")
 
 # =================================================================================
 

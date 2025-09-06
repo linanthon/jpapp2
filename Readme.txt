@@ -30,11 +30,15 @@ I'm not Japanese expert to guarantee anything so I just leave this be.
 
 
 
-- The audio, I record my own voice for the alphabets: Hiragana/Katakana, Dakuten, Handakuten,  and Yōon (Consonant + small ya/yu/yo (ちゅう, きゃ)).
+- The audio, I record Google translate for the alphabets: Hiragana/Katakana, Dakuten, Handakuten,
+Yōon (Consonant + small ya/yu/yo (ちゅう, きゃ)) and Sokuon
 Also includes special words ending with "ん" ("ご*飯*" -> "ご*はん*" -> "go *han*").
 Makes 'a', 'i', 'u', 'e', 'o' sounds shorter to "solve" the double vowel problem without voicing everything
 i.e.: "saikou": 
     normal: "sa..i..ko..u" -> shorten: "sa.i..ko.u"
+- For Sokuon, have to record every combination 
+
+- Audio, instead of all the hassle, maybe just use TTS like OpenJTalk (gen a .wav file of a word, then we read that file)
 
 
 
