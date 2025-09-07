@@ -333,7 +333,7 @@ class DBHandling:
         self._conn.rollback()
         return False
 
-    def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT) -> List[Word]:
+    def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word]:
         """
         Query word in DB, will return a list of all words that are `LIKE '%word%'`
 
@@ -352,10 +352,13 @@ class DBHandling:
         )
         if self._safe_execute(query, (f"%{word}%",)):
             for instance in self._cursor.fetchall():
-                res.append(self._parse_word(instance))
+                if parse_dict:
+                    res.append(self._parse_word_dict(instance))
+                else:
+                    res.append(self._parse_word(instance))
         return res
     
-    def get_exact_word(self, word: str) -> Word:
+    def get_exact_word(self, word: str, parse_dict: bool = False) -> Word:
         """
         Query a word in DB, will return a word that is `= 'word'`
         """
@@ -365,10 +368,13 @@ class DBHandling:
         if self._safe_execute(query, (word,)):
             res = self._cursor.fetchone()
             if res:
-                return self._parse_word(res)
+                if parse_dict:
+                    res.append(self._parse_word_dict(res))
+                else:
+                    res.append(self._parse_word(res))
         return None
     
-    def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT) -> List[Word]:
+    def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word]:
         """
         Query words table using sense (in English), aka. search by EN word(s).
         Will sort result based on sense matching position.
@@ -376,6 +382,7 @@ class DBHandling:
         Input:
         - sense: the English meaning of the JP word
         - limit: the amount of return records, if <= 0, use default value of 10.
+        - parse_dict: If true, return list of dict. Otherwise return list of Word.
 
         Output: Returns a list of Word objects
         """
@@ -391,7 +398,10 @@ class DBHandling:
         sense_q = f"%{sense.lower()}%"
         if self._safe_execute(query, (sense_q, sense_q,)):
             for instance in self._cursor.fetchall():
-                res.append(self._parse_word(instance))
+                if parse_dict:
+                    res.append(self._parse_word_dict(instance))
+                else:
+                    res.append(self._parse_word(instance))
         return res
     
     def get_words_by_jlptlevel(self, level: str = "N5", limit: int = DEFAULT_LIMIT) -> List[str]:
@@ -860,6 +870,7 @@ class DBHandling:
         """Use regex to split senses and get just the meanings (drop example and pos).
         the sense format: meaning1_1,meaning1_2, (e.g.: exampleA,exampleB) ([pos]);..."""
         res = []
+        print("AAAAAAAAAAAAA:", senses)
         if senses:
             all_senses = [chunk.strip() for chunk in senses.split(";") if chunk.strip()]
             for one_sense in all_senses:
@@ -908,6 +919,20 @@ class DBHandling:
             occurence=word.get("occurrence", ""),
             quized=word.get("quized", "")
         )
+    
+    def _parse_word_dict(self, word: dict) -> dict:
+        """Keep the dict form, assure have enough fields, modify in-place and also return"""
+        word["id"] = word.get("id", 0)
+        word["word"] = word.get("word", "")
+        word["senses"] = word.get("senses", "")
+        word["spelling"] = word.get("spelling", "")
+        word["forms"] = word.get("forms", "")
+        word["jlpt_level"] = word.get("jlpt_level", "")
+        word["star"] = word.get("star", "")
+        word["occurence"] = word.get("occurrence", "")
+        word["quized"] = word.get("quized", "")
+        return word
+
 
     def _parse_sentence(self, sentence: dict) -> Sentence:
         """Parse sentence dict from query result into Sentence class"""

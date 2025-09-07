@@ -23,10 +23,11 @@ async function handleViewSubmit(form, noticeId, showResId) {
     
     if (!response.ok) {
       // Handle error response
-      const errorText = await response.text();
       notice.style.display = "block";
       notice.style.color = "red";
-      notice.textContent = `Error: ${errorText}`;
+
+      const resp = await response.json();
+      notice.textContent = `Error: ${resp.error}`;
       return;
     }
     
@@ -34,14 +35,10 @@ async function handleViewSubmit(form, noticeId, showResId) {
     const data = await response.json();
     console.log("Response data:", data);
     
-    if (data.error) {
-      notice.style.display = "block";
-      notice.style.color = "red";
-      notice.textContent = data.error;
-    } else if (data.results && data.results.length > 0) {
+    if (data.results && data.results.length > 0) {
       showResult.style.display = "block";
       showResult.innerHTML = "<h3>Search Results:</h3><ul>" +
-        data.results.map(w => `<li><strong>${w.word}</strong> — ${w.senses}</li>`).join("") +
+        data.results.map(w => `<li><strong>${w.word}</strong> (${w.spelling}) — ${w.senses}</li>`).join("") +
         "</ul>";
     } else {
       notice.style.display = "block";

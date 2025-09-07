@@ -16,6 +16,8 @@ log = get_logger(__name__)
 
 def handle_search_word(word: str, limit: int, is_api_call: bool = False):
     """
+    Search a JP or EN word, return max number of found result (`limit`).
+    Returns empty list if word not found.
     
     Output:
     - is api call: jsonify the list of `Word`s
@@ -24,14 +26,11 @@ def handle_search_word(word: str, limit: int, is_api_call: bool = False):
     db = get_dbhandling()
 
     if is_japanese_word(word):
-        res = db.query_like_word(word, limit)
+        res = db.query_like_word(word, limit, parse_dict=True)
     elif is_english_word(word):
-        res = db.query_word_sense(word, limit)
+        res = db.query_word_sense(word, limit, parse_dict=True)
     else:
         return jsonify(error="Only accept Japanese or English word"), 400
-
-    if not res:
-        return jsonify(error="Word not found"), 404
 
     # For API, just return
     if is_api_call:
@@ -39,6 +38,6 @@ def handle_search_word(word: str, limit: int, is_api_call: bool = False):
     
     # Modify senses to only have the first meaning for UI
     for w in res:
-        w.senses = db.get_meanings(w.word, w.senses)[0]
-    return jsonify(results=[w.to_dict() for w in res])
+        w.senses = db.get_meanings(w["word"], w["senses"])[0]
+    return jsonify(results=[w for w in res])
     
