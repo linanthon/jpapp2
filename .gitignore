@@ -1,4 +1,5 @@
 app/web/handlers/__pycache__/
-app/web/handlers/__pycache__/view.cpython-310.pyc
+app/web/__pycache__/
+app/__pycache__/
+app/cli/__pycache__/
 utils/__pycache__/
-utils/__pycache__/db.cpython-310.pyc
