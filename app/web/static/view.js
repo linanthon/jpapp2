@@ -1,47 +1,7 @@
 document.getElementById("searchWordForm").addEventListener("submit", async function(e) {
-  console.log("Form submitted");
   e.preventDefault(); // no page reload
   await handleViewSubmit(this, "searchWordNotice", "showRes");
 });
-
-// async function handleViewSubmit(form, noticeId, showResId) {
-//   console.log("BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB");
-//   const notice = document.getElementById(noticeId);
-//   const showResult = document.getElementById(showResId);
-
-//   // const params = new URLSearchParams(new FormData(form));
-//   // const response = await fetch(form.action + "?" + params.toString());  
-//   const formData = new FormData(form);
-//   const response = await fetch(form.action, { method: "GET", body: formData });
-//   // const data = await response.json();
-
-//   const decoder = new TextDecoder();
-//   const reader = response.body.getReader();
-//   let finalText = "";
-  
-//   notice.style.display = "none";
-//   showResult.style.display = "none";
-
-  
-//   const {_, value} = await reader.read();
-//   const chunk = decoder.decode(value, { stream: true });
-//   chunk.split("\n\n").forEach(line => {
-//     finalText = line.trim();
-//   });
-
-//   if (!response.ok) {
-//     notice.style.display = "block";
-//     notice.style.color = "red";
-//     notice.textContent = //data.error;
-//   }
-//   // } else {
-//   //   showResult.style.display = "block";
-//   //   showResult.innerHTML = "<ul>" +
-//   //     data.results.map(w => `<li>${w.word} – ${w.senses}</li>`).join("") +
-//   //     "</ul>";
-//   // }
-//   console.log("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC");
-// }
 
 async function handleViewSubmit(form, noticeId, showResId) {
   console.log("Handling view submit");

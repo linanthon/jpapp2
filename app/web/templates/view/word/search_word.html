@@ -9,11 +9,22 @@
 	<h2>Search word</h2>
 
 	<!-- Search bar -->
-  <form class="form-row" id="searchWordForm" method="GET" action="{{ url_for('main_ep.search_word') }}">
-    <label for="word">Enter word (JP or EN):</label>
-    <input type="text" id="word" name="word" required>
-    <input type="number" name="limit" value="10" min="1" max="100" placeholder="Limit">
-    <button type="submit" class="button-right">Search</button>
+  <form class="form-search-word-box" id="searchWordForm" method="GET" action="{{ url_for('main_ep.search_word') }}">
+    <div class="form-search-word-group">
+      <label for="word">Enter word (JP or EN):</label>
+      <input type="text" id="word" name="word" required>
+    </div>
+
+    <div class="form-search-word-group">
+      <label for="word">Search limit:</label>
+
+      <div class="limit-search-word-group">
+        <input type="number" class="searchLimit" name="limit" value="10" min="1" max="100" placeholder="Limit">
+        <span>(1-100 results)</span>
+      </div>
+    </div>
+
+    <button type="submit" class="search-word-button">Search</button>
   </form>
 
   <!-- Response error or show search result -->
