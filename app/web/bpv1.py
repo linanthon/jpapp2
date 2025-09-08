@@ -3,7 +3,7 @@ from flask import (Blueprint, request, render_template_string,
 import tempfile, os
 
 from handlers.insert import handle_insert_file, handle_insert_str
-from handlers.view import handle_search_word
+from handlers.view import handle_search_word, handle_view_word
 from handlers.helpers import get_filename_from_path, is_api_request
 
 from schemas.constants import DEFAULT_LIMIT
@@ -106,10 +106,10 @@ def search_word():
     return handle_search_word(word, limit, False)
     # return render_template("view/word/search_word.html", search_res=handle_search_word(word, limit, False))
 
-# @bp.route("/view/word")
-# def view_word():
-    # word = request.args.get("word")
-    # return render_template("view/word/view_word.html")
+@bp.route("/view/word/<string:word>")
+def view_word(word: str):
+    result = handle_view_word(word)
+    return render_template("view/word/view_word.html", word_details=result)
 
 # =================================================================================
 

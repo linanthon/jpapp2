@@ -123,3 +123,16 @@ textarea {
 .limit-search-word-group span {
   font-size: 14px;
 }
+
+/* Search word result box and items */
+#showRes ul {
+  list-style-type: none;   /* removes bullets */
+  max-width: 300px;
+  margin: 20px auto;
+  padding-left: 50px;
+}
+
+#showRes li {
+  text-align: left;        /* line text up on the left */
+  margin: 4px 0;
+}

@@ -333,7 +333,7 @@ class DBHandling:
         self._conn.rollback()
         return False
 
-    def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word]:
+    def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word] | List[dict]:
         """
         Query word in DB, will return a list of all words that are `LIKE '%word%'`
 
@@ -345,7 +345,7 @@ class DBHandling:
         """
         if limit < 1:
             limit = DEFAULT_LIMIT
-        res: List[Word] = []
+        res = []
         query = sql.SQL("SELECT * FROM {table} WHERE word LIKE %s LIMIT {limit};").format(
             table=sql.Identifier(TABLE_WORDS),
             limit=sql.Literal(limit)
@@ -374,7 +374,7 @@ class DBHandling:
                     res.append(self._parse_word(res))
         return None
     
-    def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word]:
+    def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word] | List[dict]:
         """
         Query words table using sense (in English), aka. search by EN word(s).
         Will sort result based on sense matching position.
@@ -870,7 +870,6 @@ class DBHandling:
         """Use regex to split senses and get just the meanings (drop example and pos).
         the sense format: meaning1_1,meaning1_2, (e.g.: exampleA,exampleB) ([pos]);..."""
         res = []
-        print("AAAAAAAAAAAAA:", senses)
         if senses:
             all_senses = [chunk.strip() for chunk in senses.split(";") if chunk.strip()]
             for one_sense in all_senses:
@@ -932,7 +931,6 @@ class DBHandling:
         word["occurence"] = word.get("occurrence", "")
         word["quized"] = word.get("quized", "")
         return word
-
 
     def _parse_sentence(self, sentence: dict) -> Sentence:
         """Parse sentence dict from query result into Sentence class"""
