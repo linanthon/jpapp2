@@ -2,4 +2,5 @@ app/web/handlers/__pycache__/
 app/web/__pycache__/
 app/__pycache__/
 app/cli/__pycache__/
+schemas/__pycache__/
 utils/__pycache__/

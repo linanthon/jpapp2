@@ -1,0 +1,89 @@
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  margin-top: 30px;
+}
+
+h2 {
+  align-items: center;
+  font-style: normal;
+  color: darkblue;
+}
+
+/* ================= View word ====================== */
+.word-detail {
+  max-width: 800px;
+  margin: 20px auto;
+  font-family: sans-serif;
+}
+
+.word-header {
+  margin-left: 60px;
+}
+.star-and-spelling {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.star{
+  display: block;
+  align-self: flex-end;
+  border-style: none;
+  margin-bottom: 5px;
+  background: white;
+  cursor: pointer;
+}
+.star:active {
+  transform: scale(0.7);  /* press effect */
+}
+.spelling-wrap {
+  display: inline-block;
+  text-align: center;
+}
+#wordSpelling {
+  display: block;
+  font-size: 14px;
+  line-height: 1;
+}
+/* main word (second row), centered relative to spelling */
+#wordMain {
+  display: block;
+  font-size: 30px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+/* make meanings and sentence examples left aligned in right column */
+#word-meaning #word-sen-ex {
+  text-align: left;
+}
+
+.star { font-size: 28px; }
+.star.yellow { color: gold; }
+.star.white { color: lightgray; }
+
+.word-body {
+  display: grid;
+  grid-template-columns: 1fr 2fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+.word-body ul {
+  margin: 0;
+  padding-left: 20px;
+}
+.word-body li {
+  margin: 4px 0;
+}
+
+.section-title {
+  font-weight: bold;
+  margin: 10px auto;
+  text-align: left;
+}
+#word-meaning, #word-sen-ex {
+  text-align: left;
+}
+#word-meaning li {
+  list-style-type: none;
+}

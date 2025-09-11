@@ -1,12 +1,12 @@
-from flask import (Blueprint, request, render_template_string,
-                   render_template, Response, stream_with_context)
+from flask import (Blueprint, request, render_template_string, render_template,
+                   Response, stream_with_context, send_from_directory, jsonify)
 import tempfile, os
 
 from handlers.insert import handle_insert_file, handle_insert_str
 from handlers.view import handle_search_word, handle_view_word
 from handlers.helpers import get_filename_from_path, is_api_request
 
-from schemas.constants import DEFAULT_LIMIT
+from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
 # Need specify template folder because this is not main.py
 bp = Blueprint(
@@ -101,15 +101,40 @@ def search_word():
         return render_template("view/word/search_word.html")
 
     if is_api_call:
-        return handle_search_word(word, limit, True)
+        return handle_search_word(word, limit, bp.url_prefix, True)
     # The `search_res` below will be catch in HTML
-    return handle_search_word(word, limit, False)
-    # return render_template("view/word/search_word.html", search_res=handle_search_word(word, limit, False))
+    return handle_search_word(word, limit, bp.url_prefix, False)
 
 @bp.route("/view/word/<string:word>")
 def view_word(word: str):
-    result = handle_view_word(word)
-    return render_template("view/word/view_word.html", word_details=result)
+    """
+    Param:
+    - sen: the number of sentence example
+    """
+    try:
+        limit = int(request.args.get("sen", ""))
+    except:
+        limit = DEFAULT_SENTENCE_EXAMPLE_LIMIT
+    result, sentence_examples = handle_view_word(word, limit)
+    return render_template("view/word/view_word.html", word_details=result, sen_ex=sentence_examples)
+
+@bp.route("/toggle_star", methods=["POST"])
+def toggle_star():
+    data = request.get_json()
+    word = data.get("word")
+
+    if not word:
+        return jsonify({"success": False, "error": "Missing word"}), 400
+
+    # Example: flip star state in DB
+    new_state = db.toggle_star(word)   # <-- implement this
+    return jsonify({"success": True, "starred": new_state})
+
+@bp.route("/audio/<path:filename>")
+def serve_audio(filename):
+    # main.py is inside `app/web/` so we have ../../
+    audio_dir = os.path.join(os.path.dirname(__file__), "../../"+AUDIO_DIR)
+    return send_from_directory(audio_dir, filename)
 
 # =================================================================================
 

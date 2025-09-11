@@ -27,6 +27,3 @@ class Word:
 
         # For tracking borrowed English words
         self.eigo: bool = False
-
-        # For splitting senses str into list
-        self.meaning: list = []

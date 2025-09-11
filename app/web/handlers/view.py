@@ -1,5 +1,5 @@
 from flask import Response, jsonify
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING, List, Tuple
 import os
 
 from handlers.helpers import str_2_byte, get_dbhandling
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-def handle_search_word(word: str, limit: int, is_api_call: bool = False):
+def handle_search_word(word: str, limit: int, bp_prefix: str, is_api_call: bool = False):
     """
     Search a JP or EN word, return max number of found result (`limit`).
     Returns empty list if word not found.
@@ -33,15 +33,16 @@ def handle_search_word(word: str, limit: int, is_api_call: bool = False):
 
     # For API, just return
     if is_api_call:
-        return jsonify(results=res), 200
+        return jsonify(results=res, bpPrefix=bp_prefix), 200
     
     # Modify senses to only have the first meaning for UI
     for w in res:
         w["senses"] = db.get_meanings(w["word"], w["senses"])[0]
-    return jsonify(results=res)
+    return jsonify(results=res, bpPrefix=bp_prefix)
 
-def handle_view_word(word: str) -> Word:
+def handle_view_word(word: str, sentence_limit: int) -> Tuple[dict, List[str]]:
     db = get_dbhandling()
-    res = db.get_exact_word(word)
-    res.meanings = db.get_meanings(res.senses)
-    return res
+    res = db.get_exact_word(word, parse_dict=True)
+    res["meanings"] = [chunk.strip() for chunk in res["senses"].split(";") if chunk.strip()]
+    sentence_examples = db.get_sentences_containing_word(word, sentence_limit)
+    return res, sentence_examples

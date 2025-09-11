@@ -23,6 +23,7 @@ DEFAULT_DISTRACTOR_COUNT: int = 3
 DEFAULT_FORMULA_K: float = 0.5
 DEFAULT_TIME_EXPODECAY: float = 5
 DEFAULT_MULTI_PENALTY: float = 0.2  # 20% less priority when quized > QUIZ_SOFT_CAP
+DEFAULT_SENTENCE_EXAMPLE_LIMIT: int = 5
 
 # --- Quiz related
 QUIZ_WORD_SORT_COLUMNS: List[str] = ["word", "occurrence", "quized", "last_tested", "jlpt_level"]

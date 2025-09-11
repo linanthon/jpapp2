@@ -358,9 +358,13 @@ class DBHandling:
                     res.append(self._parse_word(instance))
         return res
     
-    def get_exact_word(self, word: str, parse_dict: bool = False) -> Word:
+    def get_exact_word(self, word: str, parse_dict: bool = False) -> Word | dict:
         """
         Query a word in DB, will return a word that is `= 'word'`
+
+        Input:
+        - word: the exact JP word to search
+        - parse_dict: true to parse to dict, false to parse to class Word. Default: false
         """
         query = sql.SQL("SELECT * FROM {table} WHERE word = %s;").format(
             table=sql.Identifier(TABLE_WORDS)
@@ -369,9 +373,9 @@ class DBHandling:
             res = self._cursor.fetchone()
             if res:
                 if parse_dict:
-                    res.append(self._parse_word_dict(res))
+                    return self._parse_word_dict(res)
                 else:
-                    res.append(self._parse_word(res))
+                    return self._parse_word(res)
         return None
     
     def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word] | List[dict]:

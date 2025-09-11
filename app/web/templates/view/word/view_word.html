@@ -1,16 +1,64 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Search word</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='style.css') }}">
+  <title>View word</title>
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view.css') }}">
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
 </head>
 <body>
-	<h2>{{ word_details.word }}</h2>
+	<h2>View word</h2>
 
-  <!-- Response error or show search result -->
-  <div id="searchWordNotice" style="display:none"></div>
-  <div id="showRes" style="display:none">
+  <div class="word-detail">
+    <div class="word-header">
+      <div class="star-and-spelling">
+        <!-- <span id="starToggle" class="star {{ 'yellow' if word_details.star else 'white' }}">★</span> -->
+        <button id="starToggle" type="button"
+            class="star {{ 'yellow' if word_details.star else 'white' }}"
+            aria-pressed="{{ 'true' if word_details.star else 'false' }}"
+            data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
+            data-word="{{ word_details.spelling|e }}"
+        >
+          ★
+        </button>
+
+        <div class="spelling-wrap">
+          <span id="wordSpelling">{{ word_details.spelling }}</span>
+          <span id="wordMain">{{ word_details.word }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="word-body">
+      <!-- Left column -->
+      <div>
+        <p><strong>JLPT:</strong> {{ word_details.jlpt_level or '—' }}</p>
+        <p><button id="playBtn">▶ Play audio</button></p>
+        <p><strong>Occurrence:</strong> {{ word_details.occurrence }}</p>
+        <p><strong>Correct quiz:</strong> {{ word_details.quized }}</p>
+      </div>
+
+      <!-- Right column -->
+      <div>
+        <div class="section-title">Meanings:</div>
+        <div id="word-meaning">
+          <ol>
+            {% for m in word_details.meanings %}
+              <li>{{ m }}</li>
+            {% endfor %}
+          </ol>
+        </div>
+
+        <div class="section-title">Sentence examples:</div>
+        <div id="word-sen-ex">
+          <ul>
+            {% for s in sen_ex %}
+              <li>{{ s }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
 
 </body>
 </html>

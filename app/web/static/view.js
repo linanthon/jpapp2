@@ -3,6 +3,7 @@ document.getElementById("searchWordForm").addEventListener("submit", async funct
   await handleViewSubmit(this, "searchWordNotice", "showRes");
 });
 
+// Search word print and clickable results
 async function handleViewSubmit(form, noticeId, showResId) {
   console.log("Handling view submit");
   const notice = document.getElementById(noticeId);
@@ -34,12 +35,13 @@ async function handleViewSubmit(form, noticeId, showResId) {
     // Parse JSON response
     const data = await response.json();
     console.log("Response data:", data);
+    const bpPrefix = data.bpPrefix
     
     if (data.results && data.results.length > 0) {
       showResult.style.display = "block";
       showResult.innerHTML = "<h3>Search Results:</h3><ul>" +
         data.results.map(w => `<li>
-            <a href="/view/word/${encodeURIComponent(w.word)}">
+            <a href="${bpPrefix}/view/word/${encodeURIComponent(w.word)}">
               <strong>${w.word}</strong>
             </a>
             (${w.spelling}) — ${w.senses}
@@ -58,3 +60,47 @@ async function handleViewSubmit(form, noticeId, showResId) {
     notice.textContent = "Network error occurred";
   }
 }
+
+// View word set star
+// document.addEventListener("DOMContentLoaded", () => {
+//   const star = document.getElementById("starToggle");
+
+//   star.addEventListener("click", async () => {
+//     const isYellow = star.classList.contains("yellow");
+
+//     // Toggle UI immediately
+//     star.classList.toggle("yellow", !isYellow);
+//     star.classList.toggle("white", isYellow);
+
+//     // Send change to backend
+//     // try {
+//     //   const resp = await fetch("/v1/toggle_star", {
+//     //     method: "POST",
+//     //     headers: { "Content-Type": "application/json" },
+//     //     body: JSON.stringify({ word: document.getElementById("wordSpelling").textContent })
+//     //   });
+//     //   const data = await resp.json();
+//     //   console.log("Server response:", data);
+//     // } catch (err) {
+//     //   console.error("Failed to toggle star:", err);
+//     // }
+//   });
+// });
+
+
+
+
+document.addEventListener("DOMContentLoaded", () => {
+  const playBtn = document.getElementById("playBtn");
+  if (!playBtn) return;
+
+  playBtn.addEventListener("click", async () => {
+    for (const file of window.audioFiles || []) {
+      const audio = new Audio(`/v1/audio/${file}`); // uses Flask route
+      await new Promise(resolve => {
+        audio.onended = resolve;
+        audio.play();
+      });
+    }
+  });
+});
