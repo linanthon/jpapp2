@@ -1,12 +1,29 @@
 Run this:
 
-- Install postgres
+- Install postgres.
+    For Windows, add new system variable:
+        PGCLIENTENCODING=UTF8
+
+    Connect to postgres database, confirm the outputs of below sql lines are UTF8:
+        SHOW server_encoding;
+        SHOW client_encoding;
+    
+    Optional: in command prompt/power shell, enter:
+        chcp 65001
+    Should see output: Active code page: 65001
+    This allows showing Japanese in command prompt/power shell.
 
 - Update setup tools:
     python -m pip install --upgrade pip setuptools
 
 - Install required modules
     pip install -r requirements.txt
+
+    If fail to install jamdict_data on Windows due to wheel:
+        - Run `pip install jamdict==0.1a11.post2`, should work normally
+        - Manually download jamdict_data 1.5 from pypip: https://files.pythonhosted.org/packages/97/a5/075928aed2b3b70459fc1db396397dfa6714d266c143c51af9b648551a4e/jamdict_data-1.5.tar.gz
+        - Extract the tar.gz (should get jamdict_data folder) into your environment, i.e.: pyenv/Lib/site-packages
+        - Inside the extracted jamdict_data folder, remove the small size `jamdict.db` (~500kb) if exist, extract the ~50mb `jamdict.db.xz` here
 
 
 Info:
