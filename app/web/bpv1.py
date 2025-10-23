@@ -4,7 +4,7 @@ import tempfile, os
 
 from handlers.insert import handle_insert_file, handle_insert_str
 from handlers.view import handle_search_word, handle_view_word
-from handlers.helpers import get_filename_from_path, is_api_request
+from handlers.helpers import get_filename_from_path, is_api_request, toggle_star
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -122,12 +122,19 @@ def view_word(word: str):
 def toggle_star():
     data = request.get_json()
     word = data.get("word")
-
     if not word:
         return jsonify({"success": False, "error": "Missing word"}), 400
+    
+    star_param = data.get("star").lower()
+    if not star_param:
+        star = -1
+    else:
+        if star_param == "true":
+            star = 1
+        else:
+            star = 0
 
-    # Example: flip star state in DB
-    new_state = db.toggle_star(word)   # <-- implement this
+    new_state = toggle_star(word, star)   # <-- implement this, need to figure out front end first to know what param pass in
     return jsonify({"success": True, "starred": new_state})
 
 @bp.route("/audio/<path:filename>")

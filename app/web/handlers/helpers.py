@@ -93,3 +93,7 @@ def str_2_byte(input_str: str):
 
 def is_api_request():
     return request.is_json or request.accept_mimetypes.best == "application/json"
+
+def toggle_star(jp_word: str) -> bool:
+    db = get_dbhandling()
+    res = db.get_exact_word(jp_word, parse_dict=True)

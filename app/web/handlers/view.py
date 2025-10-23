@@ -41,8 +41,11 @@ def handle_search_word(word: str, limit: int, bp_prefix: str, is_api_call: bool 
     return jsonify(results=res, bpPrefix=bp_prefix)
 
 def handle_view_word(word: str, sentence_limit: int) -> Tuple[dict, List[str]]:
+    """
+    Handle viewing a JP word with `sentence_limit` amount of sentence examples.
+    """
     db = get_dbhandling()
-    res = db.get_exact_word(word, parse_dict=True)
+    res: dict = db.get_exact_word(word, parse_dict=True)
     res["meanings"] = [chunk.strip() for chunk in res["senses"].split(";") if chunk.strip()]
     sentence_examples = db.get_sentences_containing_word(word, sentence_limit)
     return res, sentence_examples

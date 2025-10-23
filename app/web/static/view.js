@@ -62,30 +62,54 @@ async function handleViewSubmit(form, noticeId, showResId) {
 }
 
 // View word set star
-// document.addEventListener("DOMContentLoaded", () => {
-//   const star = document.getElementById("starToggle");
+document.addEventListener("DOMContentLoaded", () => {
+  const star = document.getElementById("starToggle");
 
-//   star.addEventListener("click", async () => {
-//     const isYellow = star.classList.contains("yellow");
+  star.addEventListener("click", async () => {
+    // Current star state
+    const isYellow = star.classList.contains("yellow");
 
-//     // Toggle UI immediately
-//     star.classList.toggle("yellow", !isYellow);
-//     star.classList.toggle("white", isYellow);
+    // Toggle UI immediately
+    star.classList.toggle("yellow", !isYellow);
+    star.classList.toggle("white", isYellow);
 
-//     // Send change to backend
-//     // try {
-//     //   const resp = await fetch("/v1/toggle_star", {
-//     //     method: "POST",
-//     //     headers: { "Content-Type": "application/json" },
-//     //     body: JSON.stringify({ word: document.getElementById("wordSpelling").textContent })
-//     //   });
-//     //   const data = await resp.json();
-//     //   console.log("Server response:", data);
-//     // } catch (err) {
-//     //   console.error("Failed to toggle star:", err);
-//     // }
-//   });
-// });
+    const word = star.dataset.word;
+    const url = star.dataset.toggleUrl || "/v1/toggle_star";
+    const starParam = (!isYellow).toString(); // reverse of current state
+
+    // Send change to backend
+    try {
+      // Make the star change call
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // body: JSON.stringify({ word: document.getElementById("wordSpelling").textContent })
+        body: JSON.stringify({ word: word, star: starParam })
+      });
+      const data = await resp.json();
+
+      if (!resp.ok || !data.success) {
+        // revert UI on failure
+        star.classList.toggle("yellow", isYellow);
+        star.classList.toggle("white", !isYellow);
+        console.error("Toggle star failed:", data);
+        return;
+      }
+
+      // Keep UI in sync with server response if provided
+      if (typeof data.starred !== "undefined") {
+        const serverStarred = data.starred === 1;
+        star.classList.toggle("yellow", serverStarred);
+        star.classList.toggle("white", !serverStarred);
+      }
+    } catch (err) {
+      // revert on network error
+      star.classList.toggle("yellow", isYellow);
+      star.classList.toggle("white", !isYellow);
+      console.error("Failed to toggle star:", err);
+    }
+  });
+});
 
 
 

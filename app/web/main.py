@@ -1,7 +1,6 @@
 from flask import g
 from typing import TYPE_CHECKING
 
-# Set path to allow import from files
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))

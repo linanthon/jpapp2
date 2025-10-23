@@ -19,8 +19,8 @@ jamdict-data==1.5
 jamorasep==0.0.1
 typeguard==4.4.4
 
-# Play audio
-miniaudio==1.61         # can play with both bytes and files
+# Play audio (for cli)
+# miniaudio==1.61       # can play with both bytes and files
 # playsound==1.3.0      # can only play with file
 # pydub==0.25.1         # requires ffmpeg
 # simpleaudio==1.0.4    # setup.py bdist_wheel is deprecated, can't build

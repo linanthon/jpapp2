@@ -1,5 +1,5 @@
 import os
-import miniaudio
+# import miniaudio
 import re
 import requests
 
@@ -136,10 +136,15 @@ def read_jlpt(dirname: str = JLPT_DIR) -> None:
     for tier in tier_list:
         filename = f"{dirname}/{tier}.txt"
         if os.path.exists(filename):
-            with open(filename, "r") as f:
-                for word in f.readlines():
-                    JLPT_DICT[word.strip("\n")] = tier
+            try:
+                with open(filename, "r", encoding="utf-8") as f:
+                    for word in f.readlines():
+                        JLPT_DICT[word.strip("\n")] = tier
+            except Exception as e:
+                log.error(f"Failed to read JLPT file {filename}: {e}")
 
+"""Currently unavailable because failed to install miniaudio on Windows env,
+and maybe this is not needed after all if use web UI (let the browser play)"""
 def play_audio(audio_mapping: List[str]) -> None:
     """
     Read all the audio files accordingly to audio_mapping, concatenate then play it
@@ -148,14 +153,14 @@ def play_audio(audio_mapping: List[str]) -> None:
     sample_rate = None
     for syllable in audio_mapping:
         audio_file = f"{AUDIO_DIR}/{syllable}.wav"
-        miniaudio.play_file(audio_file)
+    #     miniaudio.play_file(audio_file)
 
-        sound = miniaudio.decode_file(audio_file)
-        if not sample_rate:
-            sample_rate = sound.sample_rate
-        combined_pcm.extend(sound.samples)
+    #     sound = miniaudio.decode_file(audio_file)
+    #     if not sample_rate:
+    #         sample_rate = sound.sample_rate
+    #     combined_pcm.extend(sound.samples)
 
-    miniaudio.play_sample(sound.samples, sample_rate, 1)
+    # miniaudio.play_sample(sound.samples, sample_rate, 1)
 
 def str_2_int(input_str: str) -> int:
     try:
