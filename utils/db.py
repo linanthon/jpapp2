@@ -480,6 +480,77 @@ class DBHandling:
                     else:
                         res["ALL"][0] += 1
         return res
+    
+    def list_words(self, jlpt_level: str = "", star: bool = False, limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict] | List[Word]:
+        """
+        Query 'words' table to get a list of JP words and its 1st EN meaning, sort by `id`.
+
+        Input:
+        - jlpt_level: the JLPT level (N0 - for non-categorized, N5, N4, N3, N2, N1).
+        - star: get only the starred words.
+        - limit: the amount of return records, if <= 0, use default value of 10.
+        - offset: skip the first X records.
+
+        Output: a list of word of this level (only the word, no other info such as spelling, senses, ...)
+        """
+        res: list = []
+        if limit < 1:
+            limit = DEFAULT_LIMIT
+        
+        params = []
+        query = sql.SQL("SELECT word, senses FROM {table}").format(
+            table=sql.Identifier(TABLE_WORDS)
+        )
+        if jlpt_level:
+            jlpt_level = jlpt_level.upper()
+            query += sql.SQL(" WHERE jlpt_level = %s")
+            params.append(jlpt_level)
+        if star:
+            if jlpt_level:
+                query += sql.SQL(" AND star = true")
+            else:
+                query += sql.SQL(" WHERE star = true")
+
+        query += sql.SQL(" ORDER BY id OFFSET {offset} LIMIT {limit};").format(
+            offset=sql.Literal(offset),
+            limit=sql.Literal(limit)
+        )
+        if self._safe_execute(query, params):
+            for instance in self._cursor.fetchall():
+                res.append({
+                    "word": instance["word"],
+                    "meaning": self._extract_meanings(instance["senses"])[0]
+                })
+        return res
+
+    def count_words(self, jlpt_level: str = "", star: bool = False) -> int:
+        """Count words in table"""
+        params = []
+        res = 0
+        if not jlpt_level and not star:
+            query = sql.SQL("SELECT MAX(id) FROM {table}").format(
+                table=sql.Identifier(TABLE_WORDS)
+            )
+            if self._safe_execute(query):
+                res = self._cursor.fetchone()["max"]
+        else:
+            query = sql.SQL("SELECT COUNT(id) FROM {table}").format(
+                table=sql.Identifier(TABLE_WORDS)
+            )
+            where_clauses = []
+            if jlpt_level:
+                jlpt_level = jlpt_level.upper()
+                where_clauses.append(sql.SQL("jlpt_level = %s"))
+                params.append(jlpt_level)
+            if star:
+                where_clauses.append(sql.SQL("star = true"))
+            if where_clauses:
+                query = query + sql.SQL(" WHERE ") + sql.SQL(" AND ").join(where_clauses)
+
+            if self._safe_execute(query, params):
+                res = self._cursor.fetchone()["count"]
+        return res
+        
     # =======================================================================================
 
     # Sentence ==============================================================================

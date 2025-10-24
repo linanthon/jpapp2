@@ -3,8 +3,8 @@ from flask import (Blueprint, request, render_template_string, render_template,
 import tempfile, os
 
 from handlers.insert import handle_insert_file, handle_insert_str
-from handlers.view import handle_search_word, handle_view_word
-from handlers.helpers import get_filename_from_path, is_api_request, toggle_star
+from handlers.view import handle_search_word, handle_view_specific_word, handle_view_words
+from handlers.helpers import get_filename_from_path, is_api_request, toggle_star, validate_jlpt_level, parse_bool_param
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -84,6 +84,31 @@ def upload_string():
 def view():
     return render_template("view/view.html")
 
+@bp.route("/view/word")
+def view_words():
+    """
+    View only the JP and EN of X words per page
+
+    Param:
+    - jlpt_level: filter by the JLPT level (N0 - not categorized, N5->N1)
+    - star: starred words only
+    - limit: the amount of words to show
+    - page: the number of page to show
+    """
+    jlpt_level = validate_jlpt_level(request.args.get("jlpt_level", ""))
+    star = parse_bool_param(request.args.get("star", None))
+    try:
+        limit = int(request.args.get("limit", str(DEFAULT_LIMIT)))
+    except:
+        limit = DEFAULT_LIMIT
+    try:
+        page = int(request.args.get("page", "1"))
+    except:
+        page = 1
+
+    result = handle_view_words(jlpt_level, star, limit, page)
+    return render_template("view/word/view_words.html", word_list=result)
+
 @bp.route("/view/search-word")
 def search_word():
     word = request.args.get("word", "")
@@ -106,8 +131,10 @@ def search_word():
     return handle_search_word(word, limit, bp.url_prefix, False)
 
 @bp.route("/view/word/<string:word>")
-def view_word(word: str):
+def view_specific_word(word: str):
     """
+    View details info of 1 word
+
     Param:
     - sen: the number of sentence example
     """
@@ -115,8 +142,8 @@ def view_word(word: str):
         limit = int(request.args.get("sen", ""))
     except:
         limit = DEFAULT_SENTENCE_EXAMPLE_LIMIT
-    result, sentence_examples = handle_view_word(word, limit)
-    return render_template("view/word/view_word.html", word_details=result, sen_ex=sentence_examples)
+    result, sentence_examples = handle_view_specific_word(word, limit)
+    return render_template("view/word/view_specific_word.html", word_details=result, sen_ex=sentence_examples)
 
 @bp.route("/toggle_star", methods=["POST"])
 def toggle_star():

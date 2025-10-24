@@ -95,5 +95,22 @@ def is_api_request():
     return request.is_json or request.accept_mimetypes.best == "application/json"
 
 def toggle_star(jp_word: str) -> bool:
+    #TODO: IMPLEMENT THIS
     db = get_dbhandling()
     res = db.get_exact_word(jp_word, parse_dict=True)
+
+def validate_jlpt_level(jlpt_level: str) -> str:
+    """Return upper cased jlpt_level if appropriate. Otherwise, return empty string"""
+    jlpt_level = jlpt_level.upper()
+    if jlpt_level in ["N0", "N5", "N4", "N3", "N2", "N1"]:
+        return jlpt_level
+    return ""
+
+def parse_bool_param(val) -> bool:
+    """Return True for common truthy query/JSON values, else False."""
+    if isinstance(val, bool):
+        return val
+    if val is None:
+        return False
+    s = str(val).strip().lower()
+    return s in ("1", "true", "t", "yes", "y", "on")

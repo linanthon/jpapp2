@@ -1,12 +1,13 @@
 from flask import Response, jsonify
-from typing import TYPE_CHECKING, List, Tuple
+import math
 import os
+from typing import TYPE_CHECKING, List, Tuple
 
 from handlers.helpers import str_2_byte, get_dbhandling
-from schemas.word import Word
 from utils.data import is_japanese_word, is_english_word
 from utils.logger import get_logger
-
+from schemas.constants import DEFAULT_LIMIT
+from schemas.word import Word
 
 if TYPE_CHECKING:
     from utils.data import ProcessData
@@ -40,7 +41,7 @@ def handle_search_word(word: str, limit: int, bp_prefix: str, is_api_call: bool 
         w["senses"] = db.get_meanings(w["word"], w["senses"])[0]
     return jsonify(results=res, bpPrefix=bp_prefix)
 
-def handle_view_word(word: str, sentence_limit: int) -> Tuple[dict, List[str]]:
+def handle_view_specific_word(word: str, sentence_limit: int) -> Tuple[dict, List[str]]:
     """
     Handle viewing a JP word with `sentence_limit` amount of sentence examples.
     """
@@ -49,3 +50,19 @@ def handle_view_word(word: str, sentence_limit: int) -> Tuple[dict, List[str]]:
     res["meanings"] = [chunk.strip() for chunk in res["senses"].split(";") if chunk.strip()]
     sentence_examples = db.get_sentences_containing_word(word, sentence_limit)
     return res, sentence_examples
+
+def handle_view_words(jlpt_level: str = "", star: bool = False, limit: int = DEFAULT_LIMIT,
+                      page: int = 1) -> List[dict]:
+    """
+    Handle viewing a list of `limit` JP words with their 1st EN meaning.
+    
+    Output: a list containing dicts with below format:
+        - word: the JP word
+        - meaning: the 1st EN meaning
+    """
+    db = get_dbhandling()
+    total_words = db.count_words(jlpt_level, star)
+    page_count = int(math.ceil(total_words / limit))
+    if page > page_count:
+        return []
+    return db.list_words(jlpt_level, star, limit, limit*(page-1))
