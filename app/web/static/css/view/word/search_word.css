@@ -1,0 +1,57 @@
+/* ================= Search word ====================== */
+.form-search-word-box {
+  width: 250px;
+  margin: 20px auto;
+}
+
+.form-search-word-group {
+  /* spacing with limit group */
+  margin-bottom: 15px;
+}
+
+/* For both Enter Word and Search Limit labels */
+.form-search-word-group label {
+  display: block;
+  text-align: left;
+  margin-bottom: 5px;
+  font-weight: bold;
+  color: #333;
+}
+    
+.form-search-word-group input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 16px;
+  box-sizing: border-box;
+}
+
+.limit-search-word-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.limit-search-word-group input[type="number"] {
+  width: 80px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.limit-search-word-group span {
+  font-size: 14px;
+}
+
+/* Search word result box and items */
+#showRes ul {
+  list-style-type: none;   /* removes bullets */
+  max-width: 300px;
+  margin: 20px auto;
+  padding-left: 50px;
+}
+
+#showRes li {
+  text-align: left;        /* line text up on the left */
+  margin: 4px 0;
+}

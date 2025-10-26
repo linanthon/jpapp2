@@ -498,7 +498,7 @@ class DBHandling:
             limit = DEFAULT_LIMIT
         
         params = []
-        query = sql.SQL("SELECT word, senses FROM {table}").format(
+        query = sql.SQL("SELECT word, spelling, senses FROM {table}").format(
             table=sql.Identifier(TABLE_WORDS)
         )
         if jlpt_level:
@@ -517,10 +517,8 @@ class DBHandling:
         )
         if self._safe_execute(query, params):
             for instance in self._cursor.fetchall():
-                res.append({
-                    "word": instance["word"],
-                    "meaning": self._extract_meanings(instance["senses"])[0]
-                })
+                instance["senses"] = self._extract_meanings(instance["senses"])[0]
+                res.append(self._parse_word_dict(instance))
         return res
 
     def count_words(self, jlpt_level: str = "", star: bool = False) -> int:

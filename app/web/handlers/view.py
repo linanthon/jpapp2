@@ -58,7 +58,9 @@ def handle_view_words(jlpt_level: str = "", star: bool = False, limit: int = DEF
     
     Output: a list containing dicts with below format:
         - word: the JP word
-        - meaning: the 1st EN meaning
+        - spelling: the Kata spelling
+        - senses: the 1st EN meaning. Still make the key as `senses` to line up
+        with handle_search_word()
     """
     db = get_dbhandling()
     total_words = db.count_words(jlpt_level, star)

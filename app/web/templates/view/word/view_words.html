@@ -2,11 +2,29 @@
 <html>
 <head>
   <title>View word</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view.css') }}">
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/word/view_words.css') }}">
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
 </head>
 <body>
 	<h2>View word</h2>
   
-  <div id="showRes" style="display:none">
+  <div id="showWordList" style="display:block">
+    {% if word_list %}
+      <!-- <h3>Words ({{ word_list|length }})</h3> -->
+      <ul>
+        {% for w in word_list %}
+          <li>
+            <a href="{{ url_for('main_ep.view_specific_word', word=w.word) }}">
+              <strong>{{ w.word }}</strong>
+            </a>
+            {% if w.spelling %} ({{ w.spelling }}){% endif %}
+            {% if w.senses %} — {{ w.senses }}{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div style="color:gray">No words to show</div>
+    {% endif %}
+  </div>
 </body>

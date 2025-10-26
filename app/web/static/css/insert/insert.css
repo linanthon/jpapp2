@@ -1,0 +1,56 @@
+/* ================== File input ================== */
+.file-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-style: italic;
+  width: 450px;
+  margin: 10px auto;
+  border: 1px solid #000;
+}
+
+#fileName {
+  width: 350px;
+  margin: 7px auto;
+  align-self: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre-wrap;
+}
+
+/* Make the file submit button stick to right side of file-info box */
+button#fileSubmit {
+  margin-right: 7px;
+}
+
+
+/* ================== String input ================== */
+.form-row {
+  width: 500px;
+  display: flex;
+  align-items: flex-start; /* top-align label and textarea */
+  margin: 10px auto;
+}
+
+.label-left {
+  width: 60px;       /* adjust label column width */
+  margin: 15px 5px auto auto;
+}
+
+input[type="text"], textarea {
+  flex: 1;           /* take up the rest of the row */
+  font-family: "Courier New", monospace;
+  font-size: 16px;
+  border: 2px solid black;
+  padding: 5px;
+  margin: 5px auto;
+}
+
+textarea {
+  width: 400px;
+  height: 250px;
+  resize: none;          /* fixed size */
+  white-space: pre-wrap; /* wrap long lines */
+  overflow-y: auto;      /* scroll vertically */
+  display: block;
+}

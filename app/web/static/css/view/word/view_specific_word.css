@@ -1,15 +1,3 @@
-body {
-  font-family: Arial, sans-serif;
-  text-align: center;
-  margin-top: 30px;
-}
-
-h2 {
-  align-items: center;
-  font-style: normal;
-  color: darkblue;
-}
-
 /* ================= View word ====================== */
 .word-detail {
   max-width: 800px;
@@ -19,6 +7,16 @@ h2 {
 
 .word-header {
   margin-left: 60px;
+}
+
+/* Override some global button styles for the star toggle */
+#starToggle {
+  display: block;
+  align-items: flex-end;
+  justify-content: center;
+  margin: 0;                  /* cancel margin:auto from global button */
+  padding: 10px;              /* override global padding */
+  cursor: pointer;
 }
 .star-and-spelling {
   display: flex;
@@ -40,6 +38,7 @@ h2 {
   display: inline-block;
   text-align: center;
 }
+
 #wordSpelling {
   display: block;
   font-size: 14px;

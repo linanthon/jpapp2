@@ -1,0 +1,12 @@
+/* Remove bullets for showWordList (view word - no search) and align list */
+#showWordList ul {
+  list-style-type: none;
+  max-width: 300px;
+  margin: 20px auto;
+  padding-left: 50px;
+}
+
+#showWordList li {
+  text-align: left;
+  margin: 4px 0;
+}

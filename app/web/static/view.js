@@ -61,7 +61,7 @@ async function handleViewSubmit(form, noticeId, showResId) {
   }
 }
 
-// View word set star
+// View 1 specific word set star
 document.addEventListener("DOMContentLoaded", () => {
   const star = document.getElementById("starToggle");
 
@@ -111,9 +111,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-
-
-
+// View 1 specific word play audio
 document.addEventListener("DOMContentLoaded", () => {
   const playBtn = document.getElementById("playBtn");
   if (!playBtn) return;

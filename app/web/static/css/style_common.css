@@ -1,0 +1,23 @@
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  margin-top: 30px;
+}
+
+h2 {
+  align-items: center;
+  font-style: normal;
+  color: darkblue;
+}
+
+/* Make default button selectors Rounded Rectangle, black border, white box, in center */
+button {
+  display: block;
+  margin: 10px auto;
+  padding: 10px 20px;
+  font-size: 16px;
+  border: 2px solid black;
+  border-radius: 15px;
+  background: white;
+  cursor: pointer;
+}
