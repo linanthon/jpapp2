@@ -10,3 +10,31 @@
   text-align: left;
   margin: 4px 0;
 }
+
+/* ===== Add: align JLPT label/control and star label/checkbox like mock ===== */
+#viewWordsForm {
+  display: grid;
+  grid-template-columns: 110px 1fr; /* left column for labels, right for controls */
+  row-gap: 8px;
+  column-gap: 20px;
+
+  margin: 10px auto;
+  width: 360px;
+  align-items: center;
+  justify-items: start;
+}
+
+#viewWordsForm label {
+  justify-self: end;   /* labels align to the right column edge */
+  font-weight: bold;
+}
+
+#viewWordsForm select,
+#viewWordsForm input[type="checkbox"] {
+  justify-self: start; /* controls start just to the right of labels */
+}
+
+/* Optional: just manual line up the star checkbox and JLPT select */
+#viewWordsForm input[type="checkbox"] {
+  transform: translateX(-3px);
+}

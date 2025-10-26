@@ -7,7 +7,26 @@
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
 </head>
 <body>
-	<h2>View word</h2>
+	<h2>View words</h2>
+
+  <!-- Filters: JLPT dropdown + starred checkbox (auto-submit on change) -->
+  <form id="viewWordsForm" method="GET" action="{{ url_for('main_ep.view_words') }}">
+    <label for="jlpt"><strong>JLPT:</strong></label>
+    <select name="jlpt_level" id="jlpt" onchange="this.form.submit()">
+      <option value="" {% if request.args.get('jlpt_level','') == '' %}selected{% endif %}></option>
+      <option value="N5" {% if request.args.get('jlpt_level') == 'N5' %}selected{% endif %}>N5</option>
+      <option value="N4" {% if request.args.get('jlpt_level') == 'N4' %}selected{% endif %}>N4</option>
+      <option value="N3" {% if request.args.get('jlpt_level') == 'N3' %}selected{% endif %}>N3</option>
+      <option value="N2" {% if request.args.get('jlpt_level') == 'N2' %}selected{% endif %}>N2</option>
+      <option value="N1" {% if request.args.get('jlpt_level') == 'N1' %}selected{% endif %}>N1</option>
+      <option value="N0" {% if request.args.get('jlpt_level') == 'N0' %}selected{% endif %}>Not categorized</option>
+    </select>
+
+    <label for="star"><strong>star:</strong></label>
+    <input type="checkbox" id="star" name="star" value="1"
+           onchange="this.form.submit()"
+           {% if request.args.get('star') in ['1','true','True','on','yes'] %}checked{% endif %}>
+  </form>
   
   <div id="showWordList" style="display:block">
     {% if word_list %}
