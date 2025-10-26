@@ -38,3 +38,41 @@
 #viewWordsForm input[type="checkbox"] {
   transform: translateX(-3px);
 }
+
+/* pagination visuals: emphasize current page */
+.pagination {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.pagination a,
+.pagination span {
+  display: inline-block;
+  margin: 0 6px;
+  padding: 4px 8px;
+  text-decoration: none;
+  color: #045;
+  border-radius: 4px;
+}
+
+.pagination a:hover {
+  background: #eef6ff;
+}
+
+.pagination a.current {
+  background: #045;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.1) inset;
+}
+
+.pagination .disabled {
+  color: #aaa;
+  padding: 4px 8px;
+}
+
+/* The "..." color */
+.pagination .ellipsis {
+  color: #666;
+  padding: 0 6px;
+}

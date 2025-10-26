@@ -6,6 +6,9 @@ from utils.db import DBHandling
 from utils.process_data import ProcessData
 from utils.data import read_stop_words, read_jlpt
 
+# cache word count for /view/word
+view_word_count_cache = {}
+
 
 def create_app():
     """
@@ -114,3 +117,7 @@ def parse_bool_param(val) -> bool:
         return False
     s = str(val).strip().lower()
     return s in ("1", "true", "t", "yes", "y", "on")
+
+def reset_view_word_count():
+    """call this when insert new book/word"""
+    view_word_count_cache.clear()

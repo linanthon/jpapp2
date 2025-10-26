@@ -106,8 +106,8 @@ def view_words():
     except:
         page = 1
 
-    result = handle_view_words(jlpt_level, star, limit, page)
-    return render_template("view/word/view_words.html", word_list=result)
+    result, page_count = handle_view_words(jlpt_level, star, limit, page)
+    return render_template("view/word/view_words.html", word_list=result, page_count=page_count, page=page)
 
 @bp.route("/view/search-word")
 def search_word():

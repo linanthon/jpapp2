@@ -3,7 +3,7 @@ import math
 import os
 from typing import TYPE_CHECKING, List, Tuple
 
-from handlers.helpers import str_2_byte, get_dbhandling
+from handlers.helpers import str_2_byte, get_dbhandling, view_word_count_cache
 from utils.data import is_japanese_word, is_english_word
 from utils.logger import get_logger
 from schemas.constants import DEFAULT_LIMIT
@@ -52,7 +52,7 @@ def handle_view_specific_word(word: str, sentence_limit: int) -> Tuple[dict, Lis
     return res, sentence_examples
 
 def handle_view_words(jlpt_level: str = "", star: bool = False, limit: int = DEFAULT_LIMIT,
-                      page: int = 1) -> List[dict]:
+                      page: int = 1) -> Tuple[List[dict], int]:
     """
     Handle viewing a list of `limit` JP words with their 1st EN meaning.
     
@@ -63,8 +63,12 @@ def handle_view_words(jlpt_level: str = "", star: bool = False, limit: int = DEF
         with handle_search_word()
     """
     db = get_dbhandling()
-    total_words = db.count_words(jlpt_level, star)
-    page_count = int(math.ceil(total_words / limit))
+    # Save count to cache until insert endpoint
+    key = tuple(f"{jlpt_level}::{star}")
+    if key not in view_word_count_cache:
+        view_word_count_cache[key] = db.count_words(jlpt_level, star)
+
+    page_count = int(math.ceil(view_word_count_cache[key] / limit))
     if page > page_count:
-        return []
-    return db.list_words(jlpt_level, star, limit, limit*(page-1))
+        return [], page_count
+    return db.list_words(jlpt_level, star, limit, limit*(page-1)), page_count

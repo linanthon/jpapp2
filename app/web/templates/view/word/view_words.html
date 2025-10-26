@@ -46,4 +46,59 @@
       <div style="color:gray">No words to show</div>
     {% endif %}
   </div>
+
+  {# Pagination bar #}
+  {% if page_count and page_count > 1 %}
+  <nav class="pagination" aria-label="pages">
+    {% set cur_jlpt = request.args.get('jlpt_level','') %}
+    {% set cur_star = request.args.get('star', None) %}
+
+    {# Prev link #}
+    {% if page > 1 %}
+      <a href="{{ url_for('main_ep.view_words', jlpt_level=cur_jlpt, star=cur_star, page=page-1) }}">prev</a>
+    {% else %}
+      <span class="disabled">prev</span>
+    {% endif %}
+
+    {# Always show first page #}
+    <a class="{{ 'current' if page==1 else '' }}" href="{{ url_for('main_ep.view_words', jlpt_level=cur_jlpt, star=cur_star, page=1) }}">1</a>
+
+    {# Decide window #}
+    {% set total = page_count %}
+    {% if total <= 7 %}
+      {# small number of pages: show all #}
+      {% for p in range(2, total+1) %}
+        <a class="{{ 'current' if page==p else '' }}" href="{{ url_for('main_ep.view_words', jlpt_level=cur_jlpt, star=cur_star, page=p) }}">{{ p }}</a>
+      {% endfor %}
+    {% else %}
+      {% set window = 2 %} {# show current +/-2 -> 5 middle pages #}
+      {% set left = page - window %}
+      {% set right = page + window %}
+      {% if left < 2 %}{% set left = 2 %}{% set right = left + window*2 %}{% endif %}
+      {% if right > total-1 %}{% set right = total-1 %}{% set left = right - window*2 %}{% endif %}
+
+      {% if left > 2 %}
+        <span class="ellipsis">…</span>
+      {% endif %}
+
+      {% for p in range(left, right+1) %}
+        <a class="{{ 'current' if page==p else '' }}" href="{{ url_for('main_ep.view_words', jlpt_level=cur_jlpt, star=cur_star, page=p) }}">{{ p }}</a>
+      {% endfor %}
+
+      {% if right < total-1 %}
+        <span class="ellipsis">…</span>
+      {% endif %}
+
+      {# Last page #}
+      <a class="{{ 'current' if page==total else '' }}" href="{{ url_for('main_ep.view_words', jlpt_level=cur_jlpt, star=cur_star, page=total) }}">{{ total }}</a>
+    {% endif %}
+
+    {# Next link #}
+    {% if page < page_count %}
+      <a href="{{ url_for('main_ep.view_words', jlpt_level=cur_jlpt, star=cur_star, page=page+1) }}">next</a>
+    {% else %}
+      <span class="disabled">next</span>
+    {% endif %}
+  </nav>
+  {% endif %}
 </body>

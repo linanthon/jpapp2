@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING
 import os
 
 from app.common import do_insert_word_sentence_book_2_db
-from handlers.helpers import get_processdata, get_dbhandling, do_insert_book, str_2_byte
+from handlers.helpers import get_processdata, get_dbhandling, do_insert_book, str_2_byte, reset_view_word_count
 from utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -28,6 +28,8 @@ def handle_insert_file(filename: str, saved_tmp_path: str, is_api_call: bool = F
             return Response("Error: No file selected", 400)
         yield str_2_byte("Error: No file selected")
         return
+    
+    reset_view_word_count()
     
     pdata, db = get_processdata(), get_dbhandling()
     book_id, resp = int(0), None
@@ -76,6 +78,8 @@ def handle_insert_str(name: str, data: str, is_api_call: bool = False):
     """
     if not name or not data:
         return Response("Error: Missing name or text", 400)
+
+    reset_view_word_count()
 
     content_len = len(data)
     pdata, db = get_processdata(), get_dbhandling()
