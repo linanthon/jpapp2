@@ -1,7 +1,11 @@
-document.getElementById("searchWordForm").addEventListener("submit", async function(e) {
-  e.preventDefault(); // no page reload
-  await handleViewSubmit(this, "searchWordNotice", "showRes");
-});
+// 
+const searchForm = document.getElementById("searchWordForm");
+if (searchForm) {
+  searchForm.addEventListener("submit", async function(e) {
+    e.preventDefault(); // no page reload
+    await handleViewSubmit(this, "searchWordNotice", "showRes");
+  });
+}
 
 // Search word print and clickable results
 async function handleViewSubmit(form, noticeId, showResId) {
@@ -61,9 +65,10 @@ async function handleViewSubmit(form, noticeId, showResId) {
   }
 }
 
-// View 1 specific word set star
+// View 1 specific word: set star
 document.addEventListener("DOMContentLoaded", () => {
   const star = document.getElementById("starToggle");
+  if (!star) return;
 
   star.addEventListener("click", async () => {
     // Current star state
@@ -74,7 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
     star.classList.toggle("white", isYellow);
 
     const word = star.dataset.word;
-    const url = star.dataset.toggleUrl || "/v1/toggle_star";
+    const url = star.dataset.toggleUrl || "/v1/toggle-star";
     const starParam = (!isYellow).toString(); // reverse of current state
 
     // Send change to backend

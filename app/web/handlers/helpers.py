@@ -97,10 +97,10 @@ def str_2_byte(input_str: str):
 def is_api_request():
     return request.is_json or request.accept_mimetypes.best == "application/json"
 
-def toggle_star(jp_word: str) -> bool:
-    #TODO: IMPLEMENT THIS
+def toggle_star(jp_word: str, star: int) -> bool:
+    """Turn star on or off. Return true if success, false otherwise."""
     db = get_dbhandling()
-    res = db.get_exact_word(jp_word, parse_dict=True)
+    return db.update_word_star(jp_word, True if star == 1 else False)
 
 def validate_jlpt_level(jlpt_level: str) -> str:
     """Return upper cased jlpt_level if appropriate. Otherwise, return empty string"""
@@ -108,6 +108,29 @@ def validate_jlpt_level(jlpt_level: str) -> str:
     if jlpt_level in ["N0", "N5", "N4", "N3", "N2", "N1"]:
         return jlpt_level
     return ""
+
+def validate_star(star_param) -> int:
+    """
+    Parse the star param obtained from frontend into integer:
+        * 1: to star
+        * 0: remove star
+        * -1: invalid
+    """
+    if isinstance(star_param, bool):
+        star = 1 if star_param else 0
+    elif isinstance(star_param, (int, float)):
+        star = 1 if int(star_param) != 0 else 0
+    elif isinstance(star_param, str):
+        s = star_param.strip().lower()
+        if s in ["1", "true", "t", "yes", "y", "on"]:
+            star = 1
+        elif s in ["0", "false", "f", "no", "n", "off"]:
+            star = 0
+        else:
+            star = -1
+    else:
+        star = -1
+    return star
 
 def parse_bool_param(val) -> bool:
     """Return True for common truthy query/JSON values, else False."""

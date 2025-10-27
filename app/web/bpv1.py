@@ -4,7 +4,7 @@ import tempfile, os
 
 from handlers.insert import handle_insert_file, handle_insert_str
 from handlers.view import handle_search_word, handle_view_specific_word, handle_view_words
-from handlers.helpers import get_filename_from_path, is_api_request, toggle_star, validate_jlpt_level, parse_bool_param
+from handlers.helpers import get_filename_from_path, is_api_request, toggle_star, validate_jlpt_level, parse_bool_param, validate_star
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -139,30 +139,24 @@ def view_specific_word(word: str):
     - sen: the number of sentence example
     """
     try:
-        limit = int(request.args.get("sen", ""))
+        sen_limit = int(request.args.get("sen", ""))
     except:
-        limit = DEFAULT_SENTENCE_EXAMPLE_LIMIT
-    result, sentence_examples = handle_view_specific_word(word, limit)
+        sen_limit = DEFAULT_SENTENCE_EXAMPLE_LIMIT
+    result, sentence_examples = handle_view_specific_word(word, sen_limit)
     return render_template("view/word/view_specific_word.html", word_details=result, sen_ex=sentence_examples)
 
-@bp.route("/toggle_star", methods=["POST"])
+@bp.route("/toggle-star", methods=["POST"])
 def toggle_star():
     data = request.get_json()
     word = data.get("word")
     if not word:
         return jsonify({"success": False, "error": "Missing word"}), 400
     
-    star_param = data.get("star").lower()
-    if not star_param:
-        star = -1
-    else:
-        if star_param == "true":
-            star = 1
-        else:
-            star = 0
-
-    new_state = toggle_star(word, star)   # <-- implement this, need to figure out front end first to know what param pass in
-    return jsonify({"success": True, "starred": new_state})
+    star = validate_star(data.get("star", None))
+    if star == -1:
+        return jsonify({"success": False})
+    updated_star = toggle_star(word, star)
+    return jsonify({"success": updated_star})
 
 @bp.route("/audio/<path:filename>")
 def serve_audio(filename):

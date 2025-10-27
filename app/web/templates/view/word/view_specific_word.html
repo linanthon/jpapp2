@@ -18,9 +18,7 @@
             aria-pressed="{{ 'true' if word_details.star else 'false' }}"
             data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
             data-word="{{ word_details.spelling|e }}"
-        >
-          ★
-        </button>
+        >★</button>
 
         <div class="spelling-wrap">
           <span id="wordSpelling">{{ word_details.spelling }}</span>

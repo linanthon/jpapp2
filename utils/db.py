@@ -522,31 +522,24 @@ class DBHandling:
         return res
 
     def count_words(self, jlpt_level: str = "", star: bool = False) -> int:
-        """Count words in table"""
+        """Count words in table (with filters)"""
         params = []
         res = 0
-        if not jlpt_level and not star:
-            query = sql.SQL("SELECT MAX(id) FROM {table}").format(
-                table=sql.Identifier(TABLE_WORDS)
-            )
-            if self._safe_execute(query):
-                res = self._cursor.fetchone()["max"]
-        else:
-            query = sql.SQL("SELECT COUNT(id) FROM {table}").format(
-                table=sql.Identifier(TABLE_WORDS)
-            )
-            where_clauses = []
-            if jlpt_level:
-                jlpt_level = jlpt_level.upper()
-                where_clauses.append(sql.SQL("jlpt_level = %s"))
-                params.append(jlpt_level)
-            if star:
-                where_clauses.append(sql.SQL("star = true"))
-            if where_clauses:
-                query = query + sql.SQL(" WHERE ") + sql.SQL(" AND ").join(where_clauses)
+        query = sql.SQL("SELECT COUNT(id) FROM {table}").format(
+            table=sql.Identifier(TABLE_WORDS)
+        )
+        where_clauses = []
+        if jlpt_level:
+            jlpt_level = jlpt_level.upper()
+            where_clauses.append(sql.SQL("jlpt_level = %s"))
+            params.append(jlpt_level)
+        if star:
+            where_clauses.append(sql.SQL("star = true"))
+        if where_clauses:
+            query = query + sql.SQL(" WHERE ") + sql.SQL(" AND ").join(where_clauses)
 
-            if self._safe_execute(query, params):
-                res = self._cursor.fetchone()["count"]
+        if self._safe_execute(query, params):
+            res = self._cursor.fetchone()["count"]
         return res
         
     # =======================================================================================
