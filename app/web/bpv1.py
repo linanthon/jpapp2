@@ -4,7 +4,7 @@ import tempfile, os
 
 from handlers.insert import handle_insert_file, handle_insert_str
 from handlers.view import handle_search_word, handle_view_specific_word, handle_view_words
-from handlers.helpers import get_filename_from_path, is_api_request, toggle_star, validate_jlpt_level, parse_bool_param, validate_star
+from handlers.helpers import get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level, parse_bool_param, validate_star
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -155,14 +155,14 @@ def toggle_star():
     star = validate_star(data.get("star", None))
     if star == -1:
         return jsonify({"success": False})
-    updated_star = toggle_star(word, star)
+    updated_star = toggle_star_helper(word, star)
     return jsonify({"success": updated_star})
 
-@bp.route("/audio/<path:filename>")
-def serve_audio(filename):
+@bp.route("/audio/<string:filename>")
+def serve_audio(filename: str):
     # main.py is inside `app/web/` so we have ../../
     audio_dir = os.path.join(os.path.dirname(__file__), "../../"+AUDIO_DIR)
-    return send_from_directory(audio_dir, filename)
+    return send_from_directory(audio_dir, filename, mimetype='audio/wav')
 
 # =================================================================================
 

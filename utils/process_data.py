@@ -278,7 +278,7 @@ class ProcessData():
             # If is prolonged sound
             elif i > 0 and kana == "ー":
                 new_romaji = audio_romaji_list[-1][-1]
-                #TODO: if update more .wav, need pop prev, new = prev + prev[-1] (i.e.: "chii" instead of "chi" "i")
+                #TODO: if update prolonged .wav, need pop prev, new = prev + prev[-1] (i.e.: "chii" instead of "chi" "i")
 
             # If is Sokuon (small tsu) 
             elif i > 0 and kana in ["っ", "ッ"] and i < len(kana_list):

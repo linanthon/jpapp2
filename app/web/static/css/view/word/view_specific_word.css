@@ -86,3 +86,8 @@
 #word-meaning li {
   list-style-type: none;
 }
+
+/* Play audio button press effect */
+#playBtn:active {
+  transform: scale(0.96);
+}

@@ -122,7 +122,3 @@ Process:
 - fix basic functions
 - implement more advance functions
 
-
-TODO:
-- fix get sentence
-- add more sound

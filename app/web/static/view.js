@@ -122,11 +122,41 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!playBtn) return;
 
   playBtn.addEventListener("click", async () => {
-    for (const file of window.audioFiles || []) {
-      const audio = new Audio(`/v1/audio/${file}`); // uses Flask route
+    const audioMappingStr = playBtn.dataset.audioMapping;
+    if (!audioMappingStr) {
+      console.warn("No audio mapping found for " + playBtn.dataset.word)
+      return;
+    }
+
+    let audioMapping;
+    try {
+      audioMapping = JSON.parse(audioMappingStr);
+    } catch(e) {
+      // Fallback: handle Python-like list "['to','zan']" or unquoted tokens
+      try {
+        const alt = audioMappingStr
+          .replace(" ", "")             // space after comma
+          .replace(/'/g, '"')           // single → double quotes
+          .replace(/,\s*,/g, ',')       // remove accidental empty elems
+        audioMapping = JSON.parse(alt);
+      } catch (e2) {
+        console.error("Failed to parse audio mapping:", audioMappingStr, e, e2);
+        return;
+      }
+    }
+
+    for (const syllable of audioMapping || []) {
+      const audio = new Audio(`/v1/audio/${syllable}.wav`);
       await new Promise(resolve => {
         audio.onended = resolve;
-        audio.play();
+        audio.onerror = () => {
+          console.error(`Failed to load audio: ${filename}`);
+          resolve();
+        };
+        audio.play().catch(err => {
+          console.error(`Failed to play audio: ${filename}`, err);
+          resolve();
+        });
       });
     }
   });

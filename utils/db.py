@@ -980,6 +980,7 @@ class DBHandling:
             spelling=word.get("spelling", ""),
             forms=word.get("forms", ""),
             jlpt_level=word.get("jlpt_level", ""),
+            audio_mapping=word.get("audio_mapping", []),
             star=word.get("star", ""),
             occurence=word.get("occurrence", ""),
             quized=word.get("quized", "")
@@ -993,6 +994,7 @@ class DBHandling:
         word["spelling"] = word.get("spelling", "")
         word["forms"] = word.get("forms", "")
         word["jlpt_level"] = word.get("jlpt_level", "")
+        word["audio_mapping"] = word.get("audio_mapping", [])
         word["star"] = word.get("star", "")
         word["occurence"] = word.get("occurrence", "")
         word["quized"] = word.get("quized", "")

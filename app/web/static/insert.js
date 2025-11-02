@@ -1,3 +1,5 @@
+let lastSelectedFile = null;
+
 function showFileName() {
   // `const` means a var that won't be reassign, their properties are still mutable!
   const input = document.getElementById('fileInput');
@@ -15,15 +17,28 @@ function showFileName() {
   // Note that a file is chosen through <input type="file" ... onchange="showFileName()">
   // If a file is chosen
   if (input.files.length > 0) {
+    lastSelectedFile = input.files[0]
     fileName.textContent = "📄 " + input.files[0].name; // update the span fileName to show the file name
     fileInfo.style.display = "flex";    // change display from 'none' to 'flex' to show the div box
+  } else if (lastSelectedFile) {
+    fileName.textContent = "📄 " + lastSelectedFile.name;
+    fileInfo.style.display = "flex";
+  } else {
+    fileName.textContent = "";
+    fileInfo.style.display = "none";
   }
-  //TODO: Need to fix, if a file already chosen, then choose `Enter String`, need to discard chosen file
 }
 
 document.getElementById("fileForm").addEventListener("submit", async function(e) {
   e.preventDefault(); // no page reload
-  handleFormSubmit(this, "fileNotice", "fileProgressLine");
+
+  const input = document.getElementById('fileInput');
+  const formData = new FormData(this);
+
+  if (input.files.length === 0 && lastSelectedFile) {
+    formData.set('submittedFilename', lastSelectedFile, lastSelectedFile.name);
+  }
+  handleFormSubmit(this, "fileNotice", "fileProgressLine", formData);
 });
 
 
@@ -45,14 +60,20 @@ function showTextBox() {
 
 document.getElementById("stringForm").addEventListener("submit", async function(e) {
   e.preventDefault(); // no page reload
-  handleFormSubmit(this, "stringNotice", "stringProgressLine");
+  handleFormSubmit(this, "stringNotice", "stringProgressLine", null);
 });
 
 
 
-async function handleFormSubmit(form, noticeId, progressId) {
+async function handleFormSubmit(form, noticeId, progressId, formData) {
+  // `form` (or `this` in function call), is a normal, contains the chosen file name
+  // `formData` is manual created form that includes the chosen file name
+
   // Get the backend response from `main_ep.upload_file`
-  const formData = new FormData(form);
+  if (!formData) {
+    formData = new FormData(form);
+  }
+
   const response = await fetch(form.action, { method: "POST", body: formData });
   const notice = document.getElementById(noticeId);
   const progressLine = document.getElementById(progressId);

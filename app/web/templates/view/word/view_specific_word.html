@@ -17,7 +17,7 @@
             class="star {{ 'yellow' if word_details.star else 'white' }}"
             aria-pressed="{{ 'true' if word_details.star else 'false' }}"
             data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
-            data-word="{{ word_details.spelling|e }}"
+            data-word="{{ word_details.word|e }}"
         >★</button>
 
         <div class="spelling-wrap">
@@ -31,7 +31,10 @@
       <!-- Left column -->
       <div>
         <p><strong>JLPT:</strong> {{ word_details.jlpt_level or '—' }}</p>
-        <p><button id="playBtn">▶ Play audio</button></p>
+        <p><button id="playBtn"
+          data-audio-mapping="{{ word_details.audio_mapping | e }}"
+          data-word="{{ word_details.word | e }}"
+          >▶ Play audio</button></p>
         <p><strong>Occurrence:</strong> {{ word_details.occurrence }}</p>
         <p><strong>Correct quiz:</strong> {{ word_details.quized }}</p>
       </div>
