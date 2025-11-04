@@ -79,7 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
     star.classList.toggle("white", isYellow);
 
     const word = star.dataset.word;
-    const url = star.dataset.toggleUrl || "/v1/toggle-star";
+    const url = star.dataset.toggleUrl || "/v1/toggle-star/word";
     const starParam = (!isYellow).toString(); // reverse of current state
 
     // Send change to backend

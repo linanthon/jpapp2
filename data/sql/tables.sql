@@ -17,7 +17,9 @@ CREATE TABLE IF NOT EXISTS words (
 -- Store a book
 CREATE TABLE IF NOT EXISTS books (
     id SERIAL PRIMARY KEY NOT NULL,
+    created TIMESTAMP NOT NULL DEFAULT now(),
     name TEXT UNIQUE NOT NULL,
+    star BOOLEAN,
     content TEXT    -- the entire book content, the limit is 1GB which no books achieve
 );
 

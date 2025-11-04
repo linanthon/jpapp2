@@ -130,9 +130,9 @@ class DBHandling:
                 return -2
 
         # Insert
-        query = sql.SQL("INSERT INTO {table} (name, content) VALUES (%s, %s) RETURNING id;"
+        query = sql.SQL("INSERT INTO {table} (name, star, content) VALUES (%s, %s) RETURNING id;"
                         ).format(table=sql.Identifier(TABLE_BOOKS))
-        if self._safe_execute(query, (bookname, content,)):
+        if self._safe_execute(query, (bookname, False, content,)):
             self._conn.commit()
             return self._cursor.fetchone()["id"]
         self._conn.rollback()
@@ -172,7 +172,7 @@ class DBHandling:
         self._conn.rollback()
         return False
 
-    def query_like_book(self, name: str, limit: int = DEFAULT_LIMIT) -> List[Book]:
+    def query_like_book(self, name: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Book] | List[dict]:
         """
         Query a list of books via LIKE %name%
 
@@ -190,29 +190,124 @@ class DBHandling:
             limit = DEFAULT_LIMIT
         if self._safe_execute(query, (f"%{name}%", limit,)):
             for instance in self._cursor.fetchall():
-                res.append(self._parse_book(instance))
+                if parse_dict:
+                    res.append(self._parse_book_dict(instance))
+                else:
+                    res.append(self._parse_book(instance))
         return res
     
-    def get_exact_book(self, name: str = "", book_id: int = None) -> Book:
+    def get_exact_book(self, name: str = "", book_id: int = None, parse_dict: bool = False) -> Book | dict:
         """
         Query a book with the exact name or its ID.
         Returns the row of that book.
         """
-        success = False
-        res = Book()
+        if not name and not book_id:
+            return [] if parse_dict else Book()
+        
+        query = sql.SQL("SELECT * FROM {table}").format(
+            table=sql.Identifier(TABLE_BOOKS)
+        )
+        params = []
+
         if book_id:
-            query = sql.SQL("SELECT * FROM {table} WHERE id = %s;").format(
-                table=sql.Identifier(TABLE_BOOKS)
-            )
-            success = self._safe_execute(query, (book_id,))
-        elif name:
-            query = sql.SQL("SELECT * FROM {table} WHERE name = %s;").format(
-                table=sql.Identifier(TABLE_BOOKS)
-            )
-            success = self._safe_execute(query, (name,))
-        if success:
-            res = self._parse_book(self._cursor.fetchone())
+            query += sql.SQL(" WHERE id = %s;")
+            params.append(book_id)
+        else:
+            query += sql.SQL(" WHERE name = %s;")
+            params.append(name)
+
+        res = Book()
+        if self._safe_execute(query, params):
+            if parse_dict:
+                res = self._parse_book_dict(self._cursor.fetchone())
+            else:
+                res = self._parse_book(self._cursor.fetchone())
         return res
+    
+    def list_books(self, star: bool = False, limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
+        """
+        Query 'books' table to get a list of books
+
+        Input:
+        - star: get only the starred books.
+        - limit: the amount of return records, if <= 0, use default value of 10.
+        - offset: skip the first X records.
+
+        Output: a list of books (name, star, created)
+        """
+        res: list = []
+        if limit < 1:
+            limit = DEFAULT_LIMIT
+        
+        query = sql.SQL("SELECT id, name, star, created FROM {table}").format(
+            table=sql.Identifier(TABLE_WORDS)
+        )
+        if star:
+            query += sql.SQL(" WHERE star = true")
+
+        query += sql.SQL(" ORDER BY id OFFSET {offset} LIMIT {limit};").format(
+            offset=sql.Literal(offset),
+            limit=sql.Literal(limit)
+        )
+        if self._safe_execute(query):
+            for instance in self._cursor.fetchall():
+                res.append(self._parse_book_dict(instance))
+        return res
+
+    def count_books(self, star: bool = False) -> int:
+        """Count words in table (with filters)"""
+        params = []
+        res = 0
+        query = sql.SQL("SELECT COUNT(id) FROM {table}").format(
+            table=sql.Identifier(TABLE_WORDS)
+        )
+        if star:
+            query += sql.SQL(" WHERE star = true")
+
+        if self._safe_execute(query, params):
+            res = self._cursor.fetchone()["count"]
+        return res
+
+    def remove_book(self, name: str = "", book_id: int = None) -> bool:
+        """Remove book by name (exact match) or id, will also remove all
+        its sentences and words. If those sentences/words have duplicate in another book,
+        reduce their counts instead. Return true if success, otherwise false.
+        
+        Params:
+            - name: book full name (no extension)
+            - book_id: book ID
+        """
+        if not name and not book_id:
+            return False
+        
+        # Delete book
+        query = sql.SQL("DELETE FROM {table} WHERE ").format(
+            table=sql.Identifier(TABLE_BOOKS)
+        )
+        if book_id:
+            query += sql.SQL(" id = ?")
+            params = [book_id]
+        else:
+            query += sql.SQL(" name = ?")
+            params = [name]
+        deleted_book = self._safe_execute(query, params)
+        if not deleted_book:
+            self._conn.rollback()
+            return False
+        
+        # Get all its sentence IDs
+        query = sql.SQL("SELECT sentence_id FROM {table} WHERE book_id = ?").format(
+            table=sql.Identifier(TABLE_SENTENCE_BOOK_REF)
+        )
+        self._safe_execute(query, (book_id))
+        a = self._cursor.fetchall()
+        print("AAAAAAAAAAAAAAAA:", a)
+        # -1 count for all of this book' sentences, delete if count = 0
+
+        
+        self._conn.rollback()
+        
+
     # =======================================================================================
 
     # Word ==================================================================================
@@ -481,7 +576,7 @@ class DBHandling:
                         res["ALL"][0] += 1
         return res
     
-    def list_words(self, jlpt_level: str = "", star: bool = False, limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict] | List[Word]:
+    def list_words(self, jlpt_level: str = "", star: bool = False, limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
         """
         Query 'words' table to get a list of JP words and its 1st EN meaning, sort by `id`.
 
@@ -491,7 +586,7 @@ class DBHandling:
         - limit: the amount of return records, if <= 0, use default value of 10.
         - offset: skip the first X records.
 
-        Output: a list of word of this level (only the word, no other info such as spelling, senses, ...)
+        Output: a list of word (with this JLPT level, spelling, senses)
         """
         res: list = []
         if limit < 1:
@@ -988,7 +1083,7 @@ class DBHandling:
     
     def _parse_word_dict(self, word: dict) -> dict:
         """Keep the dict form, assure have enough fields, modify in-place and also return"""
-        word["id"] = word.get("id", 0)
+        word["word_id"] = word.get("id", 0)
         word["word"] = word.get("word", "")
         word["senses"] = word.get("senses", "")
         word["spelling"] = word.get("spelling", "")
@@ -1014,9 +1109,21 @@ class DBHandling:
         """Parse book dict from query result into Book class"""
         return Book(
             book_id=book.get("id", 0),
+            created=book.get("created", ""),
+            star=book.get("star", False),
             name=book.get("name", ""),
             content=book.get("content", ""),
         )
+    
+    def _parse_book_dict(self, book: dict) -> dict:
+        """Parse book dict from query result into Book class"""
+        book["book_id"] = book.get("id", 0)
+        book["created"] = book.get("created", "")
+        book["name"] = book.get("name", "")
+        book["star"] = book.get("star", False)
+        book["content"] = book.get("content", "")
+        return book
+    
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================

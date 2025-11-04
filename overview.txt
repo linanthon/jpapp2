@@ -122,3 +122,6 @@ Process:
 - fix basic functions
 - implement more advance functions
 
+TODO:
+- view book
+- remove book

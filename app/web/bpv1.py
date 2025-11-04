@@ -3,8 +3,10 @@ from flask import (Blueprint, request, render_template_string, render_template,
 import tempfile, os
 
 from handlers.insert import handle_insert_file, handle_insert_str
-from handlers.view import handle_search_word, handle_view_specific_word, handle_view_words
-from handlers.helpers import get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level, parse_bool_param, validate_star
+from handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
+                           handle_view_books, handle_view_specific_book)
+from handlers.helpers import (get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level,
+                              parse_bool_param, validate_star)
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -87,7 +89,7 @@ def view():
 @bp.route("/view/word")
 def view_words():
     """
-    View only the JP and EN of X words per page
+    View X words per page, with/without filters
 
     Param:
     - jlpt_level: filter by the JLPT level (N0 - not categorized, N5->N1)
@@ -145,7 +147,7 @@ def view_specific_word(word: str):
     result, sentence_examples = handle_view_specific_word(word, sen_limit)
     return render_template("view/word/view_specific_word.html", word_details=result, sen_ex=sentence_examples)
 
-@bp.route("/toggle-star", methods=["POST"])
+@bp.route("toggle-star/word", methods=["POST"])
 def toggle_star():
     data = request.get_json()
     word = data.get("word")
@@ -163,6 +165,34 @@ def serve_audio(filename: str):
     # main.py is inside `app/web/` so we have ../../
     audio_dir = os.path.join(os.path.dirname(__file__), "../../"+AUDIO_DIR)
     return send_from_directory(audio_dir, filename, mimetype='audio/wav')
+
+@bp.route("/view/book")
+def view_books():
+    """
+    View X book names per page, with/without star
+
+    Param:
+    - star: starred words only
+    - limit: the amount of words to show
+    - page: the number of page to show
+    """
+    star = parse_bool_param(request.args.get("star", None))
+    try:
+        limit = int(request.args.get("limit", str(DEFAULT_LIMIT)))
+    except:
+        limit = DEFAULT_LIMIT
+    try:
+        page = int(request.args.get("page", "1"))
+    except:
+        page = 1
+
+    result, page_count = handle_view_books(star, limit, page)
+    return render_template("view/word/view_books.html", book_list=result, page_count=page_count, page=page)
+
+@bp.route("/view/book/<int:book_id>")
+def view_specific_book(book_id: int):
+    """View content of 1 book"""
+    return render_template("view/book/view_specific_book.html", book_details=handle_view_specific_book(book_id))
 
 # =================================================================================
 
