@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>View book</title>
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/book/view_specific_book.css') }}">
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
+  <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
+</head>
+<body>
+	<h2>View book</h2>
+
+  <div class="book-detail">
+    <div class="book-header">
+      <div class="star-and-name">
+        <button id="starToggle" type="button"
+            class="star {{ 'yellow' if book_details.star else 'white' }}"
+            aria-pressed="{{ 'true' if book_details.star else 'false' }}"
+            data-toggle-url="{{ url_for('main_ep.toggle_star_book') }}"
+            data-id="{{ book_details.book_id }}"
+        >★</button>
+
+        <p id="bookName"><strong>{{ book_details.name }}</strong></p>
+      </div>
+    </div>
+
+    <p><strong>Created:</strong> {{ book_details.created }}</p>
+
+    <div class="book-body">
+      <p>{{ book_details.content }}</p>
+    </div>
+  </div>
+
+</body>
+</html>

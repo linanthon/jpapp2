@@ -130,7 +130,7 @@ class DBHandling:
                 return -2
 
         # Insert
-        query = sql.SQL("INSERT INTO {table} (name, star, content) VALUES (%s, %s) RETURNING id;"
+        query = sql.SQL("INSERT INTO {table} (name, star, content) VALUES (%s, %s, %s) RETURNING id;"
                         ).format(table=sql.Identifier(TABLE_BOOKS))
         if self._safe_execute(query, (bookname, False, content,)):
             self._conn.commit()
@@ -240,7 +240,7 @@ class DBHandling:
             limit = DEFAULT_LIMIT
         
         query = sql.SQL("SELECT id, name, star, created FROM {table}").format(
-            table=sql.Identifier(TABLE_WORDS)
+            table=sql.Identifier(TABLE_BOOKS)
         )
         if star:
             query += sql.SQL(" WHERE star = true")
@@ -259,7 +259,7 @@ class DBHandling:
         params = []
         res = 0
         query = sql.SQL("SELECT COUNT(id) FROM {table}").format(
-            table=sql.Identifier(TABLE_WORDS)
+            table=sql.Identifier(TABLE_BOOKS)
         )
         if star:
             query += sql.SQL(" WHERE star = true")

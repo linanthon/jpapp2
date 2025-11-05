@@ -147,8 +147,8 @@ def view_specific_word(word: str):
     result, sentence_examples = handle_view_specific_word(word, sen_limit)
     return render_template("view/word/view_specific_word.html", word_details=result, sen_ex=sentence_examples)
 
-@bp.route("toggle-star/word", methods=["POST"])
-def toggle_star():
+@bp.route("/toggle-star/word", methods=["POST"])
+def toggle_star_word():
     data = request.get_json()
     word = data.get("word")
     if not word:
@@ -187,13 +187,18 @@ def view_books():
         page = 1
 
     result, page_count = handle_view_books(star, limit, page)
-    return render_template("view/word/view_books.html", book_list=result, page_count=page_count, page=page)
+    return render_template("view/book/view_books.html", book_list=result, page_count=page_count, page=page)
 
 @bp.route("/view/book/<int:book_id>")
 def view_specific_book(book_id: int):
     """View content of 1 book"""
     return render_template("view/book/view_specific_book.html", book_details=handle_view_specific_book(book_id))
 
+@bp.route("/toggle-star/book", methods=["POST"])
+def toggle_star_book():
+    data = request.get_json()
+    book_id = data.get("id")
+    return 0
 # =================================================================================
 
 # ===== PROGRESS % ================================================================

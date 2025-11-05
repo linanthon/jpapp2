@@ -1,0 +1,77 @@
+/* Remove bullets for showBookList (view book - no search) and align list */
+#showBookList ul {
+  list-style-type: none;
+  max-width: 300px;
+  margin: 20px auto;
+  padding-left: 50px;
+}
+
+#showBookList li {
+  text-align: left;
+  margin: 10px auto;
+}
+
+#showBookList ul li a {
+  font-size: 1.25rem;
+}
+
+/* ===== Add: align JLPT label/control and star label/checkbox like mock ===== */
+#viewBooksForm {
+  display: grid;
+  grid-template-columns: 110px 1fr; /* left column for labels, right for controls */
+  row-gap: 8px;
+  column-gap: 20px;
+
+  margin: 10px auto;
+  width: 200px;
+  align-items: center;
+  justify-items: start;
+}
+
+#viewBooksForm label {
+  justify-self: end;   /* labels align to the right column edge */
+  font-weight: bold;
+}
+
+#viewBooksForm select,
+#viewBooksForm input[type="checkbox"] {
+  justify-self: start; /* controls start just to the right of labels */
+}
+
+/* pagination visuals: emphasize current page */
+.pagination {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.pagination a,
+.pagination span {
+  display: inline-block;
+  margin: 0 6px;
+  padding: 4px 8px;
+  text-decoration: none;
+  color: #045;
+  border-radius: 4px;
+}
+
+.pagination a:hover {
+  background: #eef6ff;
+}
+
+.pagination a.current {
+  background: #045;
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.1) inset;
+}
+
+.pagination .disabled {
+  color: #aaa;
+  padding: 4px 8px;
+}
+
+/* The "..." color */
+.pagination .ellipsis {
+  color: #666;
+  padding: 0 6px;
+}

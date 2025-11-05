@@ -1,0 +1,34 @@
+.star-and-name {
+  display: flex;
+  align-items: center;   /* vertical center star and text */
+  gap: 12px;
+  justify-content: center; /* keep the whole group centered; change to flex-start to left-align */
+}
+
+.star { font-size: 28px; }
+.star.yellow { color: gold; }
+.star.white { color: lightgray; }
+
+.star:active {
+  transform: scale(0.7);  /* press effect */
+}
+
+/* Cancel the global button centering and keep existing .star rules */
+#starToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;          /* remove margin:auto from global rules */
+  padding: 2px 4px;        /* minimal padding */
+  line-height: 1; 
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 24px;    /* adjust size if needed */
+}
+
+#bookName {
+  font-size: 28px;
+  margin: 0;               /* remove default paragraph margin */
+  line-height: 1;          /* collapse line spacing */
+}

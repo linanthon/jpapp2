@@ -2,7 +2,7 @@
 <html>
 <head>
   <title>View word</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/word/view_books.css') }}">
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/book/view_books.css') }}">
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
 </head>
@@ -23,7 +23,7 @@
         {% for b in book_list %}
           <li>
             <a href="{{ url_for('main_ep.view_specific_book', book_id=b.id) }}">
-              <strong>{{ b.word }}</strong>
+              <strong>{{ b.name }}</strong>
             </a>
             {% if b.star %} ({{ b.star }}){% endif %}
           </li>
@@ -35,7 +35,7 @@
   </div>
 
   {# Pagination bar #}
-  {% if page_count and page_count > 1 %}
+  {% if page_count %}
   <nav class="pagination" aria-label="pages">
     {% set cur_star = request.args.get('star', None) %}
 
