@@ -150,14 +150,15 @@ def view_specific_word(word: str):
 @bp.route("/toggle-star/word", methods=["POST"])
 def toggle_star_word():
     data = request.get_json()
-    word = data.get("word")
-    if not word:
+    try:
+        word_id = int(data.get("id", "a"))
+    except:
         return jsonify({"success": False, "error": "Missing word"}), 400
     
     star = validate_star(data.get("star", None))
     if star == -1:
         return jsonify({"success": False})
-    updated_star = toggle_star_helper(word, star)
+    updated_star = toggle_star_helper(word_id, star)
     return jsonify({"success": updated_star})
 
 @bp.route("/audio/<string:filename>")
@@ -197,7 +198,15 @@ def view_specific_book(book_id: int):
 @bp.route("/toggle-star/book", methods=["POST"])
 def toggle_star_book():
     data = request.get_json()
-    book_id = data.get("id")
+    book_id = data.get("id", None)
+    if not book_id:
+        return jsonify({"success": False, "error": "Missing book id"}), 400
+    
+    star = validate_star(data.get("star", None))
+    if star == -1:
+        return jsonify({"success": False})
+    updated_star = toggle_star_helper(book_id, star)
+    return jsonify({"success": updated_star})
     return 0
 # =================================================================================
 

@@ -97,10 +97,10 @@ def str_2_byte(input_str: str):
 def is_api_request():
     return request.is_json or request.accept_mimetypes.best == "application/json"
 
-def toggle_star_helper(jp_word: str, star: int) -> bool:
+def toggle_star_helper(word_id: int, star: int) -> bool:
     """Turn star on or off. Return true if success, false otherwise."""
     db = get_dbhandling()
-    return db.update_word_star(jp_word, True if star == 1 else False)
+    return db.update_word_star(word_id=word_id, star=True if star == 1 else False)
 
 def validate_jlpt_level(jlpt_level: str) -> str:
     """Return upper cased jlpt_level if appropriate. Otherwise, return empty string"""

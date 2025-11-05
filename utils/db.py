@@ -398,17 +398,29 @@ class DBHandling:
         self._conn.rollback()
         return False
 
-    def update_word_star(self, word: str, new_star_status: bool = None) -> bool:
+    def update_word_star(self, word_id: int = None, word: str = "", new_star_status: bool = None) -> bool:
         """
         Update a word's star. If specified 'new_star_status', will update to that.
         Otherwise, will query word first then update the star to the opposite status.
         Returns True if success, Fail if not found/failed.
         """
+        if not word_id and not word:
+            return False
+        
+        if word_id:
+            patch_where = sql.SQL(" WHERE id = %s;")
+            params = [word_id]
+        else:
+            patch_where = sql.SQL(" WHERE word = %s;")
+            params = [word]
+
         if not new_star_status:
-            query = sql.SQL("SELECT star FROM {table} WHERE word = %s;").format(
+            query = sql.SQL("SELECT star FROM {table}").format(
                 table=sql.Identifier(TABLE_WORDS)
             )
-            if self._safe_execute(query, (word,)):
+            query += patch_where
+
+            if self._safe_execute(query, params):
                 res = self._cursor.fetchone()
                 if res:
                     # Default will mark as True
@@ -419,10 +431,12 @@ class DBHandling:
             log.error(f"word {word} not found")
             return False
         
-        query = sql.SQL("UPDATE {table} SET star = %s WHERE word = %s;").format(
+        query = sql.SQL("UPDATE {table} SET star = %s").format(
             table=sql.Identifier(TABLE_WORDS)
         )
-        if self._safe_execute(query, (new_star_status, word,)) and self._cursor.rowcount > 0:
+        query += patch_where
+        params.insert(0, new_star_status)
+        if self._safe_execute(query, params) and self._cursor.rowcount > 0:
             self._conn.commit()
             return True
         self._conn.rollback()

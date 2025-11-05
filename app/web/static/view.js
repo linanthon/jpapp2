@@ -78,7 +78,7 @@ document.addEventListener("DOMContentLoaded", () => {
     star.classList.toggle("yellow", !isYellow);
     star.classList.toggle("white", isYellow);
 
-    const word = star.dataset.word;
+    const wordID = star.dataset.id;
     const url = star.dataset.toggleUrl || "/v1/toggle-star/word";
     const starParam = (!isYellow).toString(); // reverse of current state
 
@@ -88,8 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // body: JSON.stringify({ word: document.getElementById("wordSpelling").textContent })
-        body: JSON.stringify({ word: word, star: starParam })
+        body: JSON.stringify({ id: wordID, star: starParam })
       });
       const data = await resp.json();
 
