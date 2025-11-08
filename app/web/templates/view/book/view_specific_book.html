@@ -12,10 +12,10 @@
   <div class="book-detail">
     <div class="book-header">
       <div class="star-and-name">
-        <button id="starToggle" type="button"
-            class="star {{ 'yellow' if book_details.star else 'white' }}"
+        <button id="bookStarToggle" type="button"
+            class="book-star-toggle {{ 'yellow' if book_details.star else 'white' }}"
             aria-pressed="{{ 'true' if book_details.star else 'false' }}"
-            data-toggle-url="{{ url_for('main_ep.toggle_star_book') }}"
+            data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
             data-id="{{ book_details.book_id }}"
         >★</button>
 

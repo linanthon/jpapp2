@@ -10,7 +10,7 @@
 }
 
 /* Override some global button styles for the star toggle */
-#starToggle {
+#wordStarToggle {
   display: block;
   align-items: flex-end;
   justify-content: center;

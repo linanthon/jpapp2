@@ -3,6 +3,7 @@
 <head>
   <title>View word</title>
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/book/view_books.css') }}">
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/book/view_specific_book.css') }}">
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
 </head>
@@ -22,10 +23,15 @@
       <ul>
         {% for b in book_list %}
           <li>
+            <button id="bookStarToggle" type="button"
+              class="book-star-toggle {{ 'yellow' if b.star else 'white' }}"
+              aria-pressed="{{ 'true' if b.star else 'false' }}"
+              data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
+              data-id="{{ b.id }}"
+            >★</button>
             <a href="{{ url_for('main_ep.view_specific_book', book_id=b.id) }}">
               <strong>{{ b.name }}</strong>
             </a>
-            {% if b.star %} ({{ b.star }}){% endif %}
           </li>
         {% endfor %}
       </ul>

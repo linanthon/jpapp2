@@ -12,11 +12,10 @@
   <div class="word-detail">
     <div class="word-header">
       <div class="star-and-spelling">
-        <!-- <span id="starToggle" class="star {{ 'yellow' if word_details.star else 'white' }}">★</span> -->
-        <button id="starToggle" type="button"
+        <button id="wordStarToggle" type="button"
             class="star {{ 'yellow' if word_details.star else 'white' }}"
             aria-pressed="{{ 'true' if word_details.star else 'false' }}"
-            data-toggle-url="{{ url_for('main_ep.toggle_star_word') }}"
+            data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
             data-id="{{ word_details.id | e }}"
         >★</button>
 

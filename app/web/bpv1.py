@@ -147,18 +147,22 @@ def view_specific_word(word: str):
     result, sentence_examples = handle_view_specific_word(word, sen_limit)
     return render_template("view/word/view_specific_word.html", word_details=result, sen_ex=sentence_examples)
 
-@bp.route("/toggle-star/word", methods=["POST"])
-def toggle_star_word():
+@bp.route("/toggle-star", methods=["POST"])
+def toggle_star():
     data = request.get_json()
     try:
-        word_id = int(data.get("id", "a"))
+        obj_id = int(data.get("id", "a"))
     except:
         return jsonify({"success": False, "error": "Missing word"}), 400
+    
+    obj_type = data.get("objType", None)
+    if obj_type not in ["word", "book"]:
+        return jsonify({"success": False, "error": "Missing star object type, must be either `word` or `book`"}), 400
     
     star = validate_star(data.get("star", None))
     if star == -1:
         return jsonify({"success": False})
-    updated_star = toggle_star_helper(word_id, star)
+    updated_star = toggle_star_helper(obj_id, obj_type, star)
     return jsonify({"success": updated_star})
 
 @bp.route("/audio/<string:filename>")
@@ -195,19 +199,6 @@ def view_specific_book(book_id: int):
     """View content of 1 book"""
     return render_template("view/book/view_specific_book.html", book_details=handle_view_specific_book(book_id))
 
-@bp.route("/toggle-star/book", methods=["POST"])
-def toggle_star_book():
-    data = request.get_json()
-    book_id = data.get("id", None)
-    if not book_id:
-        return jsonify({"success": False, "error": "Missing book id"}), 400
-    
-    star = validate_star(data.get("star", None))
-    if star == -1:
-        return jsonify({"success": False})
-    updated_star = toggle_star_helper(book_id, star)
-    return jsonify({"success": updated_star})
-    return 0
 # =================================================================================
 
 # ===== PROGRESS % ================================================================

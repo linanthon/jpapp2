@@ -5,16 +5,16 @@
   justify-content: center; /* keep the whole group centered; change to flex-start to left-align */
 }
 
-.star { font-size: 28px; }
-.star.yellow { color: gold; }
-.star.white { color: lightgray; }
+.book-star-toggle { font-size: 28px; }
+.book-star-toggle.yellow { color: gold; }
+.book-star-toggle.white { color: lightgray; }
 
-.star:active {
+.book-star-toggle:active {
   transform: scale(0.7);  /* press effect */
 }
 
 /* Cancel the global button centering and keep existing .star rules */
-#starToggle {
+#bookStarToggle {
   display: inline-flex;
   align-items: center;
   justify-content: center;

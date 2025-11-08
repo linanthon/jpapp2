@@ -268,6 +268,32 @@ class DBHandling:
             res = self._cursor.fetchone()["count"]
         return res
 
+    def update_book_star(self, book_id: int = None, book: str = "", new_star_status: bool = None) -> bool:
+        """
+        Update a book's star. If specified 'new_star_status', will update to that.
+        Returns True if success, Fail if not found/failed.
+        """
+        if (not book_id and not book) or new_star_status is None:
+            return False
+        
+        if book_id:
+            patch_where = sql.SQL(" WHERE id = %s;")
+            params = [book_id]
+        else:
+            patch_where = sql.SQL(" WHERE name = %s;")
+            params = [book]
+        
+        query = sql.SQL("UPDATE {table} SET star = %s").format(
+            table=sql.Identifier(TABLE_BOOKS)
+        )
+        query += patch_where
+        params.insert(0, new_star_status)
+        if self._safe_execute(query, params) and self._cursor.rowcount > 0:
+            self._conn.commit()
+            return True
+        self._conn.rollback()
+        return False
+
     def remove_book(self, name: str = "", book_id: int = None) -> bool:
         """Remove book by name (exact match) or id, will also remove all
         its sentences and words. If those sentences/words have duplicate in another book,
@@ -401,10 +427,9 @@ class DBHandling:
     def update_word_star(self, word_id: int = None, word: str = "", new_star_status: bool = None) -> bool:
         """
         Update a word's star. If specified 'new_star_status', will update to that.
-        Otherwise, will query word first then update the star to the opposite status.
         Returns True if success, Fail if not found/failed.
         """
-        if not word_id and not word:
+        if (not word_id and not word) or new_star_status is None:
             return False
         
         if word_id:
@@ -413,23 +438,6 @@ class DBHandling:
         else:
             patch_where = sql.SQL(" WHERE word = %s;")
             params = [word]
-
-        if not new_star_status:
-            query = sql.SQL("SELECT star FROM {table}").format(
-                table=sql.Identifier(TABLE_WORDS)
-            )
-            query += patch_where
-
-            if self._safe_execute(query, params):
-                res = self._cursor.fetchone()
-                if res:
-                    # Default will mark as True
-                    db_star = res.get("star", False)
-                    new_star_status = False if db_star else True
-        
-        if new_star_status is None:
-            log.error(f"word {word} not found")
-            return False
         
         query = sql.SQL("UPDATE {table} SET star = %s").format(
             table=sql.Identifier(TABLE_WORDS)

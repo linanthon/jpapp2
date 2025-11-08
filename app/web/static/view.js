@@ -67,7 +67,7 @@ async function handleViewSubmit(form, noticeId, showResId) {
 
 // View 1 specific word: set star
 document.addEventListener("DOMContentLoaded", () => {
-  const star = document.getElementById("starToggle");
+  const star = document.getElementById("wordStarToggle");
   if (!star) return;
 
   star.addEventListener("click", async () => {
@@ -79,7 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
     star.classList.toggle("white", isYellow);
 
     const wordID = star.dataset.id;
-    const url = star.dataset.toggleUrl || "/v1/toggle-star/word";
+    const url = star.dataset.toggleUrl || "/v1/toggle-star";
     const starParam = (!isYellow).toString(); // reverse of current state
 
     // Send change to backend
@@ -88,7 +88,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: wordID, star: starParam })
+        body: JSON.stringify({ id: wordID, objType: "word", star: starParam })
       });
       const data = await resp.json();
 
@@ -158,5 +158,57 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
     }
+  });
+});
+
+// View 1 book: set star
+document.addEventListener("DOMContentLoaded", () => {
+  const stars = document.querySelectorAll(".book-star-toggle");
+  if (!stars.length) return;
+
+  stars.forEach(star => {
+    star.addEventListener("click", async () => {
+      // Current star state
+      const isYellow = star.classList.contains("yellow");
+
+      // Toggle UI immediately
+      star.classList.toggle("yellow", !isYellow);
+      star.classList.toggle("white", isYellow);
+
+      const bookID = star.dataset.id;
+      const url = star.dataset.toggleUrl || "/v1/toggle-star";
+      const starParam = (!isYellow).toString(); // reverse of current state
+
+      // Send change to backend
+      try {
+        // Make the star change call
+        const resp = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: bookID, objType: "book", star: starParam })
+        });
+        const data = await resp.json();
+
+        if (!resp.ok || !data.success) {
+          // revert UI on failure
+          star.classList.toggle("yellow", isYellow);
+          star.classList.toggle("white", !isYellow);
+          console.error("Toggle star failed:", data);
+          return;
+        }
+
+        // Keep UI in sync with server response if provided
+        if (typeof data.starred !== "undefined") {
+          const serverStarred = data.starred === 1;
+          star.classList.toggle("yellow", serverStarred);
+          star.classList.toggle("white", !serverStarred);
+        }
+      } catch (err) {
+        // revert on network error
+        star.classList.toggle("yellow", isYellow);
+        star.classList.toggle("white", !isYellow);
+        console.error("Failed to toggle star:", err);
+      }
+    });
   });
 });
