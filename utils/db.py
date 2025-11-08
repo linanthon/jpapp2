@@ -294,7 +294,7 @@ class DBHandling:
         self._conn.rollback()
         return False
 
-    def remove_book(self, name: str = "", book_id: int = None) -> bool:
+    def delete_book(self, name: str = "", book_id: int = None) -> bool:
         """Remove book by name (exact match) or id, will also remove all
         its sentences and words. If those sentences/words have duplicate in another book,
         reduce their counts instead. Return true if success, otherwise false.
@@ -325,13 +325,19 @@ class DBHandling:
         query = sql.SQL("SELECT sentence_id FROM {table} WHERE book_id = ?").format(
             table=sql.Identifier(TABLE_SENTENCE_BOOK_REF)
         )
-        self._safe_execute(query, (book_id))
-        a = self._cursor.fetchall()
-        print("AAAAAAAAAAAAAAAA:", a)
+        sentence_ids = []
+        if self._safe_execute(query, (book_id)):
+            sentence_ids.extend(self._cursor.fetchall())
+        print("AAAAAAAAAAAAAAAA:", sentence_ids)
         # -1 count for all of this book' sentences, delete if count = 0
+        for sen_id in sentence_ids:
+            deleted_sen = self.delete_sentence(sen_id)
+            if not deleted_sen:
+                self._conn.rollback()
+                return False
 
         
-        self._conn.rollback()
+        self._conn.rollback()   #TODO: rm after test
         
 
     # =======================================================================================
@@ -809,6 +815,50 @@ class DBHandling:
                 return res.get("occurrence", 0)
         return 0
     
+    def delete_sentence(self, sen_id: int = None) -> bool:
+        if not sen_id:
+            return False
+
+        # Get the sentence count
+        query = sql.SQL("SELECT occurrence FROM {table} WHERE id = ?").format(
+            table=sql.Identifier(TABLE_SENTENCES)
+        )
+        if not self._safe_execute(query, [sen_id]):
+            self._conn.rollback()
+            return False
+        
+        # Update count - 1 if has more than 1
+        sen_count = self._cursor.fetchone()["count"]
+        if sen_count > 1:
+            query = sql.SQL("UPDATE {table} SET occurrence = %d WHERE id = ?").format(
+                table=sql.Identifier(TABLE_SENTENCES)
+            )
+            if not self._safe_execute(query, [sen_count-1, sen_id]):
+                self._conn.rollback()
+                return False
+        else:
+            # Delete sentence if count = 1
+            query = sql.SQL("DELETE FROM {table} WHERE id = ?").format(
+                table=sql.Identifier(TABLE_SENTENCES)
+            )
+            if not self._safe_execute(query, [sen_id]):
+                self._conn.rollback()
+                return False
+        
+        # Get all its word IDs
+        query = sql.SQL("SELECT word_id FROM {table} WHERE sen_id = ?").format(
+            table=sql.Identifier(TABLE_SENTENCE_BOOK_REF)
+        )
+        word_ids = []
+        if self._safe_execute(query, (sen_id)):
+            word_ids.extend(self._cursor.fetchall())
+        
+        for word_id in word_ids:
+            if not self.delete_word(word_id):
+                self._conn.rollback()
+                return False
+
+
     # this func currently not used
     def get_sentences_containing_word(self, word: str, limit: int = DEFAULT_LIMIT) -> List[str]:
         """
