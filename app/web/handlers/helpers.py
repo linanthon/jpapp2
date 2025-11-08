@@ -150,3 +150,7 @@ def parse_bool_param(val) -> bool:
 def reset_view_word_count():
     """call this when insert new book/word"""
     view_count_cache.clear()
+
+def delete_book_helper(book_id: int) -> bool:
+    db = DBHandling()
+    return db.delete_book(book_id=book_id)

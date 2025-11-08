@@ -6,7 +6,7 @@ from handlers.insert import handle_insert_file, handle_insert_str
 from handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                            handle_view_books, handle_view_specific_book)
 from handlers.helpers import (get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level,
-                              parse_bool_param, validate_star)
+                              parse_bool_param, validate_star, delete_book_helper)
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -153,7 +153,7 @@ def toggle_star():
     try:
         obj_id = int(data.get("id", "a"))
     except:
-        return jsonify({"success": False, "error": "Missing word"}), 400
+        return jsonify({"success": False, "error": "Missing word id"}), 400
     
     obj_type = data.get("objType", None)
     if obj_type not in ["word", "book"]:
@@ -199,6 +199,18 @@ def view_specific_book(book_id: int):
     """View content of 1 book"""
     return render_template("view/book/view_specific_book.html", book_details=handle_view_specific_book(book_id))
 
+@bp.route("/del/book")
+def delete_book():
+    data = request.get_json()
+    try:
+        obj_id = int(data.get("id", "a"))
+    except:
+        return jsonify({"success": False, "error": "Missing word"}), 400
+    
+    deleted = delete_book_helper(obj_id)
+    return jsonify({"success": deleted})
+        
+        
 # =================================================================================
 
 # ===== PROGRESS % ================================================================

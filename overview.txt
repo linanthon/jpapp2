@@ -123,6 +123,4 @@ Process:
 - implement more advance functions
 
 TODO:
-- view book: basically done, will need add star toggle in view list later
-- toggle star: need test for word, need update for both word and book to use the same endpoint
 - remove book

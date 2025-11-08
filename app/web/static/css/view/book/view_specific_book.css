@@ -1,8 +1,18 @@
 .star-and-name {
-  display: flex;
+  display: block;
   align-items: center;   /* vertical center star and text */
   gap: 12px;
   justify-content: center; /* keep the whole group centered; change to flex-start to left-align */
+  position: relative;
+  width: 100%;
+}
+
+/* center the star and book name as a single inline-flex group */
+.star-and-name .centered-group {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .book-star-toggle { font-size: 28px; }
@@ -27,8 +37,44 @@
   font-size: 24px;    /* adjust size if needed */
 }
 
+/* Delete button positioned relative to center, 100px to the right */
+#deleteBook {
+  position: absolute;
+  left: calc(50% + 100px);
+  top: 30%;
+  transform: translateY(-50%);
+}
+
+/* if viewport is narrow, move delete to right edge */
+@media (max-width: 520px) {
+  #deleteBook {
+    left: auto;
+    right: 12px;
+  }
+  .star-and-name .centered-group {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+}
+
 #bookName {
+  display: inline-block;
   font-size: 28px;
+  padding: 0 6px;
   margin: 0;               /* remove default paragraph margin */
   line-height: 1;          /* collapse line spacing */
+  text-align: center;
+  max-width: 100%;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+#deleteBook {
+  color: white;
+  background-color: crimson;
+  margin-left: 100px;
+}
+
+#deleteBook:active {
+  transform: scale(0.85);  /* press effect */
 }
