@@ -1,9 +1,10 @@
+from contextlib import contextmanager
 import math
 import os
 import re
 import psycopg2
 import psycopg2.extras
-from psycopg2 import sql
+from psycopg2 import sql, extensions
 from typing import List, Tuple, Dict
 
 from utils.logger import get_logger
@@ -26,6 +27,7 @@ class DBHandling:
         self._conn = None
         self._cursor = None
         self._dbname = db_name
+        self._in_transaction = False
     
     def connect_2_db(self, username: str = "", password: str = "", 
                      dbname: str = "", host: str = "localhost", port: int = 5432) -> None:
@@ -72,9 +74,9 @@ class DBHandling:
         with open(filename, "r", encoding="utf-8") as f:
             sql_script = f.read()
         if self._safe_execute(sql_script):
-            self._conn.commit()
+            self._safe_commit()
         else:
-            self._conn.rollback()
+            self._safe_rollback()
 
     def close_db(self) -> None:
         if self._cursor:
@@ -133,9 +135,9 @@ class DBHandling:
         query = sql.SQL("INSERT INTO {table} (name, star, content) VALUES (%s, %s, %s) RETURNING id;"
                         ).format(table=sql.Identifier(TABLE_BOOKS))
         if self._safe_execute(query, (bookname, False, content,)):
-            self._conn.commit()
+            self._safe_commit()
             return self._cursor.fetchone()["id"]
-        self._conn.rollback()
+        self._safe_rollback()
         return -1
 
     def update_book(self, book_id: int = 0, name: str = "", append_content: str = "") -> bool:
@@ -167,9 +169,9 @@ class DBHandling:
             params.append(name)
         
         if self._safe_execute(query, params):
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
 
     def query_like_book(self, name: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Book] | List[dict]:
@@ -289,9 +291,9 @@ class DBHandling:
         query += patch_where
         params.insert(0, new_star_status)
         if self._safe_execute(query, params) and self._cursor.rowcount > 0:
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
 
     def delete_book(self, name: str = "", book_id: int = None) -> bool:
@@ -306,39 +308,63 @@ class DBHandling:
         if not name and not book_id:
             return False
         
-        # Delete book
-        query = sql.SQL("DELETE FROM {table} WHERE ").format(
+        # Get all its sentence IDs
+        query = sql.SQL("SELECT sentence_id FROM {table} WHERE book_id = {bid}").format(
+            table=sql.Identifier(TABLE_SENTENCE_BOOK_REF),
+            bid=sql.Literal(book_id)
+        )
+        if not self._safe_execute(query):
+            return False
+        sentence_ids = []
+        for item in self._cursor.fetchall():
+            sentence_ids.append(item["sentence_id"])
+
+        # Track words and sentences decrement to commit properly
+        word_decrements = {}
+        sen_decrements = {}
+        
+        # Get all sentences from ref table to know how much we need to reduce its occurrence
+        # Get before delete book to not lost ref
+        if not self._collect_sentence_decrements(book_id, sen_decrements):
+            self._safe_rollback()
+            return False
+        # Get all words from reft table for the same reason
+        for sen_id in sentence_ids:
+            if not self._collect_word_decrements(sen_id, word_decrements):
+                self._safe_rollback()
+                return False
+        
+        # Now delete book (this will cascade and delete sentence_book refs)
+        query = sql.SQL("DELETE FROM {table} WHERE").format(
             table=sql.Identifier(TABLE_BOOKS)
         )
         if book_id:
-            query += sql.SQL(" id = ?")
-            params = [book_id]
+            query += sql.SQL(" id = {bid}").format(
+                bid=sql.Literal(book_id)
+            )
+            params = []
         else:
             query += sql.SQL(" name = ?")
             params = [name]
         deleted_book = self._safe_execute(query, params)
         if not deleted_book:
-            self._conn.rollback()
+            self._safe_rollback()
             return False
-        
-        # Get all its sentence IDs
-        query = sql.SQL("SELECT sentence_id FROM {table} WHERE book_id = ?").format(
-            table=sql.Identifier(TABLE_SENTENCE_BOOK_REF)
-        )
-        sentence_ids = []
-        if self._safe_execute(query, (book_id)):
-            sentence_ids.extend(self._cursor.fetchall())
-        print("AAAAAAAAAAAAAAAA:", sentence_ids)
-        # -1 count for all of this book' sentences, delete if count = 0
-        for sen_id in sentence_ids:
-            deleted_sen = self.delete_sentence(sen_id)
+
+        # Decrease count/Delete sentences
+        for sen_id, decrement_count in sen_decrements.items():
+            deleted_sen = self._decrement_sentece_occurrence(sen_id, decrement_count)
             if not deleted_sen:
-                self._conn.rollback()
+                self._safe_rollback()
+                return False
+        # Decrease count/Delete words
+        for word_id, decrement_count in word_decrements.items():
+            if not self._decrement_word_occurrence(word_id, decrement_count):
+                self._safe_rollback()
                 return False
 
-        
-        self._conn.rollback()   #TODO: rm after test
-        
+        self._safe_commit()
+        return True        
 
     # =======================================================================================
 
@@ -374,9 +400,9 @@ class DBHandling:
         ).format(table=sql.Identifier(TABLE_WORDS))
         if self._safe_execute(query, (word.word, word.senses, word.spelling,
              word.forms, word.jlpt_level, word.audio_mapping,)):
-            self._conn.commit()
+            self._safe_commit()
             return self._cursor.fetchone()["id"]
-        self._conn.rollback()
+        self._safe_rollback()
         return 0
 
     def update_word_occurence(self, word: str) -> bool:
@@ -397,9 +423,9 @@ class DBHandling:
             table=sql.Identifier(TABLE_WORDS)
         )
         if self._safe_execute(query, (occurrence+1, priority, word,)):
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
     
     def update_word_jlpt(self, word: str, new_jlpt_level: str) -> bool:
@@ -411,9 +437,9 @@ class DBHandling:
             table=sql.Identifier(TABLE_WORDS)
         )
         if self._safe_execute(query, (new_jlpt_level, word,)) and self._cursor.rowcount > 0:
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
 
     def update_words_known(self, words: List[str]) -> bool:
@@ -425,9 +451,9 @@ class DBHandling:
             table=sql.Identifier(TABLE_WORDS)
         )
         if self._safe_execute(query, (QUIZ_HARD_CAP+1, tuple(words))) and self._cursor.rowcount > 0:
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
 
     def update_word_star(self, word_id: int = None, word: str = "", new_star_status: bool = None) -> bool:
@@ -451,9 +477,9 @@ class DBHandling:
         query += patch_where
         params.insert(0, new_star_status)
         if self._safe_execute(query, params) and self._cursor.rowcount > 0:
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
 
     def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word] | List[dict]:
@@ -664,7 +690,64 @@ class DBHandling:
         if self._safe_execute(query, params):
             res = self._cursor.fetchone()["count"]
         return res
+   
+    def _collect_word_decrements(self, sen_id: int, word_decrements: dict) -> bool:
+        """
+        Get all word IDs in a sentence and add them to the decrement tracking dict.
+        Results are saved into `sen_decrements`.
+        """
+        if not sen_id:
+            return False
         
+        query = sql.SQL("SELECT word_id FROM {table} WHERE sentence_id = {sid}").format(
+            table=sql.Identifier(TABLE_WORD_SENTENCE_REF),
+            sid=sql.Literal(sen_id)
+        )
+        if not self._safe_execute(query):
+            return False
+        for item in self._cursor.fetchall():
+            word_id = item["word_id"]
+            word_decrements[word_id] = word_decrements.get(word_id, 0) + 1
+        return True
+    
+    def _decrement_word_occurrence(self, word_id: int = None, decrement_count: int = 0) -> bool:
+        """
+        Decrement word occurrence by `decrement_count`.
+        Deletes the word if new count = 0.
+        """
+        if not word_id or not decrement_count:
+            return False
+
+        # Get the words count
+        query = sql.SQL("SELECT occurrence FROM {table} WHERE id = {wid}").format(
+            table=sql.Identifier(TABLE_WORDS),
+            wid=sql.Literal(word_id)
+        )
+        if not self._safe_execute(query):
+            return False
+        
+        # Update count - 1 if has more than 1
+        word_count = self._cursor.fetchone()["occurrence"]
+        new_count = word_count - decrement_count
+
+        if new_count > 0:
+            query = sql.SQL("UPDATE {table} SET occurrence = {new_count} WHERE id = {wid}").format(
+                table=sql.Identifier(TABLE_WORDS),
+                new_count=sql.Literal(new_count),
+                wid=sql.Literal(word_id)
+            )
+        else:
+            # Delete sentence if new_count = 0
+            query = sql.SQL("DELETE FROM {table} WHERE id = {wid}").format(
+                table=sql.Identifier(TABLE_WORDS),
+                wid=sql.Literal(word_id)
+            )
+        if not self._safe_execute(query):
+            self._safe_rollback()
+            return False
+        
+        self._safe_commit()
+        return True
     # =======================================================================================
 
     # Sentence ==============================================================================
@@ -753,9 +836,9 @@ class DBHandling:
             """
         ).format(table=sql.Identifier(TABLE_SENTENCES))
         if self._safe_execute(query, (sentence,)):
-            self._conn.commit()
+            self._safe_commit()
             return self._cursor.fetchone()["id"]
-        self._conn.rollback()
+        self._safe_rollback()
         return 0
 
     def update_sentence_occurence(self, sentence_id: int, new_count: int) -> bool:
@@ -767,9 +850,9 @@ class DBHandling:
             table=sql.Identifier(TABLE_SENTENCES)
         )
         if self._safe_execute(query, (new_count, sentence_id,)):
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
     
     def update_sentence_star(self, sentence: str, new_star_status: bool = None) -> bool:
@@ -797,9 +880,9 @@ class DBHandling:
             table=sql.Identifier(TABLE_SENTENCES)
         )
         if self._safe_execute(query, (new_star_status, sentence)) and self._cursor.rowcount > 0:
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
 
     def get_sentence_occurence(self, sentence: str) -> int:
@@ -815,48 +898,56 @@ class DBHandling:
                 return res.get("occurrence", 0)
         return 0
     
-    def delete_sentence(self, sen_id: int = None) -> bool:
-        if not sen_id:
+    def _collect_sentence_decrements(self, book_id: int, sen_decrements: dict) -> bool:
+        """
+        Get all sentence IDs in a book and add them to the decrement tracking dict.
+        Results are saved into `sen_decrements`.
+        """
+        if not book_id:
+            return False
+        
+        query = sql.SQL("SELECT sentence_id FROM {table} WHERE book_id = {bid}").format(
+            table=sql.Identifier(TABLE_SENTENCE_BOOK_REF),
+            bid=sql.Literal(book_id)
+        )
+        if not self._safe_execute(query):
+            return False
+        for item in self._cursor.fetchall():
+            sen_id = item["sentence_id"]
+            sen_decrements[sen_id] = sen_decrements.get(sen_id, 0) + 1
+        return True
+    
+    def _decrement_sentece_occurrence(self, sen_id: int = None, decrement_count: int = 0) -> bool:
+        if not sen_id or not decrement_count:
             return False
 
         # Get the sentence count
-        query = sql.SQL("SELECT occurrence FROM {table} WHERE id = ?").format(
-            table=sql.Identifier(TABLE_SENTENCES)
+        query = sql.SQL("SELECT occurrence FROM {table} WHERE id = {sid}").format(
+            table=sql.Identifier(TABLE_SENTENCES),
+            sid=sql.Literal(sen_id)
         )
-        if not self._safe_execute(query, [sen_id]):
-            self._conn.rollback()
+        if not self._safe_execute(query):
             return False
         
-        # Update count - 1 if has more than 1
-        sen_count = self._cursor.fetchone()["count"]
-        if sen_count > 1:
-            query = sql.SQL("UPDATE {table} SET occurrence = %d WHERE id = ?").format(
-                table=sql.Identifier(TABLE_SENTENCES)
+        # Update count, delete if new count = 0
+        new_count = self._cursor.fetchone()["occurrence"] - decrement_count
+        if new_count > 0:
+            query = sql.SQL("UPDATE {table} SET occurrence = {new_count} WHERE id = {sid}").format(
+                table=sql.Identifier(TABLE_SENTENCES),
+                new_count=sql.Literal(new_count),
+                sid=sql.Literal(sen_id)
             )
-            if not self._safe_execute(query, [sen_count-1, sen_id]):
-                self._conn.rollback()
-                return False
         else:
-            # Delete sentence if count = 1
-            query = sql.SQL("DELETE FROM {table} WHERE id = ?").format(
-                table=sql.Identifier(TABLE_SENTENCES)
+            query = sql.SQL("DELETE FROM {table} WHERE id = {sid}").format(
+                table=sql.Identifier(TABLE_SENTENCES),
+                sid=sql.Literal(sen_id)
             )
-            if not self._safe_execute(query, [sen_id]):
-                self._conn.rollback()
-                return False
+        if not self._safe_execute(query):
+            self._safe_rollback()
+            return False
         
-        # Get all its word IDs
-        query = sql.SQL("SELECT word_id FROM {table} WHERE sen_id = ?").format(
-            table=sql.Identifier(TABLE_SENTENCE_BOOK_REF)
-        )
-        word_ids = []
-        if self._safe_execute(query, (sen_id)):
-            word_ids.extend(self._cursor.fetchall())
-        
-        for word_id in word_ids:
-            if not self.delete_word(word_id):
-                self._conn.rollback()
-                return False
+        self._safe_commit()
+        return True
 
 
     # this func currently not used
@@ -921,9 +1012,9 @@ class DBHandling:
         query = sql.SQL("INSERT INTO {table} (word_id, book_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;"
                         ).format(table=sql.Identifier(TABLE_WORD_BOOK_REF))
         if self._safe_execute(query, (word_id, book_id,)):
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
 
     def insert_word_sentence_ref(self, word_id: int, sentence_id: int) -> bool:
@@ -937,9 +1028,9 @@ class DBHandling:
         query = sql.SQL("INSERT INTO {table} (word_id, sentence_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;"
                         ).format(table=sql.Identifier(TABLE_WORD_SENTENCE_REF))
         if self._safe_execute(query, (word_id, sentence_id,)):
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
     
     def insert_sentence_book_ref(self, sentence_id: int, book_id: int) -> bool:
@@ -953,9 +1044,9 @@ class DBHandling:
         query = sql.SQL("INSERT INTO {table} (sentence_id, book_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;"
                         ).format(table=sql.Identifier(TABLE_SENTENCE_BOOK_REF))
         if self._safe_execute(query, (sentence_id, book_id,)):
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
     # =======================================================================================
 
@@ -1047,9 +1138,9 @@ class DBHandling:
             table=sql.Identifier(TABLE_WORDS)
         )
         if self._safe_execute(query, (quized, prio, word)) and self._cursor.rowcount > 0:
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
 
     def get_distractors(self, exclude_jp: str = "", exclude_en: str = "",
@@ -1135,6 +1226,67 @@ class DBHandling:
         except Exception as e:
             log.exception(f"Unexpected error during DB query: {e}")
             return False
+    
+    def _safe_rollback(self):
+        """Rollback only if connection exists and a transaction is active or aborted."""
+        if not self._conn:
+            return
+        try:
+            if self._conn.get_transaction_status() != extensions.TRANSACTION_STATUS_IDLE:
+                self._conn.rollback()
+        except:
+            log.exception("safe rollback failed")
+    
+    def _safe_commit(self):
+        """
+        Commit only if connection exists and transaction is active and
+        we're not inside an outer transaction.
+        """
+        if not self._conn:
+            return
+        try:
+            # Is a nested commit -> do not actually commit here
+            # The outer transaction manager will commit/rollback.
+            if self._in_transaction:
+                return
+            # If not in our transaction wrapper, commit only when a transaction is active
+            if self._conn.get_transaction_status() in (extensions.TRANSACTION_STATUS_INTRANS, extensions.TRANSACTION_STATUS_ACTIVE):
+                self._conn.commit()
+        except Exception:
+            log.exception("safe_commit failed")
+            raise
+
+    @contextmanager
+    def transaction(self):
+        """Context manager to perform a multi-step transaction.
+
+        Usage example:
+            with db.transaction():
+                db.delete_book(...)
+        """
+        if not self._conn:
+            raise RuntimeError("No DB connection")
+        # If in transaction (nested) -> yield, will commit/rollback by outermost manager
+        outer = self._in_transaction
+        try:
+            # Mark transaction flag
+            self._in_transaction = True
+            yield
+        except Exception:
+            # Called function with this context manager ran into some error -> rollback
+            try:
+                self._safe_rollback()
+            finally:
+                self._in_transaction = outer
+            raise
+        else:
+            # Success -> commit (if is outermost <=> don't have `outer`)
+            try:
+                if not outer and self._conn.get_transaction_status() in (
+                extensions.TRANSACTION_STATUS_INTRANS, extensions.TRANSACTION_STATUS_ACTIVE):
+                    self._conn.commit()
+            finally:
+                self._in_transaction = outer
     # =======================================================================================
 
     # Parsing ===============================================================================
@@ -1385,9 +1537,9 @@ class DBHandling:
             table=sql.Identifier(TABLE_WORDS)
         )
         if self._safe_execute(query):
-            self._conn.commit()
+            self._safe_commit()
             return True
-        self._conn.rollback()
+        self._safe_rollback()
         return False
     # =======================================================================================
 

@@ -76,5 +76,5 @@
 }
 
 #deleteBook:active {
-  transform: scale(0.85);  /* press effect */
+  transform: translateY(-50%) scale(0.85); /* preserve location */
 }

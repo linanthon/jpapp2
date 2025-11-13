@@ -152,5 +152,7 @@ def reset_view_word_count():
     view_count_cache.clear()
 
 def delete_book_helper(book_id: int) -> bool:
-    db = DBHandling()
-    return db.delete_book(book_id=book_id)
+    db = get_dbhandling()
+    with db.transaction():
+        return db.delete_book(book_id=book_id)
+    return False

@@ -199,13 +199,13 @@ def view_specific_book(book_id: int):
     """View content of 1 book"""
     return render_template("view/book/view_specific_book.html", book_details=handle_view_specific_book(book_id))
 
-@bp.route("/del/book")
+@bp.route("/del/book", methods=["POST"])
 def delete_book():
     data = request.get_json()
     try:
         obj_id = int(data.get("id", "a"))
     except:
-        return jsonify({"success": False, "error": "Missing word"}), 400
+        return jsonify({"success": False, "error": "Missing book `id`"}), 400
     
     deleted = delete_book_helper(obj_id)
     return jsonify({"success": deleted})

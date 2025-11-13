@@ -20,8 +20,13 @@
         >★</button>
 
         <p id="bookName"><strong>{{ book_details.name }}</strong></p>
+        
 
-        <button id="deleteBook" type="button">Delete</button>
+        <button id="deleteBook" type="button"
+            data-id="{{ book_details.book_id }}"
+            data-name="{{ book_details.name }}"
+            data-delete-url="{{ url_for('main_ep.delete_book') }}"
+        >Delete</button>
       </div>
     </div>
 
@@ -33,4 +38,3 @@
   </div>
 
 </body>
-</html>

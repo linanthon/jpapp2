@@ -161,6 +161,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+// ============== Book ===============
 // View 1 book: set star
 document.addEventListener("DOMContentLoaded", () => {
   const stars = document.querySelectorAll(".book-star-toggle");
@@ -175,8 +176,8 @@ document.addEventListener("DOMContentLoaded", () => {
       star.classList.toggle("yellow", !isYellow);
       star.classList.toggle("white", isYellow);
 
-      const bookID = star.dataset.id;
-      const url = star.dataset.toggleUrl || "/v1/toggle-star";
+      const bookID = star.dataset.id || this.getAttribute('data-id');
+      const url = star.dataset.toggleUrl || this.getAttribute('data-toggle-url') || "/v1/toggle-star";
       const starParam = (!isYellow).toString(); // reverse of current state
 
       // Send change to backend
@@ -212,3 +213,40 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 });
+
+// Delete book
+document.addEventListener("DOMContentLoaded", () => {
+  const deleteBtn = document.getElementById('deleteBook');
+  if (!deleteBtn) return;
+
+  deleteBtn.addEventListener('click', async function () {
+    const bookId = this.dataset.id || this.getAttribute('data-id');
+    const bookName = this.dataset.name || this.getAttribute('data-name') || '';
+    const url = this.dataset.deleteUrl || this.getAttribute('data-delete-url') || '/del/book';
+
+    const ok = confirm(`Are you sure to delete book ${bookName} along its words and sentences?`);
+    if (!ok) return;
+
+    this.disabled = true;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: bookId, name: bookName })
+      });
+
+      if (res.ok) {
+        // go back to previous page or root
+        window.location = document.referrer || '/';
+      } else {
+        let text = '';
+        try { text = await res.text(); } catch (e) {}
+        alert('Delete failed: ' + (text || res.statusText || res.status));
+      }
+    } catch (err) {
+      alert('Delete failed: ' + (err && err.message ? err.message : err));
+    } finally {
+      this.disabled = false;
+    }
+  });
+})();
