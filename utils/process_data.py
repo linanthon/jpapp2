@@ -221,10 +221,10 @@ class ProcessData():
             row.word = entry.kana_forms[0].text
             row.eigo = True
 
-        # Check DB to see if we have this word already.
-        # If yes, inc its occurence and stop. Otherwise, continue.
-        if db.update_word_occurence(row.word):
-            return None
+        # Check and update occurrence if word existed.
+        # Stop proccess and return Word as is (only has value for `word`)
+        if db.update_word_occurrence(row.word):
+            return row
 
         row.forms = ", ".join([k.text for k in entry.kanji_forms[1:]]) if len(entry.kanji_forms) > 1 else ""
         row.spelling = entry.kana_forms[0].text

@@ -38,7 +38,7 @@ def handle_insert_file(filename: str, saved_tmp_path: str, is_api_call: bool = F
     progress = 0
     # Does not strip now to keep originality for book insertion
     for sentence in pdata.stream_sentences_file(saved_tmp_path, auto_strip=False):
-        # Insert book appendingly
+        # Insert book sentence by sentence
         if not progress:
             # First time will create new row
             book_id, resp = do_insert_book(db, filename, sentence)

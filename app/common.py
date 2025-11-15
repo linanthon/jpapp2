@@ -25,7 +25,7 @@ def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandling", se
     for word in words:
         word_id = db.insert_word(word)
 
-        # Insert references
+        # Insert references if sentece and word insert/updated successfully
         if word_id and sentence_id and book_id:
             db.insert_word_book_ref(word_id, book_id)
             db.insert_word_sentence_ref(word_id, sentence_id)

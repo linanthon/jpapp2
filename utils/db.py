@@ -90,7 +90,7 @@ class DBHandling:
     def insert_book(self, filename: str, content: str = "") -> int:
         """
         Read the whole file and insert into table books (if not in DB yet).
-        Don't read file if `content` is not empty/None and use this in place of 'file's content'.
+        If `content` is not empty/None, doesn't read file and use this instead.
 
         Input:
         - filename: The full path filename.
@@ -369,6 +369,8 @@ class DBHandling:
     # =======================================================================================
 
     # Word ==================================================================================
+    # To lessen work for `process_data`, instead of doing like db.insert_update_sentence
+    # Split it into `insert_word` and `update_word_occurrence`
     def insert_word(self, word: Word) -> int:
         """
         Insert into table `words` (if not in DB yet).
@@ -377,17 +379,17 @@ class DBHandling:
         word, senses, spelling, forms, jlpt_level, audio.
         The other 4 fields: 'occurrence'=1, 'quized'=0, 'star'=false, 'priority'=1
 
-        Output: the inserted word ID.
+        Output: the inserted word ID or existed word ID.
         """
-        # Check exist
+        # Check if exist, return id
         if self._safe_execute(
-            sql.SQL("SELECT COUNT(*) FROM {table} WHERE word = %s;"
+            sql.SQL("SELECT id FROM {table} WHERE word = %s;"
                     ).format(table=sql.Identifier(TABLE_WORDS)),
             (word.word,)
         ):
             res = self._cursor.fetchone()
-            if res and res.get("count"):
-                return 0
+            if res:
+                return res.get("id", 0)
 
         # Insert
         query = sql.SQL(
@@ -401,11 +403,14 @@ class DBHandling:
         if self._safe_execute(query, (word.word, word.senses, word.spelling,
              word.forms, word.jlpt_level, word.audio_mapping,)):
             self._safe_commit()
-            return self._cursor.fetchone()["id"]
+            res = self._cursor.fetchone()
+            if res:
+                return res.get("id", 0)
+        
         self._safe_rollback()
         return 0
 
-    def update_word_occurence(self, word: str) -> bool:
+    def update_word_occurrence(self, word: str) -> bool:
         """
         Update a word's occurence (word must match exact) and
         its priority using priority formula.
@@ -815,7 +820,7 @@ class DBHandling:
 
         Input: the sentence itself
 
-        Output: the inserted sentence ID, 0 if update existed word occurrence.
+        Output: the inserted sentence ID or the existed sentence ID. 0 if fail.
         """
         # Check exist -> up occurrence
         if self._safe_execute(
@@ -826,7 +831,7 @@ class DBHandling:
             res = self._cursor.fetchone()
             if res:
                 self.update_sentence_occurence(res.get("id"), res.get("occurrence")+1)
-                return 0
+                return res.get("id")
 
         # Insert
         query = sql.SQL(
@@ -1004,14 +1009,16 @@ class DBHandling:
     def insert_word_book_ref(self, word_id: int, book_id: int) -> bool:
         """
         Insert into table `word_book` for word and book references.
-        Return true if success, otherwise, false.
+        Uses ON CONFLICT DO NOTHING to silently skip if pair already exists.
+        Return true if execution succeeded (whether inserted or already existed).
+        Return false only on database error.
         """
         if word_id < 1 or book_id < 1:
             return False
         
         query = sql.SQL("INSERT INTO {table} (word_id, book_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;"
                         ).format(table=sql.Identifier(TABLE_WORD_BOOK_REF))
-        if self._safe_execute(query, (word_id, book_id,)):
+        if self._safe_execute(query, (word_id, book_id)):
             self._safe_commit()
             return True
         self._safe_rollback()
@@ -1020,14 +1027,16 @@ class DBHandling:
     def insert_word_sentence_ref(self, word_id: int, sentence_id: int) -> bool:
         """
         Insert into table `word_sentence` for word and sentence references.
-        Return true if success, otherwise, false.
+        Uses ON CONFLICT DO NOTHING to silently skip if pair already exists.
+        Return true if execution succeeded (whether inserted or already existed).
+        Return false only on database error.
         """
         if word_id < 1 or sentence_id < 1:
             return False
 
         query = sql.SQL("INSERT INTO {table} (word_id, sentence_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;"
                         ).format(table=sql.Identifier(TABLE_WORD_SENTENCE_REF))
-        if self._safe_execute(query, (word_id, sentence_id,)):
+        if self._safe_execute(query, (word_id, sentence_id)):
             self._safe_commit()
             return True
         self._safe_rollback()
@@ -1036,14 +1045,16 @@ class DBHandling:
     def insert_sentence_book_ref(self, sentence_id: int, book_id: int) -> bool:
         """
         Insert into table `sentence_book` for sentence and book references.
-        Return true if success, otherwise, false.
+        Uses ON CONFLICT DO NOTHING to silently skip if pair already exists.
+        Return true if execution succeeded (whether inserted or already existed).
+        Return false only on database error.
         """
         if sentence_id < 1 or book_id < 1:
             return False
         
         query = sql.SQL("INSERT INTO {table} (sentence_id, book_id) VALUES (%s, %s) ON CONFLICT DO NOTHING;"
                         ).format(table=sql.Identifier(TABLE_SENTENCE_BOOK_REF))
-        if self._safe_execute(query, (sentence_id, book_id,)):
+        if self._safe_execute(query, (sentence_id, book_id)):
             self._safe_commit()
             return True
         self._safe_rollback()
