@@ -953,30 +953,8 @@ class DBHandling:
         
         self._safe_commit()
         return True
-
-
-    # this func currently not used
-    def get_sentences_containing_word(self, word: str, limit: int = DEFAULT_LIMIT) -> List[str]:
-        """
-        Get limited amount sentences that contains a word.
-        
-        Input:
-        - word: the word to query
-        - limit: the number of sentences to query. If <= 0, use default value 10.
-
-        Output: a list of sentences containing the word, length <= `sentence_count`.
-        """
-        if limit < 1:
-            limit = DEFAULT_LIMIT
-        query = sql.SQL("SELECT sentence FROM {table} WHERE sentence LIKE %s LIMIT {limit};").format(
-            table=sql.Identifier(TABLE_SENTENCES),
-            limit=sql.Literal(limit)
-        )
-        if self._safe_execute(query, (f"%{word}%",)):
-            return [sen["sentence"] for sen in self._cursor.fetchall() if sen.get("sentence", "")]
-        return []
     
-    def get_sentences_containing_word_by_id(self, word_id: int, limit: int = DEFAULT_LIMIT) -> List[str]:
+    def get_sentences_containing_word_by_id(self, word_id: int = None, limit: int = DEFAULT_LIMIT) -> List[str]:
         """
         Get limited amount sentences that their IDs are associated with this word ID.
         

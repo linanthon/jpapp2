@@ -123,5 +123,5 @@ Process:
 - implement more advance functions
 
 TODO:
-- re-check get sen example when view word, query the reference table instead
-- check why no 大拙 (daisettsu) word implanted??
+
+

@@ -48,7 +48,7 @@ def handle_view_specific_word(word: str, sentence_limit: int) -> Tuple[dict, Lis
     db = get_dbhandling()
     res: dict = db.get_exact_word(word, parse_dict=True)
     res["meanings"] = [chunk.strip() for chunk in res["senses"].split(";") if chunk.strip()]
-    sentence_examples = db.get_sentences_containing_word(word, sentence_limit)
+    sentence_examples = db.get_sentences_containing_word_by_id(res["word_id"], sentence_limit)
     return res, sentence_examples
 
 def handle_view_words(jlpt_level: str = "", star: bool = False, limit: int = DEFAULT_LIMIT,
