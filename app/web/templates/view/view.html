@@ -5,7 +5,10 @@
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
 </head>
 <body>
-  <h2>View</h2>
+  <div class="header-container">
+    <button class="back-btn" onclick="history.back()">← Back</button>
+    <h2>View</h2>
+  </div>
   
   <form method="GET" action="{{ url_for('main_ep.search_word') }}">
     <button type="submit">Search word</button>

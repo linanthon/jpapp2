@@ -7,7 +7,10 @@
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
 </head>
 <body>
-	<h2>Search word</h2>
+  <div class="header-container">
+    <button class="back-btn" onclick="history.back()">← Back</button>
+    <h2>Search word</h2>
+  </div>
 
 	<!-- Search bar -->
   <form class="form-search-word-box" id="searchWordForm" method="GET" action="{{ url_for('main_ep.search_word') }}">

@@ -1,13 +1,17 @@
 <!DOCTYPE html>
-<html>
+<html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>View word</title>
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/word/view_specific_word.css') }}">
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
+  <script src="{{ url_for('main_ep.static', filename='base.js') }}" defer></script>
 </head>
 <body>
-	<h2>View word</h2>
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>View word</h2>
+  </div>
 
   <div class="word-detail">
     <div class="word-header">

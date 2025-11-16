@@ -158,4 +158,35 @@ Process:
 
 TODO:
 - Fix bug star filter in view books not working as intended
+- Change /view/word to use ID and not the word itself
+
+
+Nút Back/Trở về
+Khi quiz, trong link jump to word, them ref, VD:
+    <a href="/view/word/{{ word.id }}?ref=quiz">{{ word.word }}</a>
+
+Trong word html, VD:
+    {% set back_url = request.args.get('ref') %}
+    {% if back_url == 'quiz' %}
+        <a href="#" onclick="history.back(); return false;">← Back to Quiz</a>
+    {% else %}
+        <a href="/view/word">← Back to Word List</a>
+    {% endif %}
+
+Còn vụ làm sao biết là đang quiz tới đâu rồi mà trở về
+    Optional A: Session storage (client side)
+        // Before navigating away from quiz
+        sessionStorage.setItem('quiz_state', JSON.stringify({
+            current_question: 3,
+            answered: [1, 2],
+            // ... other state
+        }));
+
+        // When returning to quiz, check:
+        const savedState = sessionStorage.getItem('quiz_state');
+        if (savedState) {
+            // Resume from saved state
+        }
+
+Chưa biết cái `history.back()` & `window.location` (trong JS) là gì
 

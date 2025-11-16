@@ -23,6 +23,11 @@ def create_app():
     from app.web.bpv1 import bp
     app.register_blueprint(bp)
 
+    # Set url prefix param to all html
+    @app.context_processor
+    def inject_url_prefix():
+        return {'url_prefix': bp.url_prefix}
+
     # Connect DB and load stuff
     with app.app_context():
         get_dbhandling()
