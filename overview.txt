@@ -16,7 +16,8 @@ Input text:
         + [X] save to DB (book, sentence, word, all their refs)
 
 
-Lookup:
+View:
+    Backend:
     - Search in Japanese, return the whole record(s):
         + [X] words by %word% -> show info
         + [X] sentences by %<multiple words>% -> show sentences
@@ -40,8 +41,41 @@ Lookup:
         + [X] word
         + [X] sentence
         + [X] book
-        + [X] allow input limit (CLI)
 
+    - Toggle favorite (star)
+        + [X] word
+        + [X] book
+
+    - [X] Delete book, will also decrease occurrence of its sentences and words by 1 each time found.
+        If the occurrence is 0, delete instead. Will also delete ID mapping records in reference tables.
+
+    FrontEnd:
+    - [ ] View word list -> click word -> go to specific word page.
+        + [X] Filter: JLPT level, star
+        + [X] Paging: prev 1 2 3 ... 7 8 next
+        + [ ] Toggle star
+    
+    - [X] View specific word
+        + [X] Display details info + sentence example
+        + [X] Plays audio
+        + [X] Toggle star
+
+    - [ ] Search word -> list
+        + [X] in JP
+        + [ ] in EN
+        + [X] Search limit
+        + [ ] Paging: prev 1 2 3 ... 7 8 next
+
+    - [ ] View book list -> click book -> go to specific book page.
+        + [X] Filter: JLPT level
+        + [X] Paging: prev 1 2 3 ... 7 8 next
+        + [ ] Toggle star
+
+    - [ ] View specific book
+        + [X] Show content
+        + [X] Toggle star
+        + [X] Delete
+        + [ ] Maybe limit the book content in a box
 
 Extra functionalities - fixing tasks:
     - [X] update word JLPT_LEVEL
@@ -93,7 +127,7 @@ Quiz:
 
 
 Progress - summary:
-    - % words user "known"
+    - Calc % words user "known"
         + Filter:
             - [X] % accross all words
             - [X] % on each JLPT_LEVEL, and on non JLPT categorized 
@@ -123,5 +157,5 @@ Process:
 - implement more advance functions
 
 TODO:
-
+- Fix bug star filter in view books not working as intended
 

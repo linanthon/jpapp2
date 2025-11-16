@@ -71,11 +71,22 @@ Basic mora: Single kana characters (あ, か)
 Difficulties:
 
 !!! Should double check these dict difficulties to be sure !!!
-- Currently using `fugashi (MeCab wrapper) + unidic-lite` to tokenize sentences and get the word's base form.
-    Then use `jamdict` to get information from word's base form.
-    Why not just use `fugashi + unidic-lite`? Because the base form while correct, might not be the commonly used form.
+- Currently using `fugashi (MeCab wrapper) + unidic-lite` to tokenize sentences and 
+    get the word's dictionary base form (avoid JP conjugate) = lemma.
+    However, MeCab way of handling loan word is that it returns "トーク-talk",
+    So we `lemma.split("-")[0]`.
+    Then use `jamdict` to get information from said base form.
+
+    Why not just use `fugashi + unidic-lite` to get word info?
+    Because the base form while correct, might not be the commonly used form.
     i.e: ご飯   -> lookup -> 御飯
          なさる -> lookup -> 為さる
-    jamdict provides more information to work with regarding this issue.
+    Meanwhile, (in my experience) jamdict output more commonly used form and
+    more detailed word senses (meaning and part-of-speech).
 
-- jamdict sometimes provides additional word(s) that are similar to the requested word and multiple forms making it rather confusing.
+- jamdict sometimes provides additional word(s) that are similar to the requested word
+    and multiple forms making it rather confusing. In this project, just get the first
+    returned record.
+
+- After tagging words of a sentence, if met with multiple katakana words consecutively,
+    will attach them together and try to get the their lemma for possible combinations.
