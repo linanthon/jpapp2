@@ -159,6 +159,7 @@ Process:
 TODO:
 - Fix bug star filter in view books not working as intended
 - Change /view/word to use ID and not the word itself
+- Fix back button on looping /view/word and /view/word/<previous visited specific word>
 
 
 Nút Back/Trở về
