@@ -1,27 +1,11 @@
-<!doctype html>
-<html>
+<!DOCTYPE html>
+<html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>View</title>
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
   <script src="{{ url_for('main_ep.static', filename='base.js') }}" defer></script>
 </head>
 <body>
-  <script>
-    // Show all navigation history on page load (for debugging)
-    window.addEventListener('DOMContentLoaded', function() {
-      const currentPath = window.location.pathname;
-      const currentSearch = window.location.search;
-      const previousPath = sessionStorage.getItem('previousPath');
-      const previousSearch = sessionStorage.getItem('previousSearch');
-      
-      const message = `Current page: ${currentPath}${currentSearch}
-Previous path: ${previousPath || 'N/A'}
-Previous search: ${previousSearch || 'N/A'}`;
-      
-      alert(message);
-    });
-  </script>
-
   <div class="header-container">
     <button class="back-btn" onclick="goBack()">← Back</button>
     <h2>View</h2>

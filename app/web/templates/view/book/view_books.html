@@ -1,15 +1,16 @@
 <!DOCTYPE html>
-<html>
+<html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>View books</title>
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/book/view_books.css') }}">
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/book/view_specific_book.css') }}">
   <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
+  <script src="{{ url_for('main_ep.static', filename='base.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
-    <button class="back-btn" onclick="history.back()">← Back</button>
+    <button class="back-btn" onclick="goBack()">← Back</button>
     <h2>View books</h2>
   </div>
 

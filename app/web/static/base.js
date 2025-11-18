@@ -41,15 +41,27 @@ window.addEventListener('DOMContentLoaded', function() {
     const currentPath = window.location.pathname;
     const currentSearch = window.location.search;
     const previousPath = sessionStorage.getItem('previousPath');
+    const previousSearch = sessionStorage.getItem('previousSearch');
+    const isReloading = sessionStorage.getItem('isNavigatingBack') === 'true';
     
-    sessionStorage.setItem('savePreviousPage', previousPath + (sessionStorage.getItem('previousSearch') || ''));
-    
+    if (previousPath && !isReloading) {
+        let prevPath = previousPath
+        if (previousSearch) {
+            prevPath += previousSearch
+        }
+        sessionStorage.setItem('savePreviousPage', prevPath);
+    } else if (isReloading) {
+        sessionStorage.setItem('savePreviousPage', '');
+    }
+
     // NOW update with current page
+    sessionStorage.setItem('isNavigatingBack', 'false');
     sessionStorage.setItem('previousPath', currentPath);
     sessionStorage.setItem('previousSearch', currentSearch);
 });
 
 function goBack() {
+    sessionStorage.setItem('isNavigatingBack', 'true');
     window.location.href = getParentPage();
 }
 
@@ -59,20 +71,16 @@ function getParentPage() {
     const path = window.location.pathname;
     
     if (path.startsWith(urlPrefix + '/view/book/')) return urlPrefix + '/view/book';
-    if (path.startsWith(urlPrefix + '/view/book')) return urlPrefix + '/view';
 
     if (path.startsWith(urlPrefix + '/view/word/')) {
-        // If was in search word
-        const previousPage = sessionStorage.getItem('savePreviousPage');
-        if (previousPage && previousPage.startsWith(urlPrefix + '/view/search-word')) {
-            return previousPage
+        const savePreviousPage = sessionStorage.getItem('savePreviousPage');
+        if (savePreviousPage && (savePreviousPage.startsWith(urlPrefix + '/view/search-word') || savePreviousPage.startsWith(urlPrefix + '/view/word?'))) {
+            return savePreviousPage;
         }
         return urlPrefix + '/view/word';
     }
-    if (path.startsWith(urlPrefix + '/view/word')) return urlPrefix + '/view';
 
     if (path.startsWith(urlPrefix + '/view/')) return urlPrefix + '/view';
-    if (path.startsWith(urlPrefix + '/quiz/')) return urlPrefix + '/quiz';
     
     return urlPrefix + '';
 }
