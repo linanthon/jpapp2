@@ -45,7 +45,7 @@ async function handleViewSubmit(form, noticeId, showResId) {
       showResult.style.display = "block";
       showResult.innerHTML = "<h3>Search Results:</h3><ul>" +
         data.results.map(w => `<li>
-            <a href="${bpPrefix}/view/word/${encodeURIComponent(w.word)}">
+            <a href="${bpPrefix}/view/word/${w.word_id}">
               <strong>${w.word}</strong>
             </a>
             (${w.spelling}) — ${w.senses}
