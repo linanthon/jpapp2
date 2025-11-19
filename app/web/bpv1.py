@@ -132,8 +132,8 @@ def search_word():
     # The `search_res` below will be catch in HTML
     return handle_search_word(word, limit, bp.url_prefix, False)
 
-@bp.route("/view/word/<string:word>")
-def view_specific_word(word: str):
+@bp.route("/view/word/<int:word_id>")
+def view_specific_word(word_id: int):
     """
     View details info of 1 word
 
@@ -144,7 +144,7 @@ def view_specific_word(word: str):
         sen_limit = int(request.args.get("sen", ""))
     except:
         sen_limit = DEFAULT_SENTENCE_EXAMPLE_LIMIT
-    result, sentence_examples = handle_view_specific_word(word, sen_limit)
+    result, sentence_examples = handle_view_specific_word(word_id, sen_limit)
     return render_template("view/word/view_specific_word.html", word_details=result, sen_ex=sentence_examples)
 
 @bp.route("/toggle-star", methods=["POST"])

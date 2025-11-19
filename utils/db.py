@@ -512,18 +512,30 @@ class DBHandling:
                     res.append(self._parse_word(instance))
         return res
     
-    def get_exact_word(self, word: str, parse_dict: bool = False) -> Word | dict:
+    def get_exact_word(self, word_id: int = None, word: str = "", parse_dict: bool = False) -> Word | dict:
         """
-        Query a word in DB, will return a word that is `= 'word'`
+        Query a word in DB, will return a word that is `= 'word'`.
 
         Input:
-        - word: the exact JP word to search
-        - parse_dict: true to parse to dict, false to parse to class Word. Default: false
+        - word_id: the word ID.
+        - word: the exact JP word to search.
+        - parse_dict: true to parse to dict, false to parse to class Word. Default: false.
         """
-        query = sql.SQL("SELECT * FROM {table} WHERE word = %s;").format(
-            table=sql.Identifier(TABLE_WORDS)
-        )
-        if self._safe_execute(query, (word,)):
+        if (not word_id and not word) or (word_id and word):
+            return None
+        
+        if word_id:
+            query = sql.SQL("SELECT * FROM {table} WHERE id = {wid};").format(
+                table=sql.Identifier(TABLE_WORDS),
+                wid=sql.Literal(word_id)
+            )
+            params = []
+        else:
+            query = sql.SQL("SELECT * FROM {table} WHERE word = %s;").format(
+                table=sql.Identifier(TABLE_WORDS)
+            )
+            params = [word]
+        if self._safe_execute(query, params):
             res = self._cursor.fetchone()
             if res:
                 if parse_dict:
@@ -652,7 +664,7 @@ class DBHandling:
             limit = DEFAULT_LIMIT
         
         params = []
-        query = sql.SQL("SELECT word, spelling, senses FROM {table}").format(
+        query = sql.SQL("SELECT id, word, spelling, senses FROM {table}").format(
             table=sql.Identifier(TABLE_WORDS)
         )
         if jlpt_level:

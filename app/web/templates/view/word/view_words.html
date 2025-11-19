@@ -7,23 +7,7 @@
   <script src="{{ url_for('main_ep.static', filename='view.js') }}" defer></script>
   <script src="{{ url_for('main_ep.static', filename='base.js') }}" defer></script>
 </head>
-<body>
-  <!-- <script>
-    // Show all navigation history on page load (for debugging)
-    window.addEventListener('DOMContentLoaded', function() {
-      const currentPath = window.location.pathname;
-      const currentSearch = window.location.search;
-      const previousPath = sessionStorage.getItem('previousPath');
-      const previousSearch = sessionStorage.getItem('previousSearch');
-      
-      const message = `Current page: ${currentPath}${currentSearch}
-Previous path: ${previousPath || 'N/A'}
-Previous search: ${previousSearch || 'N/A'}`;
-      
-      alert(message);
-    });
-  </script> -->
-  
+<body>  
   <div class="header-container">
     <button class="back-btn" onclick="goBack()">← Back</button>
     <h2>View words</h2>
@@ -50,11 +34,10 @@ Previous search: ${previousSearch || 'N/A'}`;
   
   <div id="showWordList" style="display:block">
     {% if word_list %}
-      <!-- <h3>Words ({{ word_list|length }})</h3> -->
       <ul>
         {% for w in word_list %}
           <li>
-            <a href="{{ url_for('main_ep.view_specific_word', word=w.word) }}">
+            <a href="{{ url_for('main_ep.view_specific_word', word_id=w.word_id) }}">
               <strong>{{ w.word }}</strong>
             </a>
             {% if w.spelling %} ({{ w.spelling }}){% endif %}
