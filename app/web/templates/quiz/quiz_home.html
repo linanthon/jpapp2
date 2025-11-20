@@ -2,12 +2,16 @@
 <html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>Quiz</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
 </head>
 <body>
-  <h2>Quiz</h2>
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>Quiz</h2>
+    <button class="home-btn" onclick="goHome()">🏠Home</button>
+  </div>
 
-  <form id="quizJP" method="GET" action="{{ url_for('main_ep.quiz_jp') }}">
+  <!-- <form id="quizJP" onclick="showQuizWordOptionBox()">
     <button type="submit">JP -> EN</button>
   </form>
 
@@ -17,6 +21,65 @@
 
   <form id="quizSentence" method="GET" action="{{ url_for('main_ep.quiz_sentence') }}">
     <button type="submit">JP sentence</button>
+  </form> -->
+
+  <form id="quizJP">
+    <button type="button" onclick="openQuizOptions('{{ url_for(\'main_ep.quiz_jp\') }}', 'jp')">JP -> EN</button>
   </form>
+
+  <form id="quizEN">
+    <button type="button" onclick="openQuizOptions('{{ url_for(\'main_ep.quiz_en\') }}', 'en')">EN -> JP</button>
+  </form>
+
+  <form id="quizSentence">
+    <button type="button" onclick="openQuizOptions('{{ url_for(\'main_ep.quiz_sentence\') }}', 'sentence')">JP sentence</button>
+  </form>
+
+
+
+  <!-- Show quiz WORD options, response error if unavailable -->
+  <form id="quizOptionsForm" style="display:none">
+    <div id="jlptFilter" style="display:none">
+      <label for="jlpt"><strong>JLPT:</strong></label>
+      <select name="jlpt_level" id="jlpt" onchange="this.form.submit()">
+        <option value="" {% if request.args.get('jlpt_level','') == '' %}selected{% endif %}></option>
+        <option value="N5" {% if request.args.get('jlpt_level') == 'N5' %}selected{% endif %}>N5</option>
+        <option value="N4" {% if request.args.get('jlpt_level') == 'N4' %}selected{% endif %}>N4</option>
+        <option value="N3" {% if request.args.get('jlpt_level') == 'N3' %}selected{% endif %}>N3</option>
+        <option value="N2" {% if request.args.get('jlpt_level') == 'N2' %}selected{% endif %}>N2</option>
+        <option value="N1" {% if request.args.get('jlpt_level') == 'N1' %}selected{% endif %}>N1</option>
+        <option value="N0" {% if request.args.get('jlpt_level') == 'N0' %}selected{% endif %}>Not categorized</option>
+      </select>
+    </div>
+
+    <div id="starFilter" style="display:none">
+      <label for="star"><strong>star:</strong></label>
+      <input type="checkbox" id="star" name="star" value="1"
+            onchange="this.form.submit()"
+            {% if request.args.get('star') in ['1','true','True','on','yes'] %}checked{% endif %}>
+    </div>
+
+    <div id="bookFilter" style="display:none">
+      <label for="star"><strong>star:</strong></label>
+      <select name="book_id" id="book" onchange="this.form.submit()">
+        <option value="" {% if not request.args.get('select_book') %}selected{% endif %}>&nbsp;</option>
+        {% if all_books %}
+          {% for b in all_books %}
+            <option value="{{ b.id }}" {% if request.args.get('select_book') == b.id|string %}selected{% endif %}>{{ b.name }}</option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+
+    <button type="submit" id="quizSubmit">Start</button>
+  </form>
+
+  <div id="quizWordNotice" style="display:none"></div>
+
+  
+  <!-- Show quiz SENTENCE options, response error if unavailable -->
+  <div id="showQuizSentenceOptions" style="display:none"></div>
+  <div id="quizSentenceNotice" style="display:none"></div>
+
 </body>
 </html>

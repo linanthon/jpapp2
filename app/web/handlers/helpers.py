@@ -161,3 +161,8 @@ def delete_book_helper(book_id: int) -> bool:
     with db.transaction():
         return db.delete_book(book_id=book_id)
     return False
+
+def get_all_book_name_and_id():
+    """call db.list_books with no star, 0 offset, query all"""
+    db = get_dbhandling()
+    return db.list_books(star=None, limit=None, offset=0)

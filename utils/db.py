@@ -232,14 +232,13 @@ class DBHandling:
 
         Input:
         - star: get only the starred books.
-        - limit: the amount of return records, if <= 0, use default value of 10.
+        - limit: the amount of return records. If <= 0, use default value of 10.
+            If purposely left None, query all.
         - offset: skip the first X records.
 
-        Output: a list of books (name, star, created)
+        Output: a list of books (id, name, star, created)
         """
         res: list = []
-        if limit < 1:
-            limit = DEFAULT_LIMIT
         
         query = sql.SQL("SELECT id, name, star, created FROM {table}").format(
             table=sql.Identifier(TABLE_BOOKS)
@@ -247,10 +246,16 @@ class DBHandling:
         if star:
             query += sql.SQL(" WHERE star = true")
 
-        query += sql.SQL(" ORDER BY id OFFSET {offset} LIMIT {limit};").format(
-            offset=sql.Literal(offset),
-            limit=sql.Literal(limit)
-        )
+        if limit is None:
+            query += sql.SQL(" ORDER BY id OFFSET {offset}").format(
+                offset=sql.Literal(offset)
+            )
+        elif limit < 1:
+            query += sql.SQL(" ORDER BY id OFFSET {offset} LIMIT {limit};").format(
+                offset=sql.Literal(offset),
+                limit=sql.Literal(limit)
+            )
+        
         if self._safe_execute(query):
             for instance in self._cursor.fetchall():
                 res.append(self._parse_book_dict(instance))

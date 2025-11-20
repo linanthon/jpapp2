@@ -6,7 +6,8 @@ from handlers.insert import handle_insert_file, handle_insert_str
 from handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                            handle_view_books, handle_view_specific_book)
 from handlers.helpers import (get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level,
-                              parse_bool_param, validate_star, delete_book_helper)
+                              parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id)
+from handlers.quiz import get_word_jp_quizes
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -225,12 +226,21 @@ def progress():
 # ===== QUIZ % ====================================================================
 @bp.route("/quiz", methods=["GET"])
 def quiz():
-    return render_template("quiz/quiz_home.html")
+    all_books = get_all_book_name_and_id()
+    return render_template("quiz/quiz_home.html", all_books=all_books)
 
 # ----- Quiz JP ---------
 @bp.route("/quiz/jp", methods=["GET"])
 def quiz_jp():
-    return render_template("quiz/quiz_jp.html")
+    book_name = request.args.get("book_name", "")
+    jlpt_level = validate_jlpt_level(request.args.get("jlpt_level", ""))
+    star = parse_bool_param(request.args.get("star", None))
+    try:
+        limit = int(request.args.get("limit", str(DEFAULT_LIMIT)))
+    except:
+        limit = DEFAULT_LIMIT
+    quizes = get_word_jp_quizes(book_name, jlpt_level, star, limit)
+    return render_template("quiz/quiz_jp.html", quizes=quizes)
 
 @bp.route("/quiz/check", methods=["POST"])
 def quiz_check():

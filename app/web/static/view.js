@@ -1,4 +1,3 @@
-// 
 const searchForm = document.getElementById("searchWordForm");
 if (searchForm) {
   searchForm.addEventListener("submit", async function(e) {
