@@ -267,7 +267,7 @@ def handle_quiz_jp_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
 
     sort_list, jlpt_filter, star_only, use_prio = do_validate_sort_filter_prio_cli(sorts, filters, prio)
 
-    tests = db.get_quiz(count, sort_list, jlpt_filter, star_only, use_prio)
+    tests = db.get_quiz(count, sort_list, jlpt_filter, star_only, use_priority=use_prio)
     for i, test_case in enumerate(tests):
         # randomize correct answer location
         choices = [test_case.en]
@@ -310,7 +310,7 @@ def handle_quiz_en_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
     prio = input("Use priority value (default True, can not use with sort) (y/n): ").strip()
 
     sort_list, jlpt_filter, star_only, use_prio = do_validate_sort_filter_prio_cli(sorts, filters, prio)
-    tests = db.get_quiz(count, sort_list, jlpt_filter, star_only, use_prio)
+    tests = db.get_quiz(count, sort_list, jlpt_filter, star_only, use_priority=use_prio)
     for i, test_case in enumerate(tests):
         # get distractors, mix and randomize the answers' positions
         choices = [test_case.jp]

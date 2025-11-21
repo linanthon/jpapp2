@@ -23,7 +23,8 @@
 /* Grid layout for filters (choices in option box) */
 #jlptFilter,
 #starFilter,
-#bookFilter {
+#bookFilter,
+#limitGroup {
   display: grid;
   grid-template-columns: 110px 1fr;
   column-gap: 20px;
@@ -34,17 +35,26 @@
 /* Align the labels on the left */
 #jlptFilter label,
 #starFilter label,
-#bookFilter label {
+#bookFilter label,
+#limitGroup label {
   justify-self: end;
   text-align: right;
   font-weight: bold;
 }
 
-/* Align the selection */
+/* Align the selection: jlptFilter, starFilter, bookFilter, limitGroup
+AND make the div inside limitGroup (the input box and notice "1-100 results") also align start */
 #jlptFilter select,
 #starFilter input,
-#bookFilter select {
+#bookFilter select,
+#limitGroup input,
+#limitGroup > div {
   justify-self: start;
+}
+
+/* Give the number input a reasonable width so it lines up visually */
+#limitGroup input[type="number"] {
+  width: 110px;
 }
 
 /* The Start button, center it and some styles */

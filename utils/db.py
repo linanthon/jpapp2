@@ -1059,7 +1059,8 @@ class DBHandling:
     # Quiz ==================================================================================
     def get_quiz(self, limit: int = DEFAULT_LIMIT,
                 sorts: List[Tuple[str]] = [], jlpt_filter: str = "",
-                star_only: bool = False, use_priority: bool = True, 
+                star_only: bool = False, book_id: int = 0,
+                use_priority: bool = True, 
                 exclude_jp: List[str] = [], exclude_en: List[str] = []) -> List[Quiz]:
         """
         Query DB, get random words records and parse into Quiz objects.
@@ -1078,6 +1079,7 @@ class DBHandling:
         Note that the order of this list is important, the smaller indexes will be prioritized when query.
         - jlpt_filter: the JLPT level to filter in query. Default: not use.
         - star_only: query only those that starred. Default: false.
+        - book_id: will only query words of this book. Default: query from all books.
         - use_priority: use 'occurence' and 'quized' to calculate priority or not.
         More 'occurence' = higher prio, higher 'quized' = lower prio. This can not use together with sort.
         Note that this is refer to the original Japanese word. Default: True.
@@ -1087,8 +1089,8 @@ class DBHandling:
         Output: a list of QuizEN objects.
         """
         # Build SQL
-        sql_full, params = self._build_sort_filter_prio_sql(sorts, jlpt_filter, star_only, use_priority,
-                                                            limit, True, exclude_jp, exclude_en)
+        sql_full, params = self._build_sort_filter_prio_sql(sorts, jlpt_filter, star_only, book_id,
+                                                            use_priority, limit, True, exclude_jp, exclude_en)
 
         # Query
         q_res = []
@@ -1399,7 +1401,8 @@ class DBHandling:
 
     # -------- Build SQLs --------------
     def _build_sort_filter_prio_sql(self, sorts: List[Tuple[str]] = [], jlpt_filter: str = "",
-                                    star_only: bool = False, use_priority: bool = True,
+                                    star_only: bool = False, book_id: int = 0,
+                                    use_priority: bool = True,
                                     limit: int = DEFAULT_LIMIT, avoid_dash_sense: bool = False,
                                     exclude_jp: List[str] = [], exclude_en: List[str] = []) -> Tuple[sql.SQL, list]:
         """
@@ -1421,47 +1424,57 @@ class DBHandling:
         """
         conditions = []
         params = []
-        sql_full = sql.SQL("""SELECT word, senses, jlpt_level, spelling,
-                           audio_mapping, occurrence, quized, star FROM {table}
-                           WHERE priority > 0.0""").format(
-            table=sql.Identifier(TABLE_WORDS)
-        )
+        sql_full = sql.SQL("""SELECT word, senses, jlpt_level, spelling, audio_mapping,
+                           occurrence, quized, star FROM {table} AS w""").format(
+                               table=sql.Identifier(TABLE_WORDS)
+                            )
+        
+        # ----- Book Filter -----
+        if book_id:
+            # Join ref table to limit book_id
+            sql_full += sql.SQL(""" JOIN {ref_table} AS r ON w.id = r.id 
+                                WHERE r.book_id = {bid} AND w.priority > 0.0""").format(
+                                    ref_table=sql.Identifier(TABLE_WORD_BOOK_REF),
+                                    bid=sql.Literal(book_id)
+                                )
+        else:
+            sql_full += sql.SQL(" WHERE w.priority > 0.0")
         
         # ----- Filter -----
         if exclude_jp:
-            conditions.append(sql.SQL("word NOT IN %s"))
+            conditions.append(sql.SQL("w.word NOT IN %s"))
             params.append(tuple(exclude_jp))  # tuple so PostgreSQL understands IN clause
         if exclude_en:
             for ex_en in exclude_en:
-                conditions.append(sql.SQL("senses NOT LIKE %s"))
+                conditions.append(sql.SQL("w.senses NOT LIKE %s"))
                 params.append(f"%{ex_en}%")
         if jlpt_filter:
-            conditions.append(sql.SQL("jlpt_level = %s"))
+            conditions.append(sql.SQL("w.jlpt_level = %s"))
             params.append(jlpt_filter)
         if star_only:
-            conditions.append(sql.SQL("star = true"))
+            conditions.append(sql.SQL("w.star = true"))
 
         # Combine filters
         if conditions:
             sql_full += sql.SQL(" AND ").join(conditions)
-            conditions.clear()  # clear condition for sort
 
         # Avoid word with senses that have '-'
         if avoid_dash_sense:
-            sql_full += sql.SQL(" AND senses NOT LIKE %s")
+            sql_full += sql.SQL(" AND w.senses NOT LIKE %s")
             params.append("%-%")
         
         # ----- Sort & Prio -----
+        conditions.clear()  # clear condition for sort
         if sorts and not use_priority:
             order_parts = [
                 sql.Identifier(col) + sql.SQL(f" {direction}")
                 for col, direction in sorts
             ]
-            conditions.append(sql.SQL(" ORDER BY {order}").format(
-                order=sql.SQL(", ").join(order_parts)
+            conditions.append(sql.SQL(" ORDER BY w.{order}").format(
+                order=sql.SQL(", w.").join(order_parts)
             ))
         elif not sorts and use_priority:
-            conditions.append(sql.SQL(" ORDER BY {order} DESC").format(
+            conditions.append(sql.SQL(" ORDER BY w.{order} DESC").format(
                 order=sql.Identifier("priority")
             ))
         else:

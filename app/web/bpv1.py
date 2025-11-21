@@ -232,14 +232,14 @@ def quiz():
 # ----- Quiz JP ---------
 @bp.route("/quiz/jp", methods=["GET"])
 def quiz_jp():
-    book_name = request.args.get("book_name", "")
+    book_id = request.args.get("book_id", "")
     jlpt_level = validate_jlpt_level(request.args.get("jlpt_level", ""))
     star = parse_bool_param(request.args.get("star", None))
     try:
         limit = int(request.args.get("limit", str(DEFAULT_LIMIT)))
     except:
         limit = DEFAULT_LIMIT
-    quizes = get_word_jp_quizes(jlpt_level, star, book_name, limit)
+    quizes = get_word_jp_quizes(jlpt_level, star, book_id, limit)
     return render_template("quiz/quiz_jp.html", quizes=quizes)
 
 @bp.route("/quiz/check", methods=["POST"])

@@ -26,6 +26,7 @@ function openQuizOptions(actionUrl, mode) {
   const jlptSelect = document.getElementById('jlptFilter');
   const starSelect = document.getElementById('starFilter');
   const bookSelect = document.getElementById('bookFilter');
+  const limitGroup = document.getElementById('limitGroup');
   
   if (mode === 'sentence') {
     if (jlptSelect) jlptSelect.style.display = 'none';
@@ -41,6 +42,7 @@ function openQuizOptions(actionUrl, mode) {
     if (starSelect) starSelect.style.display = '';
   }
   if (bookSelect) bookSelect.style.display = '';
+  if (limitGroup) limitGroup.style.display = '';
 
   // Show the entire options box
   form.style.display = 'block';
