@@ -14,6 +14,7 @@
     <button class="home-btn" onclick="goHome()">🏠Home</button>
   </div>
 
+  <!-- ======================= Quiz modes ======================= -->
   <form id="quizJP">
     <button type="button" id="quizSelect"
             data-action="{{ url_for('main_ep.quiz_jp') }}"
@@ -42,8 +43,7 @@
   </form>
 
 
-
-  <!-- Show quiz WORD options, response error if unavailable -->
+  <!-- ======================= Quiz option box ======================= -->
   <form id="quizOptionsForm" style="display:none" method="GET">
     <div id="jlptFilter" style="display:none">
       <label for="jlpt">JLPT:</label>
@@ -78,13 +78,6 @@
 
     <button type="submit" id="quizSubmit">Start</button>
   </form>
-
-  <div id="quizWordNotice" style="display:none"></div>
-
-  
-  <!-- Show quiz SENTENCE options, response error if unavailable -->
-  <div id="showQuizSentenceOptions" style="display:none"></div>
-  <div id="quizSentenceNotice" style="display:none"></div>
 
 </body>
 </html>
