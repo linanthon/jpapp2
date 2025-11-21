@@ -1,0 +1,59 @@
+/* Highlight button of selected mode */
+#quizSelect.active {
+  background-color: gold;
+  color: black;
+  font-weight: bold;
+  border: 2px solid goldenrod;
+}
+
+#quizSelect:active {
+  transform: scale(0.9);  /* press effect */
+}
+
+/* Give the quiz option box a border and grid layout */
+#quizOptionsForm {
+  border: 2px solid #045;
+  border-radius: 8px;
+  padding: 20px;
+  margin: 20px auto;
+  max-width: 400px;
+  background-color: #f9f9f9;
+}
+
+/* Grid layout for filters (choices in option box) */
+#jlptFilter,
+#starFilter,
+#bookFilter {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  column-gap: 20px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+/* Align the labels on the left */
+#jlptFilter label,
+#starFilter label,
+#bookFilter label {
+  justify-self: end;
+  text-align: right;
+  font-weight: bold;
+}
+
+/* Align the selection */
+#jlptFilter select,
+#starFilter input,
+#bookFilter select {
+  justify-self: start;
+}
+
+/* The Start button, center it and some styles */
+#quizSubmit {
+  margin-top: 16px;
+}
+
+#quizSubmit:active {
+  transform: scale(0.9);  /* press effect */
+  background-color: aquamarine;
+  border-color: rgb(80, 139, 247);
+}

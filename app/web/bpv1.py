@@ -239,7 +239,7 @@ def quiz_jp():
         limit = int(request.args.get("limit", str(DEFAULT_LIMIT)))
     except:
         limit = DEFAULT_LIMIT
-    quizes = get_word_jp_quizes(book_name, jlpt_level, star, limit)
+    quizes = get_word_jp_quizes(jlpt_level, star, book_name, limit)
     return render_template("quiz/quiz_jp.html", quizes=quizes)
 
 @bp.route("/quiz/check", methods=["POST"])
