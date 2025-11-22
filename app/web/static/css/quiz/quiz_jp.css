@@ -1,0 +1,187 @@
+/* Score board at the top */
+#scoreBoard {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  padding: 15px;
+  background-color: #f0f0f0;
+  border-radius: 8px;
+  margin: 20px auto;
+  max-width: 600px;
+  font-size: 16px;
+}
+
+#scoreBoard strong {
+  color: #045;
+}
+
+/* Quiz container */
+#quizContainer {
+  max-width: 700px;
+  margin: 20px auto;
+  padding: 20px;
+}
+
+/* Individual quiz card */
+.quiz-card {
+  background-color: #fff;
+  border: 2px solid #045;
+  border-radius: 12px;
+  padding: 30px;
+  margin-bottom: 20px;
+  display: none; /* Hide all cards by default */
+}
+
+.quiz-card.active {
+  display: block; /* Show only the active card */
+}
+
+/* Question section */
+.question-section {
+  text-align: center;
+  margin-bottom: 25px;
+}
+
+.jp-word {
+  font-size: 48px;
+  font-weight: bold;
+  color: #045;
+  margin-bottom: 10px;
+}
+
+.spelling {
+  font-size: 20px;
+  color: #666;
+  margin-bottom: 15px;
+}
+
+.audio-btn {
+  padding: 10px 20px;
+  font-size: 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.audio-btn:hover {
+  background-color: #45a049;
+}
+
+.audio-btn:active {
+  transform: scale(0.95);
+}
+
+/* Choices section */
+.choices-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-top: 30px;
+}
+
+.choice-btn {
+  padding: 20px;
+  font-size: 18px;
+  background-color: #fff;
+  border: 2px solid #045;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+
+.choice-btn:hover:not(.selected):not(.correct):not(.incorrect) {
+  background-color: #e8f4f8;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.choice-btn.selected {
+  background-color: #d0e8f2;
+  border-width: 3px;
+}
+
+.choice-btn.correct {
+  border-color: #4CAF50;
+  border-width: 4px;
+  background-color: #e8f5e9;
+}
+
+.choice-btn.incorrect {
+  border-color: #f44336;
+  border-width: 4px;
+  background-color: #ffebee;
+}
+
+.choice-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+/* Navigation buttons */
+#navigationButtons {
+  text-align: center;
+  margin: 30px auto;
+  max-width: 700px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+#skipNextBtn {
+  padding: 12px 40px;
+  font-size: 18px;
+  font-weight: bold;
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#skipNextBtn:hover {
+  background-color: #1976D2;
+}
+
+#skipNextBtn:active {
+  transform: scale(0.95);
+}
+
+/* Completion message */
+#completionMessage {
+  max-width: 600px;
+  margin: 50px auto;
+  padding: 40px;
+  background-color: #e8f5e9;
+  border: 3px solid #4CAF50;
+  border-radius: 12px;
+  text-align: center;
+}
+
+#completionMessage h2 {
+  color: #4CAF50;
+  margin-bottom: 20px;
+}
+
+#completionMessage p {
+  font-size: 20px;
+  margin: 10px 0;
+}
+
+#completionMessage button {
+  margin-top: 20px;
+  padding: 12px 30px;
+  font-size: 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+#completionMessage button:hover {
+  background-color: #45a049;
+}

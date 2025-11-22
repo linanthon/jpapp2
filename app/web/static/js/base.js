@@ -46,6 +46,8 @@ function getParentPage() {
 
     if (path.startsWith(urlPrefix + '/view/')) return urlPrefix + '/view';
     
+    if (path.startsWith(urlPrefix + '/quiz/')) return urlPrefix + '/quiz';
+    
     return urlPrefix;
 }
 

@@ -6,7 +6,13 @@ from utils.data import get_quiz_distractors
 
 def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int = 0, limit: int = DEFAULT_LIMIT,
                        use_priority: bool = True, get_distractors_from_db: bool = True):
-    """Get JP->EN quizes"""
+    """Get JP->EN quizes. Return a dict:
+    - key: word ID
+    - value: a dict of items:
+        - question - the JP
+        - correct - the EN (first meaning in senses)
+        - choices - all 4 choices (shuffled)
+    """
     db = get_dbhandling()
     pdata = get_processdata()
 
@@ -20,7 +26,13 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
         random.shuffle(choices)
         random_choices = "'" + "', '".join(choices) + "'"
         # save to return
-        res[test_case.word_id] = {"question": test_case.jp, "correct": test_case.en, "choices": random_choices}
+        res[test_case.word_id] = {
+            "question": test_case.jp,
+            "spelling": test_case.spelling,
+            "audio_mapping": test_case.audio_mapping,
+            "correct": test_case.en,
+            "choices": random_choices
+        }
     return res
 
 def aaa():
