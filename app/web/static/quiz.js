@@ -27,6 +27,8 @@ function openQuizOptions(actionUrl, mode) {
   const starSelect = document.getElementById('starFilter');
   const bookSelect = document.getElementById('bookFilter');
   const limitGroup = document.getElementById('limitGroup');
+  const usePrioGroup = document.getElementById('usePrioGroup');
+  const distractorsDBGroup = document.getElementById('distractorsDBGroup');
   
   if (mode === 'sentence') {
     if (jlptSelect) jlptSelect.style.display = 'none';
@@ -43,6 +45,8 @@ function openQuizOptions(actionUrl, mode) {
   }
   if (bookSelect) bookSelect.style.display = '';
   if (limitGroup) limitGroup.style.display = '';
+  if (usePrioGroup) usePrioGroup.style.display = '';
+  if (distractorsDBGroup) distractorsDBGroup.style.display = '';
 
   // Show the entire options box
   form.style.display = 'block';

@@ -85,6 +85,30 @@
       </div>
     </div>
 
+    <div id="usePrioGroup" style="display:none">
+      <label for="usePrio">
+        <span class="info-tooltip">
+          <span class="info-icon">?</span>
+          <span class="tooltip-text">Use priority calculation based on word's occurrence and corrected quiz times in retrieving testcases</span>
+        </span>
+        Get word by priority:
+      </label>
+      <input type="checkbox" id="usePrio" name="use_priority" value="1"
+            {% if request.args.get('use_priority','1') in ['1','true','True','on','yes'] %}checked{% endif %}>
+    </div>
+
+    <div id="distractorsDBGroup" style="display:none">
+      <label for="distractorsFromDB">
+        <span class="info-tooltip">
+          <span class="info-icon">?</span>
+          <span class="tooltip-text">Get incorrect choices for the testcases by querying other words that are inserted via inserting books. Turning this off to get from dictionary instead.</span>
+        </span>
+        Get incorrect choices from inserted words:
+      </label>
+      <input type="checkbox" id="distractors" name="get_distractors_from_db" value="1"
+            {% if request.args.get('get_distractors_from_db', '1') in ['1','true','True','on','yes'] %}checked{% endif %}>
+    </div>
+
     <button type="submit" id="quizSubmit">Start</button>
   </form>
 

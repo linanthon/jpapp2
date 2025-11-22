@@ -1100,16 +1100,7 @@ class DBHandling:
         # Get words and meanings
         res: List[Quiz] = []
         for row in q_res:
-            res.append(Quiz(
-                jp=row["word"],
-                en=self.get_meanings("", row["senses"])[0].split(",")[0],
-                spelling=row["spelling"],
-                jlpt_level=row["jlpt_level"],
-                audio_mapping=row["audio_mapping"],
-                occurrence=row["occurrence"],
-                quized=row["quized"],
-                star=row["star"]
-            ))
+            res.append(self._parse_quiz(row))
         return res
 
     def update_quized_prio_ts(self, word: str, occurrence: int = None, quized: int = None) -> bool:
@@ -1183,16 +1174,20 @@ class DBHandling:
     # Helpers ===============================================================================
     def get_meanings(self, word: str, senses: str) -> List[str]:
         """
-        Query an exact word's `senses` column, get all the meaning out.
+        Query an exact word's `senses` column (if no `senses` pass in), get all the meaning out.
+        Pass in either `word` or `senses`.
         Senses format example: "to receive,to get, (['Ichidan verb', 'transitive verb']); ...".
         Return example: ["to receive,to get,", "second meaning", ...]
         """
+        if not senses and not word:
+            return []
+
         if not senses and word:
             q_res = dict()
             query = sql.SQL("SELECT senses FROM {table} WHERE word = %s;").format(
                 table=sql.Identifier(TABLE_WORDS)
             )
-            if self._safe_execute(query, (word,)):
+            if self._safe_execute(query, (word)):
                 q_res = self._cursor.fetchone()
             senses = q_res.get("senses", "") if q_res else ""
 
@@ -1348,7 +1343,7 @@ class DBHandling:
         )
     
     def _parse_book_dict(self, book: dict) -> dict:
-        """Parse book dict from query result into Book class"""
+        """Parse book dict from query result into a dict of Book"""
         book["book_id"] = book.get("id", 0)
         book["created"] = book.get("created", "")
         book["name"] = book.get("name", "")
@@ -1356,6 +1351,19 @@ class DBHandling:
         book["content"] = book.get("content", "")
         return book
     
+    def _parse_quiz(self, record: dict) -> Quiz:
+        """Parse quiz dict from query result into Quiz class"""
+        return Quiz(
+            word_id = record.get("id", 0),
+            jp = record.get("word", ""),
+            en = self.get_meanings("", record.get("senses", ""))[0].split(",")[0],
+            spelling = record["spelling"],
+            jlpt_level = record["jlpt_level"],
+            audio_mapping = record["audio_mapping"],
+            occurrence = record["occurrence"],
+            quized = record["quized"],
+            star = record["star"]
+        )
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================
@@ -1424,8 +1432,8 @@ class DBHandling:
         """
         conditions = []
         params = []
-        sql_full = sql.SQL("""SELECT word, senses, jlpt_level, spelling, audio_mapping,
-                           occurrence, quized, star FROM {table} AS w""").format(
+        sql_full = sql.SQL("""SELECT w.id, w.word, w.senses, w.jlpt_level, w.spelling, w.audio_mapping,
+                           w.occurrence, w.quized, w.star FROM {table} AS w""").format(
                                table=sql.Identifier(TABLE_WORDS)
                             )
         

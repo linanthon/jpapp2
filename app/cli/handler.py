@@ -242,7 +242,7 @@ def handle_view_book_cli(db: "DBHandling", name: str) -> None:
 
 # === QUIZ =====================================================================
 def handle_quiz_jp_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
-                       get_distractors_with_db: bool = True) -> None:
+                       get_distractors_from_db: bool = True) -> None:
     """
     This quiz shows JP, ask EN
     Query DB to get word and meanings to quiz user. Will ask for sorts, filters and use priority value.
@@ -253,7 +253,7 @@ def handle_quiz_jp_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
     Input:
     - pdata and db
     - count: the number of quiz to do
-    - get_distractors_with_db: If true, the incorrect choices will be those of our DB. Otherwise,
+    - get_distractors_from_db: If true, the incorrect choices will be those of our DB. Otherwise,
     they will be taken from Jamdict's DB.
     """
     # Check quiz count is valid
@@ -271,7 +271,7 @@ def handle_quiz_jp_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
     for i, test_case in enumerate(tests):
         # randomize correct answer location
         choices = [test_case.en]
-        choices.extend(get_quiz_distractors(pdata, db, test_case.jp, test_case.en, get_distractors_with_db).en)
+        choices.extend(get_quiz_distractors(pdata, db, test_case.jp, test_case.en, get_distractors_from_db).en)
         random.shuffle(choices)
         random_choices = "'" + "', '".join(choices) + "'"
 
@@ -287,7 +287,7 @@ def handle_quiz_jp_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
                 db.update_quized_prio_ts(test_case.jp, test_case.occurrence, decr_prio)
 
 def handle_quiz_en_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
-                       get_distractors_with_db: bool = True) -> None:
+                       get_distractors_from_db: bool = True) -> None:
     """
     This quiz shows JP, ask for EN.
     Query DB to get word and meanings to quiz user. Will ask for sorts, filters and use priority value.
@@ -297,7 +297,7 @@ def handle_quiz_en_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
     Input:
     - pdata and db
     - count: the number of quiz to do
-    - get_distractors_with_db: If true, the incorrect choices will be those of our DB. Otherwise,
+    - get_distractors_from_db: If true, the incorrect choices will be those of our DB. Otherwise,
     they will be taken from Jamdict's DB.
     """
     # Check quiz count is valid
@@ -314,7 +314,7 @@ def handle_quiz_en_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
     for i, test_case in enumerate(tests):
         # get distractors, mix and randomize the answers' positions
         choices = [test_case.jp]
-        choices.extend(get_quiz_distractors(pdata, db, test_case.jp, test_case.en, get_distractors_with_db).jp)
+        choices.extend(get_quiz_distractors(pdata, db, test_case.jp, test_case.en, get_distractors_from_db).jp)
         random.shuffle(choices)
         random_choices = "'" + "', '".join(choices) + "'"
 
@@ -330,7 +330,7 @@ def handle_quiz_en_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
                 db.update_quized_prio_ts(test_case.jp, test_case.occurrence, decr_prio)
 
 def handle_quiz_sentence_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
-                             get_distractors_with_db: bool = True) -> None:
+                             get_distractors_from_db: bool = True) -> None:
     """
     This quiz shows JP sentences with random blanks from 1-3 words, fill in JP words.
     Each blank will give 4 choices.
@@ -339,7 +339,7 @@ def handle_quiz_sentence_cli(pdata: "ProcessData", db: "DBHandling", count: str 
     - pdata: ProcessData object
     - db: DBHandling object connected to the database
     - count: the number of sentences to quiz
-    - get_distractors_with_db: If true, randomly get incorrect choices using records in DB (default).
+    - get_distractors_from_db: If true, randomly get incorrect choices using records in DB (default).
     If false, randomly get incorrect choices using Jamdict.
     """
     # Check quiz count is valid -> get `count` sentences
@@ -396,7 +396,7 @@ def handle_quiz_sentence_cli(pdata: "ProcessData", db: "DBHandling", count: str 
             choose_idx = random.choice(available)
             correct_choices.append(jp_words[choose_idx])
             incorrect_choices.append(
-                get_quiz_distractors(pdata, db, jp_words[choose_idx], "", get_distractors_with_db).jp
+                get_quiz_distractors(pdata, db, jp_words[choose_idx], "", get_distractors_from_db).jp
             )
 
             # add chosen index and its adjacents, rm correct from sentence, choice pool

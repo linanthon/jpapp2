@@ -239,7 +239,10 @@ def quiz_jp():
         limit = int(request.args.get("limit", str(DEFAULT_LIMIT)))
     except:
         limit = DEFAULT_LIMIT
-    quizes = get_word_jp_quizes(jlpt_level, star, book_id, limit)
+    use_priority = parse_bool_param(request.args.get("use_priority", None))
+    get_distractors_from_db = parse_bool_param(request.args.get("get_distractors_from_db", None))
+    
+    quizes = get_word_jp_quizes(jlpt_level, star, book_id, limit, use_priority, get_distractors_from_db)
     return render_template("quiz/quiz_jp.html", quizes=quizes)
 
 @bp.route("/quiz/check", methods=["POST"])

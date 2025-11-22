@@ -171,7 +171,7 @@ def str_2_int(input_str: str) -> int:
 
 
 def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = "",
-                         en_word: str = "", get_distractors_with_db: bool = True,
+                         en_word: str = "", get_distractors_from_db: bool = True,
                          distractor_count: int = DEFAULT_DISTRACTOR_COUNT) -> QuizDistractors:
     """
     Get JP distractors (incorrect JP choices for the current quiz) using either our DB
@@ -181,7 +181,7 @@ def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = 
     Input:
     - pdata: A ProcessData object
     - db: A DBHanding object connected to Database
-    - get_distractors_with_db: If true, use db.(). If False, draw random words from Jamdict.
+    - get_distractors_from_db: If true, use db.(). If False, draw random words from Jamdict.
     - jp_word: The JP word in quiz, will query different than this word.
     - en_word: The EN/first meaning of the JP word, will query different meaning than this.
     - distractor_count: The number of false Japanese word for the queried English word. Default: 3.
@@ -195,7 +195,7 @@ def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = 
         return None
 
     res = QuizDistractors([], [])   # use empty params to avoid "mutable default value as argument"
-    if get_distractors_with_db:
+    if get_distractors_from_db:
         for instance in db.get_distractors(jp_word, en_word, distractor_count):
             res.jp.append(instance.jp)
             res.en.append(instance.en)
