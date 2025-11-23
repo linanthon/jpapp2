@@ -1214,13 +1214,20 @@ class DBHandling:
             all_senses = [chunk.strip() for chunk in senses.split(";") if chunk.strip()]
             for one_sense in all_senses:
                 # regex the get just the meaning part
-                match = WORD_SENSES_REGEX.match(one_sense)
+                # will get until the first parenthesis '(' that has at least 1 character before it
+                match = WORD_SENSES_REGEX.match(one_sense.strip())
+                meaning = ""
                 if match:
                     meaning = match.group(1).strip().rstrip(", ")
                     # Keep only the first 2 synonym for each meaning
                     if "," in meaning:
                         meaning = ", ".join(meaning.split(",")[:2])
-                    res.append(meaning)
+                
+                # Get the entire senses if failed to get the first meaning
+                if not meaning:
+                    meaning = all_senses
+                res.append(meaning)
+
         return res
 
     def _safe_execute(self, query: sql.SQL, params=None) -> bool:

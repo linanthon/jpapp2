@@ -157,7 +157,6 @@ Process:
 - implement more advance functions
 
 TODO:
-- There's a word with empty senses??? Quiz choices can have an empty button
 - in Quiz:
     + add star
     + add link to quiz word
@@ -166,3 +165,5 @@ TODO:
 - in View specific word:
     + add mark as known (will change priority to -1, never shows up again)
     + add remove known mark (will calc priority again with current occurrence and quized)
+
+- Add mode to re-test JP words that are already quized > QUIZ_HARD_CAP

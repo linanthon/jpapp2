@@ -30,8 +30,8 @@ QUIZ_WORD_SORT_COLUMNS: List[str] = ["word", "occurrence", "quized", "last_teste
 SORT_ORDER: List[str] = ["asc", "desc"]
 JLPT_LEVELS: List[str] = ["N5", "N4", "N3", "N2", "N1", "N0", "n5", "n4", "n3", "n2", "n1", "n0"]
 QUIZ_SOFT_CAP: int = 20     # Will use diff prio formula to appear less
-QUIZ_HARD_CAP: int = 40     # Never appear
-WORD_SENSES_REGEX = re.compile(r"^(.*?)\s*\(")  # Stop at the first parenthesis
+QUIZ_HARD_CAP: int = 40     # Never appear again
+WORD_SENSES_REGEX = re.compile(r"^(.+?)\s*\(")  # Capture at least 1 char before first parenthesis
 MAX_WORD_DROP_IN_SENTENCE: int = 3
 MIN_SENTENCE_PERCENTAGE_REMAINS: float = 0.5
 

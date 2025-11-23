@@ -40,7 +40,6 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
         }
     return res
 
-
 def update_word_prio_after_answering(word_id: int = 0, is_correct: bool = False,
                                      quized: int = 0, occurrence: int = 0) -> bool:
     """Update answered quiz's word priority calculation.
