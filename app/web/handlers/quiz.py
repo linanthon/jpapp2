@@ -10,8 +10,12 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
     - key: word ID
     - value: a dict of items:
         - question - the JP
+        - spelling - the Katakana spelling
+        - audio_mapping - the audio mapping list for this word
         - correct - the EN (first meaning in senses)
         - choices - a list of all 4 choices (shuffled)
+        - quized - the number of correct times
+        - occurrence - the total appearance count of this word in DB
     """
     db = get_dbhandling()
     pdata = get_processdata()
@@ -30,19 +34,17 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
             "spelling": test_case.spelling,
             "audio_mapping": test_case.audio_mapping,
             "correct": test_case.en,
-            "choices": choices
+            "choices": choices,
+            "quized": test_case.quized,
+            "occurrence": test_case.occurrence
         }
     return res
 
-def aaa():
-    # ans = input(f"{i+1}. '{test_case.jp}' meaning is? ({random_choices}): ")
-    # # Update quized and priority if correct
-    # if ans == test_case.en:
-    #     print("Correct!")
-    #     db.update_quized_prio_ts(test_case.jp, test_case.occurrence, test_case.quized+1)
-    # else:
-    #     print(f"Wrong! The correct meaning should be: {test_case.en}")
-    #     if test_case.quized > 0:
-    #         decr_prio = test_case.quized-1
-    #         db.update_quized_prio_ts(test_case.jp, test_case.occurrence, decr_prio)
-    pass
+
+def update_word_prio_after_answering(word_id: int = 0, is_correct: bool = False,
+                                     quized: int = 0, occurrence: int = 0) -> bool:
+    """Update answered quiz's word priority calculation.
+    Return true if success, false otherwise"""
+    db = get_dbhandling()
+    new_quized = quized + 1 if is_correct else max(0, quized - 1)
+    return db.update_quized_prio_ts(word_id=word_id, occurrence=occurrence, quized=new_quized)

@@ -7,7 +7,7 @@ from handlers.view import (handle_search_word, handle_view_specific_word, handle
                            handle_view_books, handle_view_specific_book)
 from handlers.helpers import (get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level,
                               parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id)
-from handlers.quiz import get_word_jp_quizes
+from handlers.quiz import get_word_jp_quizes, update_word_prio_after_answering
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -271,34 +271,23 @@ def quiz_sentence():
 def update_word_prio():
     """
     Update word priority based on quiz result.
-    Expects JSON: { word_id: int, is_correct: bool }
+    Expects JSON: { 'word_id': int, 'is_correct': bool }
     """
     data = request.get_json()
-    if not data:
-        return jsonify({"success": False, "error": "No data provided"}), 400
-    
     try:
         word_id = int(data.get("word_id", 0))
-    except (ValueError, TypeError):
-        return jsonify({"success": False, "error": "Invalid word_id"}), 400
+    except:
+        return jsonify({"success": False, "error": "Invalid/Missing `word_id`"}), 400
+    is_correct = parse_bool_param(data.get("is_correct", None))
+    try:
+        quized = int(data.get("quized", 0))
+    except:
+        return jsonify({"success": False, "error": "Invalid/Missing `quized`"}), 400
+    try:
+        occurrence = int(data.get("occurrence", 0))
+    except:
+        return jsonify({"success": False, "error": "Invalid/Missing `occurrence`"}), 400
     
-    is_correct = data.get("is_correct", None)
-    if is_correct is None:
-        return jsonify({"success": False, "error": "Missing is_correct parameter"}), 400
-    
-    # Get the word from database
-    from handlers.helpers import get_dbhandling
-    db = get_dbhandling()
-    
-    word_obj = db.get_exact_word(word_id=word_id)
-    if not word_obj:
-        return jsonify({"success": False, "error": "Word not found"}), 404
-    
-    # Update quized count based on answer
-    new_quized = word_obj.quized + 1 if is_correct else max(0, word_obj.quized - 1)
-    
-    # Update priority in database
-    success = db.update_quized_prio_ts(word_obj.word, word_obj.occurrence, new_quized)
-    
+    success = update_word_prio_after_answering(word_id, is_correct, quized, occurrence)
     return jsonify({"success": success})
 # =================================================================================

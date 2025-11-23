@@ -73,7 +73,7 @@ function createQuizCard(wordId, data, index) {
     choiceBtn.className = 'choice-btn';
     choiceBtn.textContent = choice;
     choiceBtn.dataset.choice = choice;
-    choiceBtn.onclick = () => handleChoiceClick(wordId, choice, data.correct, choiceBtn);
+    choiceBtn.onclick = () => handleChoiceClick(wordId, choice, data.correct, choiceBtn, data.quized, data.occurrence);
     choicesSection.appendChild(choiceBtn);
   });
   
@@ -97,7 +97,8 @@ function displayCurrentCard() {
 }
 
 // Handle choice selection
-function handleChoiceClick(wordId, selectedChoice, correctAnswer, clickedBtn) {
+function handleChoiceClick(wordId, selectedChoice, correctAnswer, clickedBtn, quized, occurrence) {
+  // About `quized` and `occurrence`, just pass in the number got from querying DB, no change
   if (answered) return; // Prevent multiple answers
   
   answered = true;
@@ -116,7 +117,7 @@ function handleChoiceClick(wordId, selectedChoice, correctAnswer, clickedBtn) {
   if (isCorrect) {
     clickedBtn.classList.add('correct');
     correctCount++;
-    updateWordPriority(wordId, true);
+    updateWordPriority(wordId, true, quized, occurrence);
   } else {
     clickedBtn.classList.add('incorrect');
     // Highlight the correct answer
@@ -125,7 +126,7 @@ function handleChoiceClick(wordId, selectedChoice, correctAnswer, clickedBtn) {
         btn.classList.add('correct');
       }
     });
-    updateWordPriority(wordId, false);
+    updateWordPriority(wordId, false, quized, occurrence);
   }
   
   updateScoreBoard();
@@ -193,7 +194,8 @@ async function playAudio(audioMapping) {
 }
 
 // Call backend to update word priority
-async function updateWordPriority(wordId, isCorrect) {
+async function updateWordPriority(wordId, isCorrect, quized, occurrence) {
+  // About `quized` and `occurrence`, just pass in the number got from querying DB, no change
   try {
     const response = await fetch(updatePrioUrl, {
       method: 'POST',
@@ -202,7 +204,9 @@ async function updateWordPriority(wordId, isCorrect) {
       },
       body: JSON.stringify({
         word_id: parseInt(wordId),
-        is_correct: isCorrect
+        is_correct: isCorrect,
+        quized: parseInt(quized),
+        occurrence: parseInt(occurrence)
       })
     });
     

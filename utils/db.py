@@ -1103,14 +1103,16 @@ class DBHandling:
             res.append(self._parse_quiz(row))
         return res
 
-    def update_quized_prio_ts(self, word: str, occurrence: int = None, quized: int = None) -> bool:
+    def update_quized_prio_ts(self, word_id: int = 0, word: str = None,
+                              occurrence: int = None, quized: int = None) -> bool:
         """
         Query `occurrence`, `quized` and `last_tested` (if didn't passed value in, `quized` will +1).
         Calc new `priority` value, formula depends on how big is `quized` compare to QUIZ_SOFT_CAP
         and QUIZ_HARD_CAP. Get current timestamp for last_tested. Save the new values to DB.
 
         Input:
-        - word: the word to update
+        - word_id: the word ID. Use either this or `word`. Prioritise if pass both.
+        - word: the word to update. Use either this or `word_id`.
         - occurrence (optional): the word's occurrence
         - quized (optional): the word's correct quiz count
         If both occurrence and quized are provided, will use these to calculate priority
@@ -1118,6 +1120,9 @@ class DBHandling:
 
         Output: returns True if success, False if fail
         """
+        if not word_id and not word:
+            return False
+        
         # Get occurrence and quized if no value
         if occurrence is None or quized is None:
             row = self.get_exact_word(word)
@@ -1133,10 +1138,18 @@ class DBHandling:
             prio = self._priority_formula(occurrence, quized)
 
         query = sql.SQL("""UPDATE {table} SET quized = %s, priority = %s,
-                        last_tested = NOW() WHERE word = %s;""").format(
+                        last_tested = NOW()""").format(
             table=sql.Identifier(TABLE_WORDS)
         )
-        if self._safe_execute(query, (quized, prio, word)) and self._cursor.rowcount > 0:
+        params = [quized, prio]
+        if word_id:
+            query += sql.SQL(" WHERE id = {wid}").format(
+                wid=sql.Literal(word_id)
+            )
+        else:
+            query += sql.SQL(" WHERE word = %s")
+            params.append(word)
+        if self._safe_execute(query, params) and self._cursor.rowcount > 0:
             self._safe_commit()
             return True
         self._safe_rollback()

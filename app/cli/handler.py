@@ -279,12 +279,14 @@ def handle_quiz_jp_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
         # Update quized and priority if correct
         if ans == test_case.en:
             print("Correct!")
-            db.update_quized_prio_ts(test_case.jp, test_case.occurrence, test_case.quized+1)
+            db.update_quized_prio_ts(word_id=test_case.word_id,
+                                     occurrence=test_case.occurrence, quized=test_case.quized+1)
         else:
             print(f"Wrong! The correct meaning should be: {test_case.en}")
             if test_case.quized > 0:
                 decr_prio = test_case.quized-1
-                db.update_quized_prio_ts(test_case.jp, test_case.occurrence, decr_prio)
+                db.update_quized_prio_ts(word_id=test_case.word_id,
+                                         occurrence=test_case.occurrence, quized=decr_prio)
 
 def handle_quiz_en_cli(pdata: "ProcessData", db: "DBHandling", count: str | int,
                        get_distractors_from_db: bool = True) -> None:
