@@ -195,8 +195,14 @@ def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = 
         return None
 
     res = QuizDistractors([], [])   # use empty params to avoid "mutable default value as argument"
+    instances = []
     if get_distractors_from_db:
-        for instance in db.get_distractors(jp_word, en_word, distractor_count):
+        instances = db.get_distractors(jp_word, en_word, distractor_count)
+
+    # if obtained enough distractors from DB -> use them
+    # Otherwise, get from jamdict instead
+    if len(instances) == distractor_count:
+        for instance in instances:
             res.jp.append(instance.jp)
             res.en.append(instance.en)
     else:
