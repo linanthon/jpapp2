@@ -28,10 +28,11 @@
     <button id="skipNextBtn" onclick="handleSkipNext()">Skip</button>
   </div>
 
-  <!-- Pass quiz data from backend to JS -->
-  <script>
-    const quizData = "{{ quizes | tojson }}";
-    const updatePrioUrl = "{{ url_for('main_ep.update_word_prio') }}";
-  </script>
+  <!-- Pass `quizes` (dict containing all the testcases) and url to update word priority calcutlaion to JS -->
+  <div id="quiz-backend-params"
+     data-quizes='{{ quizes | tojson }}'
+     data-update-prio-url="{{ url_for('main_ep.update_word_prio') }}">
+  </div>
+
 </body>
 </html>

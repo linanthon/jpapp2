@@ -144,7 +144,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     for (const syllable of audioMapping || []) {
-      const audio = new Audio(`/v1/audio/${syllable}.wav`);
+      const filename = `/v1/audio/${syllable}.wav`
+      const audio = new Audio(filename);
       await new Promise(resolve => {
         audio.onended = resolve;
         audio.onerror = () => {

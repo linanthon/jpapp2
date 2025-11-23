@@ -4,9 +4,13 @@ let correctCount = 0;
 let skippedCount = 0;
 let quizCards = [];
 let answered = false;
+const quizBackendParams = document.getElementById("quiz-backend-params");
+const quizData = JSON.parse(quizBackendParams.dataset.quizes);
+const updatePrioUrl = quizBackendParams.dataset.updatePrioUrl;
 
 // Initialize quiz on page load
 document.addEventListener('DOMContentLoaded', () => {
+  // `quizData` is the var that took in `quizes` from backend
   if (typeof quizData === 'undefined' || Object.keys(quizData).length === 0) {
     showNoQuizMessage();
     return;
@@ -54,7 +58,7 @@ function createQuizCard(wordId, data, index) {
   const audioBtn = document.createElement('button');
   audioBtn.className = 'audio-btn';
   audioBtn.textContent = '🔊 Play Audio';
-  audioBtn.onclick = () => playAudio(data.audio_mapping);
+  audioBtn.onclick = () => playAudio(data.audio_mapping); // is list
   
   questionSection.appendChild(jpWord);
   questionSection.appendChild(spelling);
@@ -64,10 +68,7 @@ function createQuizCard(wordId, data, index) {
   const choicesSection = document.createElement('div');
   choicesSection.className = 'choices-section';
   
-  // Parse choices (they come as a string like "'choice1', 'choice2', 'choice3', 'choice4'")
-  const choicesArray = data.choices.split("', '").map(c => c.replace(/'/g, ''));
-  
-  choicesArray.forEach((choice, idx) => {
+  data.choices.forEach((choice) => {
     const choiceBtn = document.createElement('button');
     choiceBtn.className = 'choice-btn';
     choiceBtn.textContent = choice;
@@ -103,16 +104,18 @@ function handleChoiceClick(wordId, selectedChoice, correctAnswer, clickedBtn) {
   const currentCard = quizCards[currentIndex];
   const choiceBtns = currentCard.element.querySelectorAll('.choice-btn');
   
-  // Disable all choice buttons
-  choiceBtns.forEach(btn => btn.disabled = true);
+  // Add `answered` class, prevent further clicks by in CSS
+  choiceBtns.forEach(btn => {
+    btn.classList.add('answered');
+  });
   
-  // Check if answer is correct
+  // Check if answer is correct, add class accordingly
+  // And call backend to update priority
   const isCorrect = selectedChoice === correctAnswer;
   
   if (isCorrect) {
     clickedBtn.classList.add('correct');
     correctCount++;
-    // Call backend to update priority (correct answer: quized++)
     updateWordPriority(wordId, true);
   } else {
     clickedBtn.classList.add('incorrect');
@@ -122,7 +125,6 @@ function handleChoiceClick(wordId, selectedChoice, correctAnswer, clickedBtn) {
         btn.classList.add('correct');
       }
     });
-    // Call backend to update priority (wrong answer: quized--)
     updateWordPriority(wordId, false);
   }
   
@@ -167,16 +169,27 @@ function updateScoreBoard() {
 }
 
 // Play audio for the word
-function playAudio(audioMapping) {
+async function playAudio(audioMapping) {
   if (!audioMapping || audioMapping.length === 0) {
     alert('No audio available for this word');
     return;
   }
-  
-  // TODO: Implement audio playback using the audio_mapping array
-  // For now, just show an alert
-  console.log('Audio mapping:', audioMapping);
-  alert('Audio playback: ' + audioMapping.join(', ') + '\n(Audio feature to be implemented)');
+
+  for (const syllable of audioMapping || []) {
+      const filename = `/v1/audio/${syllable}.wav`
+      const audio = new Audio(filename);
+    await new Promise(resolve => {
+      audio.onended = resolve;
+      audio.onerror = () => {
+        console.error(`Failed to load audio: ${filename}`);
+        resolve();
+      };
+      audio.play().catch(err => {
+        console.error(`Failed to play audio: ${filename}`, err);
+        resolve();
+      });
+    });
+  }
 }
 
 // Call backend to update word priority

@@ -417,11 +417,11 @@ class DBHandling:
 
     def update_word_occurrence(self, word: str) -> bool:
         """
-        Update a word's occurence (word must match exact) and
+        Update a word's occurrence (word must match exact) and
         its priority using priority formula.
         Return true if success, false if fail/not found.
         """
-        # Get word occurence and quized
+        # Get word occurrence and quized
         (occurrence, quized) = self._get_word_occurence_quized(word)
         if occurrence == 0:
             return False
@@ -604,7 +604,7 @@ class DBHandling:
     
     def _get_word_occurence_quized(self, word: str) -> Tuple[int, int]:
         """
-        Get a word's 'occurence' and 'quized' (word must match exact), 0 if not found
+        Get a word's 'occurrence' and 'quized' (word must match exact), 0 if not found
         """
         query = sql.SQL("SELECT occurrence, quized FROM {table} WHERE word = %s;").format(
             table=sql.Identifier(TABLE_WORDS)
@@ -833,7 +833,7 @@ class DBHandling:
     def insert_update_sentence(self, sentence: str) -> int:
         """
         Insert into table `sentences`, will update occurrence if sentence existed.
-        The 2 fields 'occurence' default to 1, 'star' default False.
+        The 2 fields 'occurrence' default to 1, 'star' default False.
 
         Input: the sentence itself
 
@@ -865,7 +865,7 @@ class DBHandling:
 
     def update_sentence_occurence(self, sentence_id: int, new_count: int) -> bool:
         """
-        Get a word's occurence (word must match exact).
+        Get a word's occurrence (word must match exact).
         Return true if success, false if fail/not found.
         """
         query = sql.SQL("UPDATE {table} SET occurrence = %s WHERE id = %s;").format(
@@ -909,7 +909,7 @@ class DBHandling:
 
     def get_sentence_occurence(self, sentence: str) -> int:
         """
-        Get a sentence's occurence (must match exact), 0 if not found
+        Get a sentence's occurrence (must match exact), 0 if not found
         """
         query = sql.SQL("SELECT occurrence FROM {table} WHERE sentence = %s;").format(
             table=sql.Identifier(TABLE_SENTENCES)
@@ -1080,8 +1080,8 @@ class DBHandling:
         - jlpt_filter: the JLPT level to filter in query. Default: not use.
         - star_only: query only those that starred. Default: false.
         - book_id: will only query words of this book. Default: query from all books.
-        - use_priority: use 'occurence' and 'quized' to calculate priority or not.
-        More 'occurence' = higher prio, higher 'quized' = lower prio. This can not use together with sort.
+        - use_priority: use 'occurrence' and 'quized' to calculate priority or not.
+        More 'occurrence' = higher prio, higher 'quized' = lower prio. This can not use together with sort.
         Note that this is refer to the original Japanese word. Default: True.
         - exclude_jp: the list of EN words to not include in query. Default: empty.
         - exclude_en: the list of EN words to not include in query. Default: empty.
@@ -1304,7 +1304,7 @@ class DBHandling:
             jlpt_level=word.get("jlpt_level", ""),
             audio_mapping=word.get("audio_mapping", []),
             star=word.get("star", ""),
-            occurence=word.get("occurrence", ""),
+            occurrence=word.get("occurrence", ""),
             quized=word.get("quized", "")
         )
     
@@ -1318,7 +1318,7 @@ class DBHandling:
         word["jlpt_level"] = word.get("jlpt_level", "")
         word["audio_mapping"] = word.get("audio_mapping", [])
         word["star"] = word.get("star", "")
-        word["occurence"] = word.get("occurrence", "")
+        word["occurrence"] = word.get("occurrence", "")
         word["quized"] = word.get("quized", "")
         return word
 
@@ -1328,7 +1328,7 @@ class DBHandling:
             sen_id=sentence.get("id", 0),
             sentence=sentence.get("sentence", ""),
             star=sentence.get("star"),
-            occurence=sentence.get("occurrence"),
+            occurrence=sentence.get("occurrence"),
             quized=sentence.get("quized")
         )
 

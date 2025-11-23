@@ -11,7 +11,7 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
     - value: a dict of items:
         - question - the JP
         - correct - the EN (first meaning in senses)
-        - choices - all 4 choices (shuffled)
+        - choices - a list of all 4 choices (shuffled)
     """
     db = get_dbhandling()
     pdata = get_processdata()
@@ -24,14 +24,13 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
         choices = [test_case.en]
         choices.extend(get_quiz_distractors(pdata, db, test_case.jp, test_case.en, get_distractors_from_db).en)
         random.shuffle(choices)
-        random_choices = "'" + "', '".join(choices) + "'"
         # save to return
         res[test_case.word_id] = {
             "question": test_case.jp,
             "spelling": test_case.spelling,
             "audio_mapping": test_case.audio_mapping,
             "correct": test_case.en,
-            "choices": random_choices
+            "choices": choices
         }
     return res
 

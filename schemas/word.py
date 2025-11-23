@@ -2,7 +2,7 @@ from typing import List
 
 class Word:
     def __init__(self, word_id=0, word="", senses="", spelling="", forms="", jlpt_level="",
-                 audio_mapping=[], star=False, occurence=0, quized=0):
+                 audio_mapping=[], star=False, occurrence=0, quized=0):
         """
         - word (str): the Kanji version (or the version that is commonly used, can also be Higarana/Katakana)
         - senses (str): the meaning, word type and position (verb, noun, ...)
@@ -11,7 +11,7 @@ class Word:
         - jlpt_level (str): N5 -> N1, N0 for non-categorized words
         - audio_mapping (list[str]): the list of romaji of the spelling
         - star (bool): favorite the word
-        - occurence (int): the times this word has appeared
+        - occurrence (int): the times this word has appeared
         - quized (int): the times this word has been quized
         """
         self.word_id = word_id
@@ -22,7 +22,7 @@ class Word:
         self.jlpt_level = jlpt_level
         self.audio_mapping: List[str] = audio_mapping
         self.star = star
-        self.occurrence = occurence
+        self.occurrence = occurrence
         self.quized = quized
 
         # For tracking borrowed English words

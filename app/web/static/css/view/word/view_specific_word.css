@@ -87,6 +87,17 @@
   list-style-type: none;
 }
 
+#playBtn {
+  background-color: #4CAF50;
+  color: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#playBtn:hover {
+  background-color: #45a049;
+}
+
 /* Play audio button press effect */
 #playBtn:active {
   transform: scale(0.96);

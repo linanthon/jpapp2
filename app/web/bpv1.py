@@ -298,7 +298,7 @@ def update_word_prio():
     new_quized = word_obj.quized + 1 if is_correct else max(0, word_obj.quized - 1)
     
     # Update priority in database
-    success = db.update_quized_prio_ts(word_obj.word, word_obj.occurence, new_quized)
+    success = db.update_quized_prio_ts(word_obj.word, word_obj.occurrence, new_quized)
     
     return jsonify({"success": success})
 # =================================================================================
