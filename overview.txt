@@ -161,7 +161,6 @@ TODO:
     + add star
     + add link to quiz word
     + add mark as known (will change priority to -1, never shows up again)
-- Fix quiz jlpt and star filter not working
 - in View specific word:
     + add mark as known (will change priority to -1, never shows up again)
     + add remove known mark (will calc priority again with current occurrence and quized)

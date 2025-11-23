@@ -1460,7 +1460,7 @@ class DBHandling:
         # ----- Book Filter -----
         if book_id:
             # Join ref table to limit book_id
-            sql_full += sql.SQL(""" JOIN {ref_table} AS r ON w.id = r.id 
+            sql_full += sql.SQL(""" JOIN {ref_table} AS r ON w.id = r.word_id 
                                 WHERE r.book_id = {bid} AND w.priority > 0.0""").format(
                                     ref_table=sql.Identifier(TABLE_WORD_BOOK_REF),
                                     bid=sql.Literal(book_id)
@@ -1484,7 +1484,7 @@ class DBHandling:
 
         # Combine filters
         if conditions:
-            sql_full += sql.SQL(" AND ").join(conditions)
+            sql_full += sql.SQL(" AND ") + sql.SQL(" AND ").join(conditions)
 
         # Avoid word with senses that have '-'
         if avoid_dash_sense:
