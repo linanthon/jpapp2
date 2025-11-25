@@ -7,7 +7,8 @@ from handlers.view import (handle_search_word, handle_view_specific_word, handle
                            handle_view_books, handle_view_specific_book)
 from handlers.helpers import (get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level,
                               parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id)
-from handlers.quiz import get_word_jp_quizes, update_word_prio_after_answering
+from handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
+                           change_word_prio_to_negative, reset_word_prio)
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -267,7 +268,7 @@ def quiz_sentence():
     return render_template("quiz/quiz_sentence.html")
 
 # ----- Quiz support --------
-@bp.route("/prio/word", methods=["POST"])
+@bp.route("/word/prio", methods=["POST"])
 def update_word_prio():
     """
     Update word priority based on quiz result.
@@ -289,5 +290,31 @@ def update_word_prio():
         return jsonify({"success": False, "error": "Invalid/Missing `occurrence`"}), 400
     
     success = update_word_prio_after_answering(word_id, is_correct, quized, occurrence)
+    return jsonify({"success": success})
+
+@bp.route("/word/known", methods=["POST"])
+def toggle_word_known():
+    """
+    Update word priority to either -1 or recalculate based on its current quized and occurrence.
+    Expects JSON: { 'word_id': int, 'update_to_known': bool, 'quized': int (optional), 'occurrence': int (optional) }
+    """
+    data = request.get_json()
+    try:
+        word_id = int(data.get("word_id", 0))
+    except:
+        return jsonify({"success": False, "error": "Invalid/Missing `word_id`"}), 400
+    update_to_known = parse_bool_param(data.get("update_to_known", False))
+    if not update_to_known:
+        try:
+            occurrence = int(data.get("occurrence", 0))
+            quized = int(data.get("quized", 0))
+        except:
+            pass
+    
+    if update_to_known:
+        success = change_word_prio_to_negative(word_id)
+    else:
+        success = reset_word_prio(word_id, occurrence, quized)
+
     return jsonify({"success": success})
 # =================================================================================

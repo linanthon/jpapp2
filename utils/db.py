@@ -422,7 +422,7 @@ class DBHandling:
         Return true if success, false if fail/not found.
         """
         # Get word occurrence and quized
-        (occurrence, quized) = self._get_word_occurence_quized(word)
+        (occurrence, quized) = self.get_word_occurence_quized(word=word)
         if occurrence == 0:
             return False
         
@@ -452,15 +452,23 @@ class DBHandling:
         self._safe_rollback()
         return False
 
-    def update_words_known(self, words: List[str]) -> bool:
-        """
-        Update words `quized` to be QUIZ_HARD_CAP+1 and priority to 0.
-        Returns True if success, False if fail.
-        """
-        query = sql.SQL("UPDATE {table} SET quized = %s, priority = 0 WHERE word IN %s;").format(
+    def update_words_known(self, word_ids: List[int] = [], words: List[str] = []) -> bool:
+        """Update words priority to -1.0 (to fail the > 0.0 check when query for quiz).
+        Returns True if success, False if fail."""
+        if not word_ids and not words:
+            return False
+        
+        query = sql.SQL("UPDATE {table} SET priority = -1.0").format(
             table=sql.Identifier(TABLE_WORDS)
         )
-        if self._safe_execute(query, (QUIZ_HARD_CAP+1, tuple(words))) and self._cursor.rowcount > 0:
+        if word_ids:
+            query += sql.SQL(" WHERE id IN %s;")
+            params = (tuple(word_ids),)
+        else:
+            query += sql.SQL(" WHERE word IN %s;")
+            params = (tuple(words),)
+
+        if self._safe_execute(query, params) and self._cursor.rowcount > 0:
             self._safe_commit()
             return True
         self._safe_rollback()
@@ -602,14 +610,25 @@ class DBHandling:
             res = [instance["word"] for instance in self._cursor.fetchall() if len(instance.get("word", "")) > 0]
         return res
     
-    def _get_word_occurence_quized(self, word: str) -> Tuple[int, int]:
+    def get_word_occurence_quized(self, word_id: int = None, word: str = "") -> Tuple[int, int]:
         """
-        Get a word's 'occurrence' and 'quized' (word must match exact), 0 if not found
+        Get a word's 'occurrence' and 'quized' (use either `word_id` or exact `word`), 0 if not found
         """
-        query = sql.SQL("SELECT occurrence, quized FROM {table} WHERE word = %s;").format(
+        if not word_id and not word:
+            return (0, 0)
+        
+        query = sql.SQL("SELECT occurrence, quized FROM {table}").format(
             table=sql.Identifier(TABLE_WORDS)
         )
-        if self._safe_execute(query, (word,)):
+        if word_id:
+            query += sql.SQL(" WHERE id = {wid};").format(
+                wid=sql.Literal(word_id)
+            )
+            params = []
+        else:
+            query += sql.SQL(" WHERE word = %s;")
+            params = [word]
+        if self._safe_execute(query, params):
             res = self._cursor.fetchone()
             if res:
                 return (res.get("occurrence", 0), res.get("quized", 0))
@@ -669,7 +688,7 @@ class DBHandling:
             limit = DEFAULT_LIMIT
         
         params = []
-        query = sql.SQL("SELECT id, word, spelling, senses FROM {table}").format(
+        query = sql.SQL("SELECT id, word, spelling, senses, priority FROM {table}").format(
             table=sql.Identifier(TABLE_WORDS)
         )
         if jlpt_level:
@@ -1103,7 +1122,7 @@ class DBHandling:
             res.append(self._parse_quiz(row))
         return res
 
-    def update_quized_prio_ts(self, word_id: int = 0, word: str = None,
+    def update_quized_prio_ts(self, word_id: int = None, word: str = None,
                               occurrence: int = None, quized: int = None) -> bool:
         """
         Query `occurrence`, `quized` and `last_tested` (if didn't passed value in, `quized` will +1).
@@ -1120,7 +1139,7 @@ class DBHandling:
 
         Output: returns True if success, False if fail
         """
-        if not word_id and not word:
+        if word_id is None and word is None:
             return False
         
         # Get occurrence and quized if no value
@@ -1323,9 +1342,10 @@ class DBHandling:
             forms=word.get("forms", ""),
             jlpt_level=word.get("jlpt_level", ""),
             audio_mapping=word.get("audio_mapping", []),
-            star=word.get("star", ""),
-            occurrence=word.get("occurrence", ""),
-            quized=word.get("quized", "")
+            star=word.get("star", False),
+            occurrence=word.get("occurrence", 1),
+            quized=word.get("quized", 0),
+            priority=word.get("priority", 0.0)
         )
     
     def _parse_word_dict(self, word: dict) -> dict:
@@ -1337,9 +1357,10 @@ class DBHandling:
         word["forms"] = word.get("forms", "")
         word["jlpt_level"] = word.get("jlpt_level", "")
         word["audio_mapping"] = word.get("audio_mapping", [])
-        word["star"] = word.get("star", "")
-        word["occurrence"] = word.get("occurrence", "")
-        word["quized"] = word.get("quized", "")
+        word["star"] = word.get("star", False)
+        word["occurrence"] = word.get("occurrence", 1)
+        word["quized"] = word.get("quized", 0)
+        word["priority"] = word.get("priority", 0.0)
         return word
 
     def _parse_sentence(self, sentence: dict) -> Sentence:

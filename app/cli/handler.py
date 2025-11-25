@@ -104,7 +104,7 @@ def handle_words_known(db: "DBHandling", words: str | List[str]) -> None:
     """
     if type(words) == str:
         words = words.split(" ")
-    if db.update_words_known(words):
+    if db.update_words_known(words=words):
         print("Success")
     else:
         print("Failed")

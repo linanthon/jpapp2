@@ -7,6 +7,10 @@
 
 .word-header {
   margin-left: 60px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: nowrap;
 }
 
 /* Override some global button styles for the star toggle */
@@ -22,6 +26,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex: 1;
 }
 .star{
   display: block;
@@ -101,4 +107,78 @@
 /* Play audio button press effect */
 #playBtn:active {
   transform: scale(0.96);
+}
+
+/* Tooltip for known button */
+.info-tooltip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-right: 50px;
+  flex-shrink: 0;
+}
+
+.info-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px; 
+  border-radius: 50%;
+  border: 1.5px solid #666;
+  color: #666;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: help;
+  background-color: #fff;
+}
+
+.tooltip-text {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  left: 24px; /* show help message to the right of the question mark */
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #333;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  white-space: normal;
+  width: 250px;
+  font-size: 13px;
+  font-weight: normal;
+  z-index: 1000;
+  transition: opacity 0.2s ease-in-out;
+  pointer-events: none;
+  line-height: 1.4;
+}
+
+/* The small arrow pointing from the help message to the question mark icon (on left side of tooltip) */
+.tooltip-text::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-right-color: #333;
+}
+
+.info-tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+.known-btn {
+  margin-top: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+#toggleKnown {
+  margin-left: auto;
+  background-color: rgb(252, 187, 134);
+  white-space: nowrap;
+  flex-shrink: 0;
 }

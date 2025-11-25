@@ -1,7 +1,8 @@
 import random
-from schemas.constants import DEFAULT_LIMIT
+from typing import Tuple
 
 from handlers.helpers import get_dbhandling, get_processdata
+from schemas.constants import DEFAULT_LIMIT
 from utils.data import get_quiz_distractors
 
 def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int = 0, limit: int = DEFAULT_LIMIT,
@@ -47,3 +48,22 @@ def update_word_prio_after_answering(word_id: int = 0, is_correct: bool = False,
     db = get_dbhandling()
     new_quized = quized + 1 if is_correct else max(0, quized - 1)
     return db.update_quized_prio_ts(word_id=word_id, occurrence=occurrence, quized=new_quized)
+
+def change_word_prio_to_negative(word_id: int = 0) -> bool:
+    """Update the word priority value to -1 (to fail the > 0.0 check when query for quiz).
+    Returns true if success, false otherwise"""
+    db = get_dbhandling()
+    return db.update_words_known(word_ids=[word_id])
+
+def reset_word_prio(word_id: int = 0, occurrence: int = None, quized: int = None,) -> bool:
+    """Re-calculate priority for the word.
+    `quized` and `occurrence` are option. Will query to get if they are 0.
+    Returns (true/false if success/fail, re-calculated priority)"""
+    db = get_dbhandling()
+    if occurrence is None or quized is None:
+        occurrence, quized = db.get_word_occurence_quized(word_id=word_id)
+    # quized can = 0 but not occurrence
+    if not occurrence:
+        return False
+    # call calculate prio
+    return db.update_quized_prio_ts(word_id=word_id, occurrence=occurrence, quized=quized)

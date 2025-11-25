@@ -29,6 +29,30 @@
           <span id="wordMain">{{ word_details.word }}</span>
         </div>
       </div>
+      
+      <button id="toggleKnown" type="button"
+          class="known-btn"
+          data-id="{{ word_details.id }}"
+          data-priority="{{ word_details.priority }}"
+          data-toggle-url="{{ url_for('main_ep.toggle_word_known') }}"
+          data-quized="{{ word_details.quized }}"
+          data-occurrence="{{ word_details.occurrence }}">
+        {% if word_details.priority and word_details.priority > 0.0 %}
+          Mark as known
+        {% else %}
+          Unmark known
+        {% endif %}
+      </button>
+      <span class="info-tooltip">
+        <span class="info-icon">?</span>
+        <span class="tooltip-text">
+          {% if word_details.priority and word_details.priority > 0.0 %}
+            Make this word no longer appear in quiz
+          {% else %}
+            Let this word appear in quiz again with your previous progress on this word. If your have progressed this word to a point where it no longer appears in normal quiz mode on its own, pressing this button does not change such behavior. Use the `Review known words` mode for it.
+          {% endif %}
+        </span>
+      </span>
     </div>
 
     <div class="word-body">

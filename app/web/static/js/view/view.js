@@ -1,3 +1,4 @@
+// =============================== Search word ===============================
 const searchForm = document.getElementById("searchWordForm");
 if (searchForm) {
   searchForm.addEventListener("submit", async function(e) {
@@ -64,7 +65,71 @@ async function handleViewSubmit(form, noticeId, showResId) {
   }
 }
 
-// View 1 specific word: set star
+
+// =============================== View specific word ===============================
+// ----- Toggle known/un-known for the word. aka. call backend to edit `priority` to 0.0 or recaculate it -----
+document.addEventListener("DOMContentLoaded", () => {
+  const toggleBtn = document.getElementById('toggleKnown');
+  if (!toggleBtn) return;
+
+  function buildLabel(priority) {
+    const p = parseFloat(priority) || 0;
+    return p > 0 ? 'Mark as known' : 'Unmark known';
+  }
+
+  toggleBtn.addEventListener('click', async function () {
+    const wordId = this.dataset.id;
+    const url = this.dataset.toggleUrl;
+    const curPriority = parseFloat(this.dataset.priority) || 0.0;
+    // If curPriority > 0 -> need to update priority to <= 0.0, word will never appear in (normal) quiz (mode) again
+    const updateToKnown = curPriority > 0.0;
+    const quized = this.dataset.quized;
+    const occurrence = this.dataset.occurrence;
+
+    // Disable while requesting
+    this.disabled = true;
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ word_id: wordId, update_to_known: updateToKnown, quized: quized, occurrence: occurrence})
+      });
+
+      const data = await (res.ok ? res.json() : Promise.resolve({ success: false }));
+      if (!res.ok || !data.success) {
+        console.error('Toggle known failed', data);
+        alert('Failed to change known status');
+        return;
+      }
+
+      // Set priority (don't need to be real priority), just enough to change UI
+      let newPriority = 1
+      if (updateToKnown) {
+        newPriority = -1
+      }
+      this.dataset.priority = newPriority;
+      // Update button label only (tooltip is a separate element to the right)
+      this.textContent = buildLabel(newPriority);
+      
+      // Update tooltip text in the adjacent .info-tooltip (if exists)
+      const tooltipContainer = this.nextElementSibling;
+      if (tooltipContainer && tooltipContainer.classList && tooltipContainer.classList.contains('info-tooltip')) {
+        const tt = tooltipContainer.querySelector('.tooltip-text');
+        if (tt) {
+          tt.textContent = newPriority > 0 ? 'Make this word no longer appear in quiz' : 'Let this word appear in quiz again with your previous progress on this word. If your have progressed this word to a point where it no longer appears in normal quiz mode on its own, pressing this button does not change such behavior. Use the `Review known words` mode for it.';
+        }
+      }
+    } catch (err) {
+      console.error('Toggle known error', err);
+      alert('Network error changing known status');
+    } finally {
+      this.disabled = false;
+    }
+  });
+});
+
+// ----- set star / favorite -----
 document.addEventListener("DOMContentLoaded", () => {
   const star = document.getElementById("wordStarToggle");
   if (!star) return;
@@ -114,7 +179,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// View 1 specific word play audio
+// ----- play audio -----
 document.addEventListener("DOMContentLoaded", () => {
   const playBtn = document.getElementById("playBtn");
   if (!playBtn) return;
@@ -161,7 +226,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 });
 
-// ============== Book ===============
+// =============================== Book ===============================
 // View 1 book: set star
 document.addEventListener("DOMContentLoaded", () => {
   const stars = document.querySelectorAll(".book-star-toggle");

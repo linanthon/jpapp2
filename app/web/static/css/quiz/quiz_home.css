@@ -120,7 +120,7 @@ AND make the div inside limitGroup (the input box and notice "1-100 results") al
   line-height: 1.4;
 }
 
-/* The small rrow pointing from the help message to the question mark icon */
+/* The small arrow pointing from the help message to the question mark icon */
 .tooltip-text::before {
   content: '';
   position: absolute;

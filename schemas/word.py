@@ -2,7 +2,7 @@ from typing import List
 
 class Word:
     def __init__(self, word_id=0, word="", senses="", spelling="", forms="", jlpt_level="",
-                 audio_mapping=[], star=False, occurrence=0, quized=0):
+                 audio_mapping=[], star=False, occurrence=0, quized=0, priority=0.0):
         """
         - word (str): the Kanji version (or the version that is commonly used, can also be Higarana/Katakana)
         - senses (str): the meaning, word type and position (verb, noun, ...)
@@ -24,6 +24,7 @@ class Word:
         self.star = star
         self.occurrence = occurrence
         self.quized = quized
+        self.priority = priority
 
         # For tracking borrowed English words
         self.eigo: bool = False
