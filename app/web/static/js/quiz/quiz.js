@@ -39,13 +39,17 @@ function openQuizOptions(actionUrl, mode) {
     const starCheckbox = document.getElementById('star');
     if (jlptDropdown) jlptDropdown.value = '';
     if (starCheckbox) starCheckbox.checked = false;
+  } else if (mode == 'known') {
+    if (jlptSelect) jlptSelect.style.display = '';
+    if (starSelect) starSelect.style.display = '';
+    if (usePrioGroup) usePrioGroup.style.display = 'none';
   } else {
     if (jlptSelect) jlptSelect.style.display = '';
     if (starSelect) starSelect.style.display = '';
+    if (usePrioGroup) usePrioGroup.style.display = '';
   }
   if (bookSelect) bookSelect.style.display = '';
   if (limitGroup) limitGroup.style.display = '';
-  if (usePrioGroup) usePrioGroup.style.display = '';
   if (distractorsDBGroup) distractorsDBGroup.style.display = '';
 
   // Show the entire options box

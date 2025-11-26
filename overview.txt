@@ -157,4 +157,6 @@ Process:
 - implement more advance functions
 
 TODO:
-- Add mode to re-test JP words that are already quized > QUIZ_HARD_CAP or is known
+- fix quiz not working if not use distractor from DB
+- update -n audio and check those that can't play
+

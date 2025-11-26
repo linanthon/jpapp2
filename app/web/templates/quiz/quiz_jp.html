@@ -31,6 +31,7 @@
   <!-- Pass `quizes` (dict containing all the testcases) and url to update word priority calcutlaion to JS -->
   <div id="quiz-backend-params"
      data-quizes='{{ quizes | tojson }}'
+     data-mode="{{ mode }}"
      data-update-prio-url="{{ url_for('main_ep.update_word_prio') }}"
      data-view-word-url-template="{{ url_for('main_ep.view_specific_word', word_id=0) }}"
      data-toggle-star-url="{{ url_for('main_ep.toggle_star') }}">

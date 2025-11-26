@@ -1079,7 +1079,7 @@ class DBHandling:
     def get_quiz(self, limit: int = DEFAULT_LIMIT,
                 sorts: List[Tuple[str]] = [], jlpt_filter: str = "",
                 star_only: bool = False, book_id: int = 0,
-                use_priority: bool = True, 
+                use_priority: bool = True, is_known: bool = False,
                 exclude_jp: List[str] = [], exclude_en: List[str] = []) -> List[Quiz]:
         """
         Query DB, get random words records and parse into Quiz objects.
@@ -1102,14 +1102,16 @@ class DBHandling:
         - use_priority: use 'occurrence' and 'quized' to calculate priority or not.
         More 'occurrence' = higher prio, higher 'quized' = lower prio. This can not use together with sort.
         Note that this is refer to the original Japanese word. Default: True.
+        - is_known: if true, will only get words that has `priority` <= 0.0 or
+        `quized` > QUIZ_HARD_CAP. Default: false.
         - exclude_jp: the list of EN words to not include in query. Default: empty.
         - exclude_en: the list of EN words to not include in query. Default: empty.
 
         Output: a list of QuizEN objects.
         """
         # Build SQL
-        sql_full, params = self._build_sort_filter_prio_sql(sorts, jlpt_filter, star_only, book_id,
-                                                            use_priority, limit, True, exclude_jp, exclude_en)
+        sql_full, params = self._build_sort_filter_prio_sql(limit, sorts, jlpt_filter, star_only, book_id,
+                                                            use_priority, is_known, True, exclude_jp, exclude_en)
 
         # Query
         q_res = []
@@ -1449,19 +1451,19 @@ class DBHandling:
     # ----------------------------------
 
     # -------- Build SQLs --------------
-    def _build_sort_filter_prio_sql(self, sorts: List[Tuple[str]] = [], jlpt_filter: str = "",
-                                    star_only: bool = False, book_id: int = 0,
-                                    use_priority: bool = True,
-                                    limit: int = DEFAULT_LIMIT, avoid_dash_sense: bool = False,
+    def _build_sort_filter_prio_sql(self, limit: int = DEFAULT_LIMIT, sorts: List[Tuple[str]] = [],
+                                    jlpt_filter: str = "", star_only: bool = False,
+                                    book_id: int = 0, use_priority: bool = True, 
+                                    is_known: bool = False, avoid_dash_sense: bool = False,
                                     exclude_jp: List[str] = [], exclude_en: List[str] = []) -> Tuple[sql.SQL, list]:
         """
         Build the SQL to query 'word', 'senses', 'jlpt_level', 'spelling', 'audio_mapping',
         'occurrence', 'quized', 'star' columns with sorts, filters and/or use priority vale.
         Use priority value is just a sort 'priority' DESC.
 
-        Will not get words with `priority=0`, aka. `quized` > QUIZ_HARD_CAP.
-
         Input: (check other params from get_quiz())
+        - is_known: will only get words with `priority` <= 0.0 
+        or `quized` > QUIZ_HARD_CAP if true. Default: false.
         - avoid_dash_sense: avoid querying record whose 'senses' includes dashes ('-'),
         i.e.: 的's senses is '-ical,-ive,-al,-ic,-y'
         - exclude_jp: list of JP words to exclude
@@ -1478,16 +1480,17 @@ class DBHandling:
                                table=sql.Identifier(TABLE_WORDS)
                             )
         
-        # ----- Book Filter -----
+        # ----- Book Filter ----- Guarantee keyword "WHERE"
         if book_id:
             # Join ref table to limit book_id
-            sql_full += sql.SQL(""" JOIN {ref_table} AS r ON w.id = r.word_id 
-                                WHERE r.book_id = {bid} AND w.priority > 0.0""").format(
-                                    ref_table=sql.Identifier(TABLE_WORD_BOOK_REF),
-                                    bid=sql.Literal(book_id)
+            sql_full += sql.SQL(" JOIN {ref_table} AS r ON w.id = r.word_id WHERE ").format(
+                                    ref_table=sql.Identifier(TABLE_WORD_BOOK_REF)
                                 )
+            conditions.append(sql.SQL("r.book_id = {bid}").format(
+                bid=sql.Literal(book_id)
+            ))
         else:
-            sql_full += sql.SQL(" WHERE w.priority > 0.0")
+            sql_full += sql.SQL(" WHERE ")
         
         # ----- Filter -----
         if exclude_jp:
@@ -1503,14 +1506,22 @@ class DBHandling:
         if star_only:
             conditions.append(sql.SQL("w.star = true"))
 
-        # Combine filters
-        if conditions:
-            sql_full += sql.SQL(" AND ") + sql.SQL(" AND ").join(conditions)
+        # ----- Review known word mode -----
+        if is_known:
+            conditions.append(sql.SQL("(w.priority <= 0.0 OR w.quized > {hard_cap})").format(
+                hard_cap=sql.Literal(QUIZ_HARD_CAP)
+            ))
+        else:
+            conditions.append(sql.SQL("w.priority > 0.0"))
 
         # Avoid word with senses that have '-'
         if avoid_dash_sense:
-            sql_full += sql.SQL(" AND w.senses NOT LIKE %s")
+            conditions.append(sql.SQL("w.senses NOT LIKE %s"))
             params.append("%-%")
+
+        # Combine conditions
+        if conditions:
+            sql_full += sql.SQL(" AND ").join(conditions)
         
         # ----- Sort & Prio -----
         conditions.clear()  # clear condition for sort
@@ -1523,12 +1534,14 @@ class DBHandling:
                 order=sql.SQL(", w.").join(order_parts)
             ))
         elif not sorts and use_priority:
-            conditions.append(sql.SQL(" ORDER BY w.{order} DESC").format(
-                order=sql.Identifier("priority")
-            ))
+            # sort by priority instead
+            conditions.append(sql.SQL(" ORDER BY w.priority DESC"))
+        elif not sorts and not use_priority:
+            # nothing specified, use `last_tested`
+            conditions.append(sql.SQL(" ORDER BY w.last_tested ASC"))
         else:
             log.error("Can not use sort and priority value at the same time")
-            return []
+            return None, []
         
         # Combine sort
         if conditions:

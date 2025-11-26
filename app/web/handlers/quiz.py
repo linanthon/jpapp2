@@ -1,12 +1,11 @@
 import random
-from typing import Tuple
 
 from handlers.helpers import get_dbhandling, get_processdata
 from schemas.constants import DEFAULT_LIMIT
 from utils.data import get_quiz_distractors
 
-def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int = 0, limit: int = DEFAULT_LIMIT,
-                       use_priority: bool = True, get_distractors_from_db: bool = True):
+def get_word_jp_quizes(limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star: bool = False, book_id: int = None,
+                       use_priority: bool = True, is_known: bool = False, get_distractors_from_db: bool = True):
     """Get JP->EN quizes. Return a dict:
     - key: word ID
     - value: a dict of items:
@@ -24,7 +23,7 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
 
     res = {}
     tests = db.get_quiz(limit=limit, jlpt_filter=jlpt_level, star_only=star, book_id=book_id,
-                        use_priority=use_priority)
+                        use_priority=use_priority, is_known=is_known)
     for test_case in tests:
         # randomize correct answer location
         choices = [test_case.en]

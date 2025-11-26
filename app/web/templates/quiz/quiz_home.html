@@ -42,6 +42,15 @@
     </button>
   </form>
 
+  <form id="quizKnown">
+    <button type="button" id="quizSelect"
+            data-action="{{ url_for('main_ep.quiz_known') }}"
+            data-mode="known"
+            onclick="openQuizOptionsFromButton(this)">
+      Review known JP
+    </button>
+  </form>
+
 
   <!-- ======================= Quiz option box ======================= -->
   <form id="quizOptionsForm" style="display:none" method="GET">

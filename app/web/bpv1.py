@@ -243,8 +243,10 @@ def quiz_jp():
     use_priority = parse_bool_param(request.args.get("use_priority", None))
     get_distractors_from_db = parse_bool_param(request.args.get("get_distractors_from_db", None))
 
-    quizes = get_word_jp_quizes(jlpt_level, star, book_id, limit, use_priority, get_distractors_from_db)
-    return render_template("quiz/quiz_jp.html", quizes=quizes)
+    quizes = get_word_jp_quizes(limit=limit, jlpt_level=jlpt_level, star=star, book_id=book_id,
+                                use_priority=use_priority, 
+                                get_distractors_from_db=get_distractors_from_db)
+    return render_template("quiz/quiz_jp.html", quizes=quizes, mode="jp")
 
 @bp.route("/quiz/check", methods=["POST"])
 def quiz_check():
@@ -257,12 +259,30 @@ def quiz_check():
             <a href="{{ url_for('main_ep.quiz') }}">Try again</a>
         """)
 
-# ----- Quiz EN ---------
+@bp.route("/quiz/known", methods=["GET"])
+def quiz_known():
+    book_id = request.args.get("book_id", "")
+    jlpt_level = validate_jlpt_level(request.args.get("jlpt_level", ""))
+    star = parse_bool_param(request.args.get("star", None))
+    try:
+        limit = int(request.args.get("limit", str(DEFAULT_LIMIT)))
+    except:
+        limit = DEFAULT_LIMIT
+    get_distractors_from_db = parse_bool_param(request.args.get("get_distractors_from_db", None))
+
+    quizes = get_word_jp_quizes(limit=limit, jlpt_level=jlpt_level, star=star, book_id=book_id,
+                                use_priority=False, is_known=True,
+                                get_distractors_from_db=get_distractors_from_db)
+    print("LEN:", len(quizes))
+    print("QUIZ:", quizes)
+    return render_template("quiz/quiz_jp.html", quizes=quizes, mode="known")
+
+# ----- Quiz EN --------- TODO: NOT IMPLEMENTED YET
 @bp.route("/quiz/en", methods=["GET"])
 def quiz_en():
     return render_template("quiz/quiz_en.html")
 
-# ----- Quiz Sentence (JP) ---------
+# ----- Quiz Sentence (JP) --------- TODO: NOT IMPLEMENTED YET
 @bp.route("/quiz/sentence", methods=["GET"])
 def quiz_sentence():
     return render_template("quiz/quiz_sentence.html")

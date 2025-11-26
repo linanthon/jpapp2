@@ -6,6 +6,7 @@ let quizCards = [];
 let answered = false;
 const quizBackendParams = document.getElementById("quiz-backend-params");
 const quizData = JSON.parse(quizBackendParams.dataset.quizes);
+const quizMode = quizBackendParams.dataset.mode;
 const updatePrioUrl = quizBackendParams.dataset.updatePrioUrl;
 const viewWordUrlTemplate = quizBackendParams.dataset.viewWordUrlTemplate;
 const toggleStarUrl = quizBackendParams.dataset.toggleStarUrl;
@@ -161,7 +162,11 @@ function handleChoiceClick(wordId, selectedChoice, correctAnswer, clickedBtn, qu
   if (isCorrect) {
     clickedBtn.classList.add('correct');
     correctCount++;
-    updateWordPriority(wordId, true, quized, occurrence);
+    
+    // No update if quiz mode is "known" words only
+    if (quizMode != "known") {
+      updateWordPriority(wordId, true, quized, occurrence);
+    }
   } else {
     clickedBtn.classList.add('incorrect');
     // Highlight the correct answer
@@ -170,7 +175,10 @@ function handleChoiceClick(wordId, selectedChoice, correctAnswer, clickedBtn, qu
         btn.classList.add('correct');
       }
     });
-    updateWordPriority(wordId, false, quized, occurrence);
+    
+    if (quizMode != "known") {
+      updateWordPriority(wordId, false, quized, occurrence);
+    }
   }
   
   updateScoreBoard();
