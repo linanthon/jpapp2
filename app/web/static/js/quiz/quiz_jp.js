@@ -82,6 +82,21 @@ function createQuizCard(wordId, data, index) {
   viewWordLink.className = 'view-word-link';
   viewWordLink.textContent = 'Go to this word';
   
+  // Tooltip for view word link
+  const viewLinkTooltip = document.createElement('span');
+  viewLinkTooltip.className = 'view-link-tooltip';
+  
+  const tooltipIcon = document.createElement('span');
+  tooltipIcon.className = 'tooltip-icon';
+  tooltipIcon.textContent = '?';
+  
+  const tooltipText = document.createElement('span');
+  tooltipText.className = 'tooltip-text';
+  tooltipText.textContent = 'Your progress in this quiz session is saved, but the quiz will start over if you go there and return.';
+  
+  viewLinkTooltip.appendChild(tooltipIcon);
+  viewLinkTooltip.appendChild(tooltipText);
+  
   const audioBtn = document.createElement('button');
   audioBtn.className = 'audio-btn';
   audioBtn.textContent = '🔊 Play Audio';
@@ -90,6 +105,7 @@ function createQuizCard(wordId, data, index) {
   questionSection.appendChild(jpWordContainer);
   questionSection.appendChild(spelling);
   questionSection.appendChild(viewWordLink);
+  questionSection.appendChild(viewLinkTooltip);
   questionSection.appendChild(audioBtn);
   
   // Choices section

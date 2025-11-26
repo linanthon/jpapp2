@@ -38,7 +38,8 @@ function getParentPage() {
 
     if (path.startsWith(urlPrefix + '/view/word/')) {
         const savePreviousPage = sessionStorage.getItem('savePreviousPage');
-        if (savePreviousPage && (savePreviousPage.startsWith(urlPrefix + '/view/search-word') || savePreviousPage.startsWith(urlPrefix + '/view/word?'))) {
+        if (savePreviousPage && (savePreviousPage.startsWith(urlPrefix + '/view/search-word') || 
+            savePreviousPage.startsWith(urlPrefix + '/view/word?') || savePreviousPage.startsWith(urlPrefix + '/quiz/jp'))) {
             return savePreviousPage;
         }
         return urlPrefix + '/view/word';

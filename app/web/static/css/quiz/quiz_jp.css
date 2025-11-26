@@ -89,7 +89,7 @@
 /* Link to view word detail */
 .view-word-link {
   position: absolute;
-  right: 10px;
+  right: 30px;
   top: 10px;
   color: #0077be;
   text-decoration: underline;
@@ -101,6 +101,67 @@
 
 .view-word-link:hover {
   color: #005a8c;
+}
+
+/* Tooltip for view word link */
+.view-link-tooltip {
+  position: absolute;
+  right: 0px;
+  top: 10px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tooltip-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #666;
+  color: #666;
+  font-size: 11px;
+  font-weight: bold;
+  cursor: help;
+  background-color: #fff;
+}
+
+.view-link-tooltip .tooltip-text {
+  visibility: hidden;
+  opacity: 0;
+  position: absolute;
+  left: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  background-color: #333;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  white-space: normal;
+  width: 250px;
+  font-size: 13px;
+  font-weight: normal;
+  z-index: 1000;
+  transition: opacity 0.2s ease-in-out;
+  pointer-events: none;
+  line-height: 1.4;
+}
+
+/* Arrow pointing from tooltip to icon */
+.view-link-tooltip .tooltip-text::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-right-color: #333;
+}
+
+.view-link-tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
 }
 
 .audio-btn {
