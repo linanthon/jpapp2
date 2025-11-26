@@ -219,9 +219,10 @@ async function playAudio(audioMapping) {
     alert('No audio available for this word');
     return;
   }
+  const urlPrefix = document.documentElement.getAttribute('data-url-prefix');
 
   for (const syllable of audioMapping || []) {
-      const filename = `/v1/audio/${syllable}.wav`
+      const filename = `${urlPrefix}/audio/${syllable}.wav`
       const audio = new Audio(filename);
     await new Promise(resolve => {
       audio.onended = resolve;

@@ -157,11 +157,4 @@ Process:
 - implement more advance functions
 
 TODO:
-- in Quiz:
-    + add star
-    + add link to quiz word
-    + add mark as known (will change priority to -1, never shows up again)
-
-- Add mode to re-test JP words that are already quized > QUIZ_HARD_CAP
-
-- Fix audo path?
+- Add mode to re-test JP words that are already quized > QUIZ_HARD_CAP or is known
