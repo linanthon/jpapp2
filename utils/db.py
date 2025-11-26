@@ -681,14 +681,14 @@ class DBHandling:
         - limit: the amount of return records, if <= 0, use default value of 10.
         - offset: skip the first X records.
 
-        Output: a list of word (with this JLPT level, spelling, senses)
+        Output: a list of word (id, word, spelling, senses, star, priority)
         """
         res: list = []
         if limit < 1:
             limit = DEFAULT_LIMIT
         
         params = []
-        query = sql.SQL("SELECT id, word, spelling, senses, priority FROM {table}").format(
+        query = sql.SQL("SELECT id, word, spelling, senses, star, priority FROM {table}").format(
             table=sql.Identifier(TABLE_WORDS)
         )
         if jlpt_level:

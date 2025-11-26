@@ -40,19 +40,67 @@
 .question-section {
   text-align: center;
   margin-bottom: 25px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Container for star and JP word */
+.jp-word-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  position: relative;
+  right: 26px; /* center the word */
+}
+
+/* Star toggle in quiz */
+.quiz-star {
+  font-size: 28px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 5px;
+  flex-shrink: 0;
+}
+
+.quiz-star.yellow { color: gold; }
+.quiz-star.white { color: lightgray; }
+
+.quiz-star:active {
+  transform: scale(0.7);
 }
 
 .jp-word {
   font-size: 48px;
   font-weight: bold;
   color: #045;
-  margin-bottom: 10px;
 }
 
 .spelling {
   font-size: 20px;
   color: #666;
   margin-bottom: 15px;
+}
+
+/* Link to view word detail */
+.view-word-link {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  color: #0077be;
+  text-decoration: underline;
+  border: none;
+  background: transparent;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.view-word-link:hover {
+  color: #005a8c;
 }
 
 .audio-btn {

@@ -22,7 +22,7 @@ class Quiz:
         self.audio_mapping = audio_mapping
         self.occurrence = occurrence
         self.quized = quized
-        self.start = star
+        self.star = star
 
 
 class QuizDistractors:

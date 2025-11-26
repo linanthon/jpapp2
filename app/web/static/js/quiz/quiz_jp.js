@@ -7,6 +7,8 @@ let answered = false;
 const quizBackendParams = document.getElementById("quiz-backend-params");
 const quizData = JSON.parse(quizBackendParams.dataset.quizes);
 const updatePrioUrl = quizBackendParams.dataset.updatePrioUrl;
+const viewWordUrlTemplate = quizBackendParams.dataset.viewWordUrlTemplate;
+const toggleStarUrl = quizBackendParams.dataset.toggleStarUrl;
 
 // Initialize quiz on page load
 document.addEventListener('DOMContentLoaded', () => {
@@ -47,21 +49,47 @@ function createQuizCard(wordId, data, index) {
   const questionSection = document.createElement('div');
   questionSection.className = 'question-section';
   
+  // Star toggle button (like wordStarToggle in view_specific_word)
+  const starBtn = document.createElement('button');
+  starBtn.type = 'button';
+  starBtn.className = `quiz-star ${data.star ? 'yellow' : 'white'}`;
+  starBtn.ariaPressed = data.star ? 'true' : 'false';
+  starBtn.textContent = '★';
+  starBtn.dataset.id = wordId;
+  starBtn.dataset.star = data.star ? '1' : '0';
+  starBtn.onclick = (e) => {
+    e.stopPropagation();
+    toggleQuizWordStar(starBtn, wordId, toggleStarUrl);
+  };
+  
   const jpWord = document.createElement('div');
   jpWord.className = 'jp-word';
   jpWord.textContent = data.question;
   
+  // Container for star and JP word
+  const jpWordContainer = document.createElement('div');
+  jpWordContainer.className = 'jp-word-container';
+  jpWordContainer.appendChild(starBtn);
+  jpWordContainer.appendChild(jpWord);
+  
   const spelling = document.createElement('div');
   spelling.className = 'spelling';
   spelling.textContent = data.spelling;
+  
+  // Link to word detail page
+  const viewWordLink = document.createElement('a');
+  viewWordLink.href = `${viewWordUrlTemplate}${wordId}`;
+  viewWordLink.className = 'view-word-link';
+  viewWordLink.textContent = 'Go to this word';
   
   const audioBtn = document.createElement('button');
   audioBtn.className = 'audio-btn';
   audioBtn.textContent = '🔊 Play Audio';
   audioBtn.onclick = () => playAudio(data.audio_mapping); // is list
   
-  questionSection.appendChild(jpWord);
+  questionSection.appendChild(jpWordContainer);
   questionSection.appendChild(spelling);
+  questionSection.appendChild(viewWordLink);
   questionSection.appendChild(audioBtn);
   
   // Choices section
@@ -215,6 +243,46 @@ async function updateWordPriority(wordId, isCorrect, quized, occurrence) {
     }
   } catch (error) {
     console.error('Error updating word priority:', error);
+  }
+}
+
+// Toggle star for a quiz word
+async function toggleQuizWordStar(starBtn, wordId, toggleStarUrl) {
+  const isYellow = starBtn.classList.contains('yellow');
+  
+  // Toggle UI immediately
+  starBtn.classList.toggle('yellow', !isYellow);
+  starBtn.classList.toggle('white', isYellow);
+  
+  const starParam = (!isYellow).toString();
+  
+  try {
+    const resp = await fetch(toggleStarUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: wordId, objType: 'word', star: starParam })
+    });
+    const data = await resp.json();
+    
+    if (!resp.ok || !data.success) {
+      // Revert UI on failure
+      starBtn.classList.toggle('yellow', isYellow);
+      starBtn.classList.toggle('white', !isYellow);
+      console.error('Toggle star failed:', data);
+      return;
+    }
+    
+    // Keep UI in sync with server response
+    if (typeof data.starred !== 'undefined') {
+      const serverStarred = data.starred === 1;
+      starBtn.classList.toggle('yellow', serverStarred);
+      starBtn.classList.toggle('white', !serverStarred);
+    }
+  } catch (err) {
+    // Revert on network error
+    starBtn.classList.toggle('yellow', isYellow);
+    starBtn.classList.toggle('white', !isYellow);
+    console.error('Failed to toggle star:', err);
   }
 }
 

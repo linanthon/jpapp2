@@ -1,7 +1,7 @@
 /* Remove bullets for showWordList (view word - no search) and align list */
 #showWordList ul {
   list-style-type: none;
-  max-width: 300px;
+  max-width: 350px;
   margin: 20px auto;
   padding-left: 50px;
 }
@@ -9,6 +9,28 @@
 #showWordList li {
   text-align: left;
   margin: 4px 0;
+}
+
+.word-star-toggle { font-size: 28px; }
+.word-star-toggle.yellow { color: gold; }
+.word-star-toggle.white { color: lightgray; }
+
+.word-star-toggle:active {
+  transform: scale(0.7);  /* press effect */
+}
+
+/* Cancel the global button centering and keep existing .star rules */
+#wordStarToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;          /* remove margin:auto from global rules */
+  padding: 2px 4px;
+  line-height: 1; 
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 24px;    /* adjust size if needed */
 }
 
 /* ===== Add: align JLPT label/control and star label/checkbox like mock ===== */

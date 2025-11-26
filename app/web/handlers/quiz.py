@@ -17,6 +17,7 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
         - choices - a list of all 4 choices (shuffled)
         - quized - the number of correct times
         - occurrence - the total appearance count of this word in DB
+        - star - the word starred or not
     """
     db = get_dbhandling()
     pdata = get_processdata()
@@ -37,7 +38,8 @@ def get_word_jp_quizes(jlpt_level: str = None, star: bool = False, book_id: int 
             "correct": test_case.en,
             "choices": choices,
             "quized": test_case.quized,
-            "occurrence": test_case.occurrence
+            "occurrence": test_case.occurrence,
+            "star": test_case.star
         }
     return res
 

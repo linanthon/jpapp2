@@ -15,7 +15,7 @@
     <button class="home-btn" onclick="goHome()">🏠Home</button>
   </div>
 
-  <!-- Filters: JLPT dropdown + starred checkbox (auto-submit on change) -->
+  <!-- starred checkbox (auto-submit on change) -->
   <form id="viewBooksForm" method="GET" action="{{ url_for('main_ep.view_books') }}">
     <label for="star"><strong>star:</strong></label>
     <input type="checkbox" id="star" name="star" value="1"
@@ -32,9 +32,9 @@
               class="book-star-toggle {{ 'yellow' if b.star else 'white' }}"
               aria-pressed="{{ 'true' if b.star else 'false' }}"
               data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
-              data-id="{{ b.id }}"
+              data-id="{{ b.book_id }}"
             >★</button>
-            <a href="{{ url_for('main_ep.view_specific_book', book_id=b.id) }}">
+            <a href="{{ url_for('main_ep.view_specific_book', book_id=b.book_id) }}">
               <strong>{{ b.name }}</strong>
             </a>
           </li>
