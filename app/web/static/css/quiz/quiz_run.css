@@ -27,7 +27,7 @@
   background-color: #fff;
   border: 2px solid #045;
   border-radius: 12px;
-  padding: 30px;
+  padding: 24px;
   margin-bottom: 20px;
   display: none; /* Hide all cards by default */
 }
@@ -47,14 +47,16 @@
 }
 
 /* Container for star and JP word */
-.jp-word-container {
+.question-word-container {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
+  margin-top: 20px;
   margin-bottom: 10px;
   position: relative;
   right: 22px; /* center the word */
+  max-width: 500px;
 }
 
 /* Star toggle in quiz */
@@ -74,7 +76,7 @@
   transform: scale(0.7);
 }
 
-.jp-word {
+.question-word {
   font-size: 48px;
   font-weight: bold;
   color: #045;

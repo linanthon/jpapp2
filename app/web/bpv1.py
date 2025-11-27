@@ -8,7 +8,7 @@ from handlers.view import (handle_search_word, handle_view_specific_word, handle
 from handlers.helpers import (get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level,
                               parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id)
 from handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
-                           change_word_prio_to_negative, reset_word_prio)
+                           change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
 
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 
@@ -246,7 +246,7 @@ def quiz_jp():
     quizes = get_word_jp_quizes(limit=limit, jlpt_level=jlpt_level, star=star, book_id=book_id,
                                 use_priority=use_priority, 
                                 get_distractors_from_db=get_distractors_from_db)
-    return render_template("quiz/quiz_jp.html", quizes=quizes, mode="jp")
+    return render_template("quiz/quiz_run.html", quizes=quizes, mode="jp")
 
 @bp.route("/quiz/known", methods=["GET"])
 def quiz_known():
@@ -262,14 +262,25 @@ def quiz_known():
     quizes = get_word_jp_quizes(limit=limit, jlpt_level=jlpt_level, star=star, book_id=book_id,
                                 use_priority=False, is_known=True,
                                 get_distractors_from_db=get_distractors_from_db)
-    print("LEN:", len(quizes))
-    print("QUIZ:", quizes)
-    return render_template("quiz/quiz_jp.html", quizes=quizes, mode="known")
+    return render_template("quiz/quiz_run.html", quizes=quizes, mode="known")
 
-# ----- Quiz EN --------- TODO: NOT IMPLEMENTED YET
+# ----- Quiz EN ---------
 @bp.route("/quiz/en", methods=["GET"])
 def quiz_en():
-    return render_template("quiz/quiz_en.html")
+    book_id = request.args.get("book_id", "")
+    jlpt_level = validate_jlpt_level(request.args.get("jlpt_level", ""))
+    star = parse_bool_param(request.args.get("star", None))
+    try:
+        limit = int(request.args.get("limit", str(DEFAULT_LIMIT)))
+    except:
+        limit = DEFAULT_LIMIT
+    use_priority = parse_bool_param(request.args.get("use_priority", None))
+    get_distractors_from_db = parse_bool_param(request.args.get("get_distractors_from_db", None))
+
+    quizes = get_word_en_quizes(limit=limit, jlpt_level=jlpt_level, star=star, book_id=book_id,
+                                use_priority=use_priority, 
+                                get_distractors_from_db=get_distractors_from_db)
+    return render_template("quiz/quiz_run.html", quizes=quizes, mode="en")
 
 # ----- Quiz Sentence (JP) --------- TODO: NOT IMPLEMENTED YET
 @bp.route("/quiz/sentence", methods=["GET"])

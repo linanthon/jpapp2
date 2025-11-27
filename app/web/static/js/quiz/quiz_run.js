@@ -63,19 +63,21 @@ function createQuizCard(wordId, data, index) {
     toggleQuizWordStar(starBtn, wordId, toggleStarUrl);
   };
   
-  const jpWord = document.createElement('div');
-  jpWord.className = 'jp-word';
-  jpWord.textContent = data.question;
+  const questionWord = document.createElement('div');
+  questionWord.className = 'question-word';
+  questionWord.textContent = data.question;
   
-  // Container for star and JP word
-  const jpWordContainer = document.createElement('div');
-  jpWordContainer.className = 'jp-word-container';
-  jpWordContainer.appendChild(starBtn);
-  jpWordContainer.appendChild(jpWord);
+  // Container for star and question word
+  const questionWordContainer = document.createElement('div');
+  questionWordContainer.className = 'question-word-container';
+  questionWordContainer.appendChild(starBtn);
+  questionWordContainer.appendChild(questionWord);
   
-  const spelling = document.createElement('div');
-  spelling.className = 'spelling';
-  spelling.textContent = data.spelling;
+  if (quizMode != "en") {
+    const spelling = document.createElement('div');
+    spelling.className = 'spelling';
+    spelling.textContent = data.spelling;
+  }
   
   // Link to word detail page
   const viewWordLink = document.createElement('a');
@@ -98,16 +100,22 @@ function createQuizCard(wordId, data, index) {
   viewLinkTooltip.appendChild(tooltipIcon);
   viewLinkTooltip.appendChild(tooltipText);
   
-  const audioBtn = document.createElement('button');
-  audioBtn.className = 'audio-btn';
-  audioBtn.textContent = '🔊 Play Audio';
-  audioBtn.onclick = () => playAudio(data.audio_mapping); // is list
+  if (quizMode != "en") {
+    const audioBtn = document.createElement('button');
+    audioBtn.className = 'audio-btn';
+    audioBtn.textContent = '🔊 Play Audio';
+    audioBtn.onclick = () => playAudio(data.audio_mapping); // is list
+  }
   
-  questionSection.appendChild(jpWordContainer);
-  questionSection.appendChild(spelling);
+  questionSection.appendChild(questionWordContainer);
+  if (quizMode != "en") {
+    questionSection.appendChild(spelling);
+  }
   questionSection.appendChild(viewWordLink);
   questionSection.appendChild(viewLinkTooltip);
-  questionSection.appendChild(audioBtn);
+  if (quizMode != "en") {
+    questionSection.appendChild(audioBtn);
+  }
   
   // Choices section
   const choicesSection = document.createElement('div');
