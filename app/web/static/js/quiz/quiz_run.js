@@ -73,11 +73,9 @@ function createQuizCard(wordId, data, index) {
   questionWordContainer.appendChild(starBtn);
   questionWordContainer.appendChild(questionWord);
   
-  if (quizMode != "en") {
-    const spelling = document.createElement('div');
-    spelling.className = 'spelling';
-    spelling.textContent = data.spelling;
-  }
+  const spelling = document.createElement('div');
+  spelling.className = 'spelling';
+  spelling.textContent = data.spelling;
   
   // Link to word detail page
   const viewWordLink = document.createElement('a');
@@ -100,12 +98,10 @@ function createQuizCard(wordId, data, index) {
   viewLinkTooltip.appendChild(tooltipIcon);
   viewLinkTooltip.appendChild(tooltipText);
   
-  if (quizMode != "en") {
-    const audioBtn = document.createElement('button');
-    audioBtn.className = 'audio-btn';
-    audioBtn.textContent = '🔊 Play Audio';
-    audioBtn.onclick = () => playAudio(data.audio_mapping); // is list
-  }
+  const audioBtn = document.createElement('button');
+  audioBtn.className = 'audio-btn';
+  audioBtn.textContent = '🔊 Play Audio';
+  audioBtn.onclick = () => playAudio(data.audio_mapping); // is list
   
   questionSection.appendChild(questionWordContainer);
   if (quizMode != "en") {

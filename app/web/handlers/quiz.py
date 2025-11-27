@@ -95,6 +95,8 @@ def get_word_en_quizes(limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star:
         # save to return
         res[test_case.word_id] = {
             "question": test_case.en,
+            "spelling": "",
+            "audio_mapping": [],
             "correct": test_case.jp,
             "choices": choices,
             "quized": test_case.quized,

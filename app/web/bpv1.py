@@ -285,7 +285,7 @@ def quiz_en():
 # ----- Quiz Sentence (JP) --------- TODO: NOT IMPLEMENTED YET
 @bp.route("/quiz/sentence", methods=["GET"])
 def quiz_sentence():
-    return render_template("quiz/quiz_sentence.html")
+    return "Not implemented yet"
 
 # ----- Quiz support --------
 @bp.route("/word/prio", methods=["POST"])
