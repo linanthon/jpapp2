@@ -1,5 +1,4 @@
 import os
-# import miniaudio
 import re
 import requests
 
@@ -209,7 +208,9 @@ def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = 
         for instance in pdata.get_random_jamdict_entries(jp_word, en_word, distractor_count):
             # kanji might be missing for english borrowed words, kana always exists
             jp_choice = instance.kanji_forms[0].text if instance.kanji_forms else instance.kana_forms[0].text
-            en_choice = db.get_meanings(jp_choice, instance.senses)[0]
+            # the senses is List[Senses], take the first one, use `text()` to get only the meaning (no pos)
+            en_choice = instance.senses[0].text()
+
             res.jp.append(jp_choice)
             res.en.append(en_choice)
     return res

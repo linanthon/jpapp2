@@ -314,36 +314,41 @@ class ProcessData():
     def get_random_jamdict_entries(self, exclude_jp: str = "", exclude_en: str = "",
                                    limit: int = DEFAULT_DISTRACTOR_COUNT) -> List[JMDEntry]:
         """
-        Get random word in Jamdict, then extract its JP word or EN word (the first meaning)
+        Get random word in Jamdict, then extract its JP word or EN word (the first meaning).
+        This is used to get distractors (incorrect answer choices) for quiz.
 
         Input:
-        - exclude_jp
+        - exclude_jp: the JP word of the question or the correct answer
+        - exclude_en: the EN word of the question or the correct answer
+        - limit: the number of distractors
+
+        Output: a list of JMDEntry, note that the `senses` property is List[Sense].
         """
         out: List[JMDEntry] = []
         with self.jam.jmdict.ctx() as ctx:
-            query = sql.SQL("SELECT DISTINCT e.idseq FROM Entry e JOIN Sense s ON e.idseq = s.idseq WHERE 1=1")
+            query = """SELECT DISTINCT e.idseq FROM Entry e 
+                        JOIN Sense s ON e.idseq = s.idseq 
+                        JOIN SenseGloss sg on s.id = sg.sid WHERE 1=1"""
             params = []
 
             # Exclude the JP word
             if exclude_jp:
                 # Exclude exact match word in both Kanji and Kana
-                query += sql.SQL("""
+                query += """
                 AND NOT EXISTS (
-                    SELECT 1 FROM Kanji k WHERE k.idseq = e.idseq AND k.text = %s
+                    SELECT k.idseq FROM Kanji k WHERE k.idseq = e.idseq AND k.text = ?
                 )
                 AND NOT EXISTS (
-                    SELECT 1 FROM Reading r WHERE r.idseq = e.idseq AND r.text = %s
-                )""")
-                params += [exclude_jp, exclude_jp]
+                    SELECT r.idseq FROM Kana r WHERE r.idseq = e.idseq AND r.text = ?
+                )"""
+                params.extend([exclude_jp, exclude_jp])
 
             # Exclude those of the same meaning
             if exclude_en:
-                query += sql.SQL(" AND s.gloss NOT LIKE %s")
+                query += " AND sg.text NOT LIKE ?"
                 params.append(f"%{exclude_en}%")
 
-            query += sql.SQL(" ORDER BY RANDOM() LIMIT {limit}").format(
-                limit=sql.Literal(limit)
-            )
+            query += f" ORDER BY RANDOM() LIMIT {limit}"
 
             rows = ctx.select(query, params)
             for row in rows:

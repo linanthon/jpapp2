@@ -157,6 +157,4 @@ Process:
 - implement more advance functions
 
 TODO:
-- fix quiz not working if not use distractor from DB
 - update -n audio and check those that can't play
-

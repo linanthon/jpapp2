@@ -248,17 +248,6 @@ def quiz_jp():
                                 get_distractors_from_db=get_distractors_from_db)
     return render_template("quiz/quiz_jp.html", quizes=quizes, mode="jp")
 
-@bp.route("/quiz/check", methods=["POST"])
-def quiz_check():
-    user_answer = request.form.get("answer", "")
-    if user_answer == "本":  # "hon"
-        return render_template("quiz/quiz_result.html")
-    else:
-        return render_template_string("""
-            <p>❌ Wrong, the correct answer is 本.</p>
-            <a href="{{ url_for('main_ep.quiz') }}">Try again</a>
-        """)
-
 @bp.route("/quiz/known", methods=["GET"])
 def quiz_known():
     book_id = request.args.get("book_id", "")
