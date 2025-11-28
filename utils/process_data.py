@@ -275,14 +275,14 @@ class ProcessData():
                 prev_romaji = audio_romaji_list.pop()
                 new_romaji = prev_romaji + "n"
             
-            # If is prolonged sound
+            # If is prolonged sound, currently just use the vowel in last sound
             elif i > 0 and kana == "ー":
                 new_romaji = audio_romaji_list[-1][-1]
                 #TODO: if update prolonged .wav, need pop prev, new = prev + prev[-1] (i.e.: "chii" instead of "chi" "i")
 
             # If is Sokuon (small tsu) 
             elif i > 0 and kana in ["っ", "ッ"] and i < len(kana_list):
-                # We needs the word after small tsu to determine what kind it is, among k, s, t, p
+                # Use the word after small tsu to determine what kind it is, among k, s, t, p
                 new_romaji = ROMAJI_MAP.get(kana + kana_list[i+1][0])
 
                 # Approach #2: for more natural, requires more audio files
