@@ -199,8 +199,7 @@ def read_jlpt(dirname: str = JLPT_DIR) -> None:
             except Exception as e:
                 log.error(f"Failed to read JLPT file {filename}: {e}")
 
-"""Currently unavailable because failed to install miniaudio on Windows env,
-and maybe this is not needed after all if use web UI (let the browser play)"""
+"""Unavailable because failed to install miniaudio on Windows env"""
 def play_audio(audio_mapping: List[str]) -> None:
     """
     Read all the audio files accordingly to audio_mapping, concatenate then play it
@@ -274,18 +273,23 @@ def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = 
 
 
 def scrape_all_jlpt(option: int = 0) -> str:
-    """Scrape for all 5 JLPT levels. Files are saved as '/data/jlpt/n{level}.txt'.
-    Right now only has wikipedia version
+    """Scrape for all 5 JLPT levels. Files are saved as './data/jlpt/n{level}.txt'.
+    Right now only has wikipedia version.
     
     Param:
     - option:
         + 0 (default): scrape wikipedia (5000 most common words, this comes with frequency)
-        + Todo: more option?
+        + Todo: more option? (don't count on it)
 
-    Return: error
+    Return: Error string. Empty string if no error.
     """
     if option < 0 or option > 2:
         return "invalid option"
+    
+    # Check if files already existed
+    for level in range(5, 0, -1):
+        if os.path.exists(f"data/jlpt/n{level}.txt"):
+            return "JLPT file(s) already existed"
     
     err = ""
     for level in range(5, 0, -1):

@@ -4,7 +4,7 @@ from typing import Tuple
 
 from utils.db import DBHandling
 from utils.process_data import ProcessData
-from utils.data import read_stop_words, read_jlpt
+from utils.data import read_stop_words, read_jlpt, scrape_all_jlpt
 
 # cache word count for /view/word
 view_count_cache = {}
@@ -12,8 +12,8 @@ view_count_cache = {}
 
 def create_app():
     """
-    Init app, connect db, migrate db, get fugashi tagger,
-    jamdict, load stop words, load jlpt level mapping.
+    Init app, connect db, migrate db, get fugashi tagger, jamdict,
+    load stop words, load jlpt level mapping, scrape JLPT level data to data/jlpt.
     Attach blueprint to app and return.
     """
     app = Flask(__name__)
@@ -34,6 +34,7 @@ def create_app():
         get_processdata()
     read_stop_words()
     read_jlpt()
+    scrape_all_jlpt()
 
     return app
 
