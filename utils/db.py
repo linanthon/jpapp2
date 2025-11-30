@@ -644,7 +644,7 @@ class DBHandling:
 
         Output: a dict of keys are the JLPT levels ('N0' for non-jlpt level words, 'N5' -> 'N1') and
         "ALL", the values are list of 3 elements:
-        [x < QUIZ_SOFT_CAP, QUIZ_SOFT_CAP < x < QUIZ_HARD_CAP, x > QUIZ_HARD_CAP].
+        [x <= QUIZ_SOFT_CAP, QUIZ_SOFT_CAP < x <= QUIZ_HARD_CAP, x > QUIZ_HARD_CAP].
         Note that if grb_jlpt=True, the values are only in the 'N0', 'N5' -> 'N1' keys.
         Otherwise, the values are only in 'ALL'.
         """

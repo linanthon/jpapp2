@@ -36,11 +36,11 @@
     - Inside the extracted jamdict_data folder, remove the small size `jamdict.db` (~500kb) if exist, extract the ~50mb `jamdict.db.xz` here
 
 ## How to use
-After installation, to use web UI, run"
+After installation, open your postgres and set password, update `app/web/handlers/config.py`'s `DB_USER` and `DP_PASS`. To use web UI, run:
     
     python app/web/main.py
 
-Then go on your browser, enter the `localhost:5000/{api_version}`, currently, the application is using `v1`:
+The first time running will init database, create all tables and scrape JLPT level data (more details below). Then go on your browser, enter the `localhost:5000/{api_version}`, currently, the application is using `v1`:
 
     http://127.0.0.1:5000/v1
 
@@ -92,6 +92,23 @@ After tagging words of a sentence, if met with **multiple katakana words consecu
     * Sokuon: Small tsu + consonant (っか)
     * Long vowels: Kana + ー (カー)
     * Katakana extensions: For foreign words (ファ, ディ)
+- You probably saw the `app/cli` folder. I tried to do CLI support but find it's not very good without "actual UI". You can still use it, but it lacks many functions and can't play audio.
 
 ## Quiz system
-Calculate `priority` to show up in quiz based on the word's `quized` (correct times in quiz) and `occurrence` (the word's appearance through out all inserted documents/book)
+Calculate word's `priority` to determine order in quiz, based on the word's `quized` (correct times in quiz) and `occurrence` (the word's appearance through out all inserted documents/book). Each time answering a quiz will update that word's `priority`.
+
+If choose to not use `priority` in quiz, it'll just use the insert order.
+
+There are 2 formulas to calulate `priority`:
+- Standard formula for quiz correct times <= `QUIZ_SOFT_CAP`
+- For `QUIZ_SOFT_CAP` < quiz correct times <= `QUIZ_HARD_CAP`, the formula makes `priority` much lower so this word shows up less.
+
+When a word's correct times > `QUIZ_HARD_CAP`, the program recognize this word is "known" and will not show up in quiz anymore. You can revisit the "known" words in `Quiz -> Review known JP` mode, this mode does not update the word's `priority`.
+
+### TODO: functions
+- Accept other document formats
+- Can search words by EN, Kana and Romaji
+
+### TODO: fix bugs
+- Not showing correctly star filter when update star in the same page (view words, view books) without reloading.
+- Showing paging in view words
