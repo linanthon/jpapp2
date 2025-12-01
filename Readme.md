@@ -92,7 +92,7 @@ After tagging words of a sentence, if met with **multiple katakana words consecu
     * Sokuon: Small tsu + consonant (っか)
     * Long vowels: Kana + ー (カー)
     * Katakana extensions: For foreign words (ファ, ディ)
-- You probably saw the `app/cli` folder. I tried to do CLI support but find it's not very good without "actual UI". You can still use it, but it lacks many functions and can't play audio.
+- You probably saw the `app/cli` folder. I tried to do CLI support but find it's not very good to use without frontend. You can still use it, but it lacks many functions and can't play audio.
 
 ## Quiz system
 Calculate word's `priority` to determine order in quiz, based on the word's `quized` (correct times in quiz) and `occurrence` (the word's appearance through out all inserted documents/book). Each time answering a quiz will update that word's `priority`.
@@ -104,6 +104,11 @@ There are 2 formulas to calulate `priority`:
 - For `QUIZ_SOFT_CAP` < quiz correct times <= `QUIZ_HARD_CAP`, the formula makes `priority` much lower so this word shows up less.
 
 When a word's correct times > `QUIZ_HARD_CAP`, the program recognize this word is "known" and will not show up in quiz anymore. You can revisit the "known" words in `Quiz -> Review known JP` mode, this mode does not update the word's `priority`.
+
+## About this project
+Motivation: JP learning apps usually have their own learning path, and it might not focus on the user desire aspect or gives the user the words they want. This JP learning program only practice the user the documents they put in, so they learn exactly what they want. If you're wondering what if you don't want to input anything and just learn, those apps exist.
+
+Purpose: This is just a side project I do to practice backend solution and front-backend communication. By no means it's perfect and it might never will be.
 
 ### TODO: functions
 - Accept other document formats
