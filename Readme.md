@@ -44,6 +44,8 @@ The first time running will init database, create all tables and scrape JLPT lev
 
     http://127.0.0.1:5000/v1
 
+Demo video: https://youtu.be/nVGgHGeae0Q
+
 Use `Insert -> Choose file` to upload japanese documents. **!! Currently only receiving .txt !!!**. Alternatively, `Insert -> Enter string`, you can directly paste the document words into it (remember to name it).
 
 After that, the application will read each sentence > tagged word in said sentences > lookup words in `jamdict` database > save all the words, sentences and this document (calls book) to your database. Then you can:
