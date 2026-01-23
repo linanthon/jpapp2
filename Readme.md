@@ -3,6 +3,8 @@ Motivation: JP learning apps usually have their own learning path, and it might 
 
 Purpose: This is just a side project I do to practice backend solution and front-backend communication. It's not perfect and lacks many functions.
 
+Demo video: https://youtu.be/nVGgHGeae0Q
+
 ## Installation:
 - Install postgres.
     For Windows, add new system variable:
@@ -48,8 +50,6 @@ After installation, open your postgres and set password, update `app/web/handler
 The first time running will init database, create all tables and scrape JLPT level data (more details below). Then go on your browser, enter the `localhost:5000/{api_version}`, currently, the application is using `v1`:
 
     http://127.0.0.1:5000/v1
-
-Demo video: https://youtu.be/nVGgHGeae0Q
 
 Use `Insert -> Choose file` to upload japanese documents. **!! Currently only receiving .txt !!!**. Alternatively, `Insert -> Enter string`, you can directly paste the document words into it (remember to name it).
 
