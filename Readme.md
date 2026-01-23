@@ -1,3 +1,8 @@
+## About this project
+Motivation: JP learning apps usually have their own learning path, and it might not focus on the user desire aspect or gives the user the words they want. This JP learning program only practice the user the documents they put in, so they learn exactly what they want. If you're wondering what if you don't want to input anything and just learn, those apps exist.
+
+Purpose: This is just a side project I do to practice backend solution and front-backend communication. It's not perfect and lacks many functions.
+
 ## Installation:
 - Install postgres.
     For Windows, add new system variable:
@@ -108,11 +113,6 @@ There are 2 formulas to calulate `priority`:
 When a word's correct times > `QUIZ_HARD_CAP`, the program recognize this word is "known" and will not show up in quiz anymore. You can revisit the "known" words in `Quiz -> Review known JP` mode, this mode does not update the word's `priority`.
 
 If toggle off `Get incorrect choices from inserted words` (default True) - each question has 1 correct answer and 3 wrong ones - instead of getting the wrong ones from your inserted words/books, it'll be random in Jamdict database. This will take longer because of the randomness, Jamdict using SQLite internally and multi-join tables in query. If your DB doesn't have enough records to get wrong answers, then the program will use Jamdict.
-
-## About this project
-Motivation: JP learning apps usually have their own learning path, and it might not focus on the user desire aspect or gives the user the words they want. This JP learning program only practice the user the documents they put in, so they learn exactly what they want. If you're wondering what if you don't want to input anything and just learn, those apps exist.
-
-Purpose: This is just a side project I do to practice backend solution and front-backend communication. By no means it's perfect and it might never will be.
 
 ### TODO: functions
 - Accept other document formats
