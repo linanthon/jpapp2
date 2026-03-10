@@ -274,6 +274,7 @@ def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = 
 
 def scrape_all_jlpt(option: int = 0) -> str:
     """Scrape for all 5 JLPT levels. Files are saved as './data/jlpt/n{level}.txt'.
+    Make sure folder has no JLPT files for this function to run.
     Right now only has wikipedia version.
     
     Param:

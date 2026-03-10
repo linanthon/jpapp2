@@ -1,11 +1,16 @@
 import random
+from typing import TYPE_CHECKING, Dict, Any
 
-from handlers.helpers import get_dbhandling, get_processdata
 from schemas.constants import DEFAULT_LIMIT
 from utils.data import get_quiz_distractors
 
-def get_word_jp_quizes(limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star: bool = False, book_id: int = None,
-                       use_priority: bool = True, is_known: bool = False, get_distractors_from_db: bool = True):
+if TYPE_CHECKING:
+    from utils.data import ProcessData
+    from utils.db import DBHandling
+
+def get_word_jp_quizes(pdata: "ProcessData" = None, db: "DBHandling" = None, limit: int = DEFAULT_LIMIT, 
+                       jlpt_level: str = None, star: bool = False, book_id: int = None, use_priority: bool = True,
+                       is_known: bool = False, get_distractors_from_db: bool = True) -> Dict[int, Dict[str, Any]]:
     """Get JP->EN quizes. Return a dict:
     - key: word ID
     - value: a dict of items:
@@ -18,9 +23,6 @@ def get_word_jp_quizes(limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star:
         - occurrence - the total appearance count of this word in DB
         - star - the word starred or not
     """
-    db = get_dbhandling()
-    pdata = get_processdata()
-
     res = {}
     tests = db.get_quiz(limit=limit, jlpt_filter=jlpt_level, star_only=star, book_id=book_id,
                         use_priority=use_priority, is_known=is_known)
@@ -42,25 +44,22 @@ def get_word_jp_quizes(limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star:
         }
     return res
 
-def update_word_prio_after_answering(word_id: int = 0, is_correct: bool = False,
+def update_word_prio_after_answering(db: "DBHandling", word_id: int = 0, is_correct: bool = False,
                                      quized: int = 0, occurrence: int = 0) -> bool:
     """Update answered quiz's word priority calculation.
     Return true if success, false otherwise"""
-    db = get_dbhandling()
     new_quized = quized + 1 if is_correct else max(0, quized - 1)
     return db.update_quized_prio_ts(word_id=word_id, occurrence=occurrence, quized=new_quized)
 
-def change_word_prio_to_negative(word_id: int = 0) -> bool:
+def change_word_prio_to_negative(db: "DBHandling", word_id: int = 0) -> bool:
     """Update the word priority value to -1 (to fail the > 0.0 check when query for quiz).
     Returns true if success, false otherwise"""
-    db = get_dbhandling()
     return db.update_words_known(word_ids=[word_id])
 
-def reset_word_prio(word_id: int = 0, occurrence: int = None, quized: int = None,) -> bool:
+def reset_word_prio(db: "DBHandling", word_id: int = 0, occurrence: int = None, quized: int = None) -> bool:
     """Re-calculate priority for the word.
-    `quized` and `occurrence` are option. Will query to get if they are 0.
-    Returns (true/false if success/fail, re-calculated priority)"""
-    db = get_dbhandling()
+    `quized` and `occurrence` are optional. Will query to get if they are None.
+    Returns true if success, false otherwise"""
     if occurrence is None or quized is None:
         occurrence, quized = db.get_word_occurence_quized(word_id=word_id)
     # quized can = 0 but not occurrence
@@ -69,8 +68,9 @@ def reset_word_prio(word_id: int = 0, occurrence: int = None, quized: int = None
     # call calculate prio
     return db.update_quized_prio_ts(word_id=word_id, occurrence=occurrence, quized=quized)
 
-def get_word_en_quizes(limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star: bool = False, book_id: int = None,
-                       use_priority: bool = True, is_known: bool = False, get_distractors_from_db: bool = True):
+def get_word_en_quizes(pdata: "ProcessData" = None, db: "DBHandling" = None, limit: int = DEFAULT_LIMIT,
+                       jlpt_level: str = None, star: bool = False, book_id: int = None, use_priority: bool = True,
+                       is_known: bool = False, get_distractors_from_db: bool = True) -> Dict[int, Dict[str, Any]]:
     """Get EN->JP quizes. Return a dict:
     - key: word ID
     - value: a dict of items:
@@ -81,9 +81,6 @@ def get_word_en_quizes(limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star:
         - occurrence - the total appearance count of this word in DB
         - star - the word starred or not
     """
-    db = get_dbhandling()
-    pdata = get_processdata()
-
     res = {}
     tests = db.get_quiz(limit=limit, jlpt_filter=jlpt_level, star_only=star, book_id=book_id,
                         use_priority=use_priority, is_known=is_known)

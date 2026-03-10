@@ -1,5 +1,5 @@
-from flask import Flask, g, current_app, Response, request
-
+from fastapi import FastAPI, Depends, Request
+from contextlib import asynccontextmanager
 from typing import Tuple
 
 from utils.db import DBHandling
@@ -9,51 +9,50 @@ from utils.data import read_stop_words, read_jlpt, scrape_all_jlpt
 # cache word count for /view/word
 view_count_cache = {}
 
+# Load config
+from dotenv import load_dotenv
+load_dotenv()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup ----------------------------
+    # Connect DB, migrate tables
+    app.state.db = DBHandling()
+    app.state.db.connect_2_db(
+        username=DB_USER,
+        password=DB_PASS
+    )
+    app.state.db.migrate()
+
+    # Load fugashi tagger and jamdict
+    app.state.pdata = ProcessData()
+    
+    yield
+    
+    # Shutdown ---------------------------
+    if hasattr(app.state, "db"):
+        app.state.db.close_db()
 
 def create_app():
     """
-    Init app, connect db, migrate db, get fugashi tagger, jamdict,
-    load stop words, load jlpt level mapping, scrape JLPT level data to data/jlpt.
-    Attach blueprint to app and return.
+    Create FastAPI app with lifespan, connect with DB, load dictionaries.
+    Read stop words, JLPT levels / Scrape if no JLPT levels yet.
     """
-    app = Flask(__name__)
-    app.config.from_pyfile("config.py")
-
-    # Get blueprint
-    from app.web.bpv1 import bp
-    app.register_blueprint(bp)
-
-    # Set url prefix param to all html
-    @app.context_processor
-    def inject_url_prefix():
-        return {'url_prefix': bp.url_prefix}
-
-    # Connect DB and load stuff
-    with app.app_context():
-        get_dbhandling()
-        get_processdata()
+    app = FastAPI(lifespan=lifespan)
     read_stop_words()
-    read_jlpt()
     scrape_all_jlpt()
-
+    read_jlpt()
     return app
 
-def get_dbhandling() -> DBHandling:
-    """Connect DB, create database & tables. Must run in app.context"""
-    if "db" not in g:
-        g.db = DBHandling()
-        g.db.connect_2_db(
-            username=current_app.config.get("DB_USER", ""),
-            password=current_app.config.get("DB_PASS", "")
-        )
-        g.db.migrate()
-    return g.db
+# ===== FastAPI Dependency Injection =====
+def get_db(request: Request) -> DBHandling:
+    """Get DB connection from app state"""
+    return request.app.state.db
 
-def get_processdata() -> ProcessData:
-    """Load fugashi tagger and jamdict. Must run in app.context"""
-    if "pdata" not in g:
-        g.pdata = ProcessData()
-    return g.pdata
+def get_pdata(request: Request) -> ProcessData:
+    """Get ProcessData instance from app state"""
+    return request.app.state.pdata
 
 def get_filename_from_path(fullpath: str):
     """Get filename from full path, i.e.: c:/a/path/the_file.123.txt -> the_file.123"""
@@ -69,7 +68,7 @@ def get_filename_from_path(fullpath: str):
 
     return ".".join(temp[:-1])
 
-def do_insert_book(db: "DBHandling", name: str, data: str = "") -> Tuple[int, Response | None]:
+def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict | None]:
     """Call DB to insert book.
     
     Input:
@@ -79,33 +78,34 @@ def do_insert_book(db: "DBHandling", name: str, data: str = "") -> Tuple[int, Re
 
     Output:
     - int: the inserted book_id if success. Otherwise,
-        + 0: Response name already used
+        + 0: name already used
         + -1: if DB failed
-        + -2 if file not found
+        + -2: if file not found
+    - dict: error response dict, or None if success
     """
     if not name or not data:
-        return Response("Error: No content", 400)
+        return -1, {"error": "No content"}
     
     book_id = db.insert_book(name, data)
-    resp = None
+    error_resp = None
     if book_id == 0:
-        resp = Response("Error: (File)Name already used", 400)
+        error_resp = {"error": "Name already used"}
     elif book_id == -1:
-        resp = Response("Error: Failed to insert", 500)
-    if book_id == -2:
-        resp = Response("Error: File not found", 404)
+        error_resp = {"error": "Failed to insert"}
+    elif book_id == -2:
+        error_resp = {"error": "File not found"}
     
-    return book_id, resp
+    return book_id, error_resp
 
 def str_2_byte(input_str: str):
     return input_str.encode("utf-8")
 
-def is_api_request():
-    return request.is_json or request.accept_mimetypes.best == "application/json"
+def is_api_request(request: Request) -> bool:
+    """Check if request is from API (JSON content-type)"""
+    return request.headers.get("content-type", "").startswith("application/json")
 
-def toggle_star_helper(obj_id: int, obj_type: str, star: int) -> bool:
+def toggle_star_helper(db: DBHandling, obj_id: int, obj_type: str, star: int) -> bool:
     """Turn star on or off. Return true if success, false otherwise."""
-    db = get_dbhandling()
     star_stt = True if star == 1 else False
     if obj_type == "word":
         return db.update_word_star(word_id=obj_id, new_star_status=star_stt)
@@ -157,13 +157,11 @@ def reset_view_word_count():
     """call this when insert new book/word"""
     view_count_cache.clear()
 
-def delete_book_helper(book_id: int) -> bool:
-    db = get_dbhandling()
+def delete_book_helper(db: DBHandling, book_id: int) -> bool:
     with db.transaction():
         return db.delete_book(book_id=book_id)
     return False
 
-def get_all_book_name_and_id():
+def get_all_book_name_and_id(db: DBHandling):
     """call db.list_books with no star, 0 offset, query all"""
-    db = get_dbhandling()
     return db.list_books(star=None, limit=None, offset=0)

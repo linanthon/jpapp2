@@ -1,9 +1,8 @@
-from flask import Response
 from typing import TYPE_CHECKING
 import os
 
 from app.common import do_insert_word_sentence_book_2_db
-from handlers.helpers import get_processdata, get_dbhandling, do_insert_book, str_2_byte, reset_view_word_count
+from handlers.helpers import do_insert_book, str_2_byte, reset_view_word_count
 from utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -12,26 +11,27 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-def handle_insert_file(filename: str, saved_tmp_path: str, is_api_call: bool = False):
+def handle_insert_file(pdata: "ProcessData", db: "DBHandling", filename: str, saved_tmp_path: str, is_api_call: bool = False):
     """
     Handle input-ing a file, check file exist, insert as book (the book name is the file name),
     sentences, words to DB and link word-book, word-sentence, sentence-book IDs.
 
     Input:
+    - pdata: ProcessData instance
+    - db: DBHandling instance
     - filename: the filename to be use as book's name, only the name, no path.
     - saved_tmp_path: the full path of the saved tmp file if use UI, or the og file if use API calls
 
-    Output: if is_api_call, return flask Response. Otherwise, yield bytes to show on UI.
+    Output: if is_api_call, return dict. Otherwise, yield bytes to show on UI.
     """
     if not filename or not saved_tmp_path:
         if is_api_call:
-            return Response("Error: No file selected", 400)
+            return {"error": "No file selected"}
         yield str_2_byte("Error: No file selected")
         return
     
     reset_view_word_count()
     
-    pdata, db = get_processdata(), get_dbhandling()
     book_id, resp = int(0), None
     content_len = os.path.getsize(saved_tmp_path)
     
@@ -45,7 +45,7 @@ def handle_insert_file(filename: str, saved_tmp_path: str, is_api_call: bool = F
             if resp:
                 if is_api_call:
                     return resp
-                yield str_2_byte(resp.get_data(as_text=True))
+                yield str_2_byte(str(resp))
                 return
         else:
             # append next sentences to the created row 
@@ -62,32 +62,33 @@ def handle_insert_file(filename: str, saved_tmp_path: str, is_api_call: bool = F
         os.remove(saved_tmp_path)
 
     if is_api_call:
-        return Response(f"Processed and inserted {filename}", 200)
+        return {"message": f"Processed and inserted {filename}"}
     yield str_2_byte(f"Processed and inserted {filename}")
 
-def handle_insert_str(name: str, data: str, is_api_call: bool = False):
+def handle_insert_str(pdata: "ProcessData", db: "DBHandling", name: str, data: str, is_api_call: bool = False):
     """
     Handle input-ing a string, insert as book, sentences, words to DB
     and link word-book, word-sentence, sentence-book IDs.
 
     Input:
+    - pdata: ProcessData instance
+    - db: DBHandling instance
     - name: the name to be use as book's name.
     - data: the JP text to be processed and inserted.
 
-    Output: return flask Response
+    Output: return dict for API or yield bytes for UI
     """
     if not name or not data:
-        return Response("Error: Missing name or text", 400)
+        return {"error": "Missing name or text"}
 
     reset_view_word_count()
 
     content_len = len(data)
-    pdata, db = get_processdata(), get_dbhandling()
     book_id, resp = do_insert_book(db, name, data)
     if resp:
         if is_api_call:
             return resp
-        yield str_2_byte(resp.get_data(as_text=True))
+        yield str_2_byte(str(resp))
         return
     
     progress = 0
@@ -99,5 +100,5 @@ def handle_insert_str(name: str, data: str, is_api_call: bool = False):
             yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
     
     if is_api_call:
-        return Response(f"Processed and inserted text", 200)
+        return {"message": "Processed and inserted text"}
     yield str_2_byte(f"Processed and inserted text")
