@@ -2,10 +2,10 @@
 <html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>Quiz JP → EN</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/quiz/quiz_run.css') }}">
-  <script src="{{ url_for('main_ep.static', filename='js/quiz/quiz_run.js') }}" defer></script>
-  <script src="{{ url_for('main_ep.static', filename='js/base.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/quiz/quiz_run.css') }}">
+  <script src="{{ url('static', 'js/quiz/quiz_run.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
@@ -32,9 +32,9 @@
   <div id="quiz-backend-params"
      data-quizes='{{ quizes | tojson }}'
      data-mode="{{ mode }}"
-     data-update-prio-url="{{ url_for('main_ep.update_word_prio') }}"
-     data-view-word-url-template="{{ url_for('main_ep.view_specific_word', word_id=0) }}"
-     data-toggle-star-url="{{ url_for('main_ep.toggle_star') }}">
+     data-update-prio-url="{{ url('update_word_prio') }}"
+     data-view-word-url-template="{{ url('view_specific_word') }}0"
+     data-toggle-star-url="{{ url('toggle_star') }}">
   </div>
 
 </body>

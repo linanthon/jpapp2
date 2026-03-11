@@ -1,5 +1,6 @@
 typer==0.16.0
 argparse==1.4.0
+python-dotenv==1.2.2
 
 # Scarpe data
 beautifulsoup4==4.13.4

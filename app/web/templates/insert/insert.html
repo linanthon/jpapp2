@@ -2,10 +2,10 @@
 <html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>Insert</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/insert/insert.css') }}">
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
-  <script src="{{ url_for('main_ep.static', filename='js/insert/insert.js') }}" defer></script>
-  <script src="{{ url_for('main_ep.static', filename='js/base.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url('static', 'css/insert/insert.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/insert/insert.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
@@ -18,7 +18,7 @@
   <button type="button" onclick="document.getElementById('fileInput').click()">Choose file</button>
   <!-- Putting the form to save chosen filename to backend under "submittedFilename"
    and only direct to `def upload_file()` after pressing submit -->
-  <form id="fileForm" method="POST" action="{{ url_for('main_ep.upload_file') }}" enctype="multipart/form-data">
+  <form id="fileForm" method="POST" action="{{ url('upload_file') }}" enctype="multipart/form-data">
     <!-- Default not showing the box (containing filename and submit button), only show after choosing -->
     
     <!-- The type="file" allows choosing file, save to JS by `id`, save to Flask by `name`, display nothing -->
@@ -39,7 +39,7 @@
 
   <!-- Enter string -->
   <button type="button" onclick="showTextBox()">Enter string</button>
-  <form id="stringForm" method="POST" action="{{ url_for('main_ep.upload_string') }}">
+  <form id="stringForm" method="POST" action="{{ url('upload_string') }}">
     <div id="stringBoxContainer" style="display:none">
 
       <div class="form-row">

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix: str, is_api_call: bool = False) -> Dict[str, Any]:
+def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix: str) -> Dict[str, Any]:
     """
     Search a JP or EN word, return max number of found result (`limit`).
     Returns empty list if word not found.
@@ -28,10 +28,6 @@ def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix: str, 
         res = db.query_word_sense(word, limit, parse_dict=True)
     else:
         return {"error": "Only accept Japanese or English word"}
-
-    # For API, just return
-    if is_api_call:
-        return {"results": res, "bpPrefix": bp_prefix}
     
     # Modify senses to only have the first meaning for UI
     for w in res:

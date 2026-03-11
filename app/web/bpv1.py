@@ -1,17 +1,18 @@
-from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException
-from fastapi.responses import StreamingResponse, FileResponse
-from fastapi.staticfiles import StaticFiles
-from jinja2 import Jinja2Templates
+from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from fastapi.templating import Jinja2Templates
+from http import HTTPStatus
 import tempfile
 import os
 
-from handlers.insert import handle_insert_file, handle_insert_str
+from handlers.config import bpv1_url_prefix
+from handlers.insert import handle_insert_file_stream, handle_insert_str_stream
 from handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                            handle_view_books, handle_view_specific_book)
 from handlers.helpers import (
     get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level,
     parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id,
-    get_db, get_pdata
+    get_db, get_pdata, get_jinja_globals
 )
 from handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
                            change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
@@ -22,9 +23,10 @@ from utils.process_data import ProcessData
 # Create router
 router = APIRouter()
 
-# Setup templates
+# Setup templates (html files)
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=templates_dir)
+templates.env.globals.update(get_jinja_globals())
 
 # ===== HOME ======================================================================
 @router.get("/")
@@ -41,42 +43,28 @@ def insert():
 @router.post("/insert/file")
 async def upload_file(
     request: Request,
-    filename: str = None,
     submittedFilename: UploadFile = File(None),
     db: DBHandling = Depends(get_db),
     pdata: ProcessData = Depends(get_pdata)
 ):
     """
-    Handle file upload.
-    - Via API: filename query param with file content in request
-    - Via UI: submittedFilename form field with file
-    """
-    tmp_path = filename or ""
-    file_name = get_filename_from_path(tmp_path) if tmp_path else ""
-    is_api_call = True
-
-    # If no filename param -> handle from UI
-    if not tmp_path:
-        is_api_call = False
-        if not submittedFilename:
-            raise HTTPException(status_code=400, detail="No file uploaded")
-        file_name = get_filename_from_path(submittedFilename.filename)
-        
-        # Save to temp file to open multiple times
-        tmp = tempfile.NamedTemporaryFile(delete=False)
-        tmp_path = tmp.name
-        content = await submittedFilename.read()
-        tmp.write(content)
-        tmp.close()
+    Handle file upload. submittedFilename form field with file
+    """    
+    if not submittedFilename:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No file uploaded")
+    file_name = get_filename_from_path(submittedFilename.filename)
     
-    if is_api_call:
-        return handle_insert_file(pdata, db, file_name, tmp_path, True)
+    # Save to temp file to open multiple times
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    tmp_path = tmp.name
+    content = await submittedFilename.read()
+    tmp.write(content)
+    tmp.close()
     
-    # For UI, stream the response
-    async def generate():
-        yield from handle_insert_file(pdata, db, file_name, tmp_path, False)
-    
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        handle_insert_file_stream(pdata, db, file_name, tmp_path),
+        media_type="text/event-stream"
+    )
 
 
 @router.post("/insert/str")
@@ -108,13 +96,15 @@ async def upload_string(
         data = stringBody
     
     if is_api_call:
-        return handle_insert_str(pdata, db, name, data)
+        # API call - return JSON response with proper status code
+        response_data, status_code = handle_insert_str(pdata, db, name, data)
+        return JSONResponse(content=response_data, status_code=status_code)
     
-    # For UI, stream the response
-    async def generate():
-        yield from handle_insert_str(pdata, db, name, data)
-    
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    # UI call - stream the response
+    return StreamingResponse(
+        handle_insert_str_stream(pdata, db, name, data),
+        media_type="text/event-stream"
+    )
 
 # =================================================================================
 
@@ -127,7 +117,7 @@ def view():
 @router.get("/view/word")
 def view_words(
     jlpt_level: str = "",
-    star: bool = None,
+    star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
     page: int = 1,
     db: DBHandling = Depends(get_db)
@@ -142,12 +132,13 @@ def view_words(
     - page: the number of page to show
     """
     jlpt_level = validate_jlpt_level(jlpt_level)
-    star = parse_bool_param(star)
+    star_bool = parse_bool_param(star)
 
-    result, page_count = handle_view_words(db, jlpt_level, star, limit, page)
+    result, page_count = handle_view_words(db, jlpt_level, star_bool, limit, page)
     return templates.TemplateResponse(
         "view/word/view_words.html",
-        {"request": {}, "word_list": result, "page_count": page_count, "page": page}
+        {"request": {}, "word_list": result, "page_count": page_count, "page": page,
+         "args": {"jlpt_level": jlpt_level, "star": star}}
     )
 
 
@@ -159,19 +150,17 @@ async def search_word(
     db: DBHandling = Depends(get_db)
 ):
     """Search for a word"""
-    is_api_call = is_api_request(request)
-
     # If UI and not word, that means it's the first time enter this page
     # Just render it, when provided a word, it'll call this function again
     if not word:
-        if is_api_call:
-            raise HTTPException(status_code=400, detail="missing a JP or EN word")
         return templates.TemplateResponse("view/word/search_word.html", {"request": {}})
 
-    if is_api_call:
-        return handle_search_word(db, word, limit, "/v1", True)
-    
-    return handle_search_word(db, word, limit, "/v1", False)
+    response_data = handle_search_word(db, word, limit, bpv1_url_prefix)
+
+    # Check for error in response
+    if "error" in response_data:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=response_data["error"])
+    return response_data
 
 
 @router.get("/view/word/{word_id}")
@@ -198,12 +187,12 @@ async def toggle_star(
     try:
         obj_id = int(data.get("id", "a"))
     except:
-        raise HTTPException(status_code=400, detail="Missing word id")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing word id")
     
     obj_type = data.get("objType", None)
     if obj_type not in ["word", "book"]:
         raise HTTPException(
-            status_code=400,
+            status_code=HTTPStatus.BAD_REQUEST,
             detail="Missing star object type, must be either `word` or `book`"
         )
     
@@ -225,7 +214,7 @@ def serve_audio(filename: str):
 
 @router.get("/view/book")
 def view_books(
-    star: bool = None,
+    star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
     page: int = 1,
     db: DBHandling = Depends(get_db)
@@ -238,11 +227,12 @@ def view_books(
     - limit: the amount of books to show
     - page: the number of page to show
     """
-    star = parse_bool_param(star)
-    result, page_count = handle_view_books(db, star, limit, page)
+    star_bool = parse_bool_param(star)
+    result, page_count = handle_view_books(db, star_bool, limit, page)
     return templates.TemplateResponse(
         "view/book/view_books.html",
-        {"request": {}, "book_list": result, "page_count": page_count, "page": page}
+        {"request": {}, "book_list": result, "page_count": page_count, "page": page,
+         "args": {"star": star}}
     )
 
 
@@ -268,7 +258,7 @@ async def delete_book(
     try:
         obj_id = int(data.get("id", "a"))
     except:
-        raise HTTPException(status_code=400, detail="Missing book `id`")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing book `id`")
     
     deleted = delete_book_helper(db, obj_id)
     return {"success": deleted}
@@ -287,12 +277,21 @@ def progress():
 
 # ===== QUIZ % ====================================================================
 @router.get("/quiz")
-def quiz(db: DBHandling = Depends(get_db)):
+def quiz(
+    jlpt_level: str = "",
+    star: bool | str = None,
+    select_book: str = "",
+    use_priority: bool | str = None,
+    get_distractors_from_db: bool | str = None,
+    db: DBHandling = Depends(get_db)
+):
     """Quiz home page"""
     all_books = get_all_book_name_and_id(db)
     return templates.TemplateResponse(
         "quiz/quiz_home.html",
-        {"request": {}, "all_books": all_books}
+        {"request": {}, "all_books": all_books,
+         "args": {"jlpt_level": jlpt_level, "star": star, "select_book": select_book,
+                  "use_priority": use_priority, "get_distractors_from_db": get_distractors_from_db}}
     )
 
 
@@ -301,32 +300,34 @@ def quiz(db: DBHandling = Depends(get_db)):
 def quiz_jp(
     book_id: str = "",
     jlpt_level: str = "",
-    star: bool = None,
+    star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
-    use_priority: bool = None,
-    get_distractors_from_db: bool = None,
+    use_priority: bool | str = None,
+    get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db),
     pdata: ProcessData = Depends(get_pdata)
 ):
     """Get JP-to-EN quiz questions"""
-    jlpt_level = validate_jlpt_level(jlpt_level)
-    star = parse_bool_param(star)
-    use_priority = parse_bool_param(use_priority)
-    get_distractors_from_db = parse_bool_param(get_distractors_from_db)
+    jlpt_level_validated = validate_jlpt_level(jlpt_level)
+    star_bool = parse_bool_param(star)
+    use_priority_bool = parse_bool_param(use_priority)
+    get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
     quizes = get_word_jp_quizes(
         pdata,
         db,
         limit=limit,
-        jlpt_level=jlpt_level,
-        star=star,
+        jlpt_level=jlpt_level_validated,
+        star=star_bool,
         book_id=book_id,
-        use_priority=use_priority,
-        get_distractors_from_db=get_distractors_from_db
+        use_priority=use_priority_bool,
+        get_distractors_from_db=get_distractors_bool
     )
     return templates.TemplateResponse(
         "quiz/quiz_run.html",
-        {"request": {}, "quizes": quizes, "mode": "jp"}
+        {"request": {}, "quizes": quizes, "mode": "jp",
+         "args": {"jlpt_level": jlpt_level, "star": star, "use_priority": use_priority,
+                  "get_distractors_from_db": get_distractors_from_db}}
     )
 
 
@@ -334,31 +335,33 @@ def quiz_jp(
 def quiz_known(
     book_id: str = "",
     jlpt_level: str = "",
-    star: bool = None,
+    star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
-    get_distractors_from_db: bool = None,
+    get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db),
     pdata: ProcessData = Depends(get_pdata)
 ):
     """Get 'already known' quiz questions"""
-    jlpt_level = validate_jlpt_level(jlpt_level)
-    star = parse_bool_param(star)
-    get_distractors_from_db = parse_bool_param(get_distractors_from_db)
+    jlpt_level_validated = validate_jlpt_level(jlpt_level)
+    star_bool = parse_bool_param(star)
+    get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
     quizes = get_word_jp_quizes(
         pdata,
         db,
         limit=limit,
-        jlpt_level=jlpt_level,
-        star=star,
+        jlpt_level=jlpt_level_validated,
+        star=star_bool,
         book_id=book_id,
         use_priority=False,
         is_known=True,
-        get_distractors_from_db=get_distractors_from_db
+        get_distractors_from_db=get_distractors_bool
     )
     return templates.TemplateResponse(
         "quiz/quiz_run.html",
-        {"request": {}, "quizes": quizes, "mode": "known"}
+        {"request": {}, "quizes": quizes, "mode": "known",
+         "args": {"jlpt_level": jlpt_level, "star": star,
+                  "get_distractors_from_db": get_distractors_from_db}}
     )
 
 
@@ -367,30 +370,32 @@ def quiz_known(
 def quiz_en(
     book_id: str = "",
     jlpt_level: str = "",
-    star: bool = None,
+    star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
-    use_priority: bool = None,
-    get_distractors_from_db: bool = None,
+    use_priority: bool | str = None,
+    get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db)
 ):
     """Get EN-to-JP quiz questions"""
-    jlpt_level = validate_jlpt_level(jlpt_level)
-    star = parse_bool_param(star)
-    use_priority = parse_bool_param(use_priority)
-    get_distractors_from_db = parse_bool_param(get_distractors_from_db)
+    jlpt_level_validated = validate_jlpt_level(jlpt_level)
+    star_bool = parse_bool_param(star)
+    use_priority_bool = parse_bool_param(use_priority)
+    get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
     quizes = get_word_en_quizes(
         db,
         limit=limit,
-        jlpt_level=jlpt_level,
-        star=star,
+        jlpt_level=jlpt_level_validated,
+        star=star_bool,
         book_id=book_id,
-        use_priority=use_priority,
-        get_distractors_from_db=get_distractors_from_db
+        use_priority=use_priority_bool,
+        get_distractors_from_db=get_distractors_bool
     )
     return templates.TemplateResponse(
         "quiz/quiz_run.html",
-        {"request": {}, "quizes": quizes, "mode": "en"}
+        {"request": {}, "quizes": quizes, "mode": "en",
+         "args": {"jlpt_level": jlpt_level, "star": star, "use_priority": use_priority,
+                  "get_distractors_from_db": get_distractors_from_db}}
     )
 
 
@@ -414,18 +419,18 @@ async def update_word_prio(
     try:
         word_id = int(data.get("word_id", 0))
     except:
-        raise HTTPException(status_code=400, detail="Invalid/Missing `word_id`")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `word_id`")
     
     is_correct = parse_bool_param(data.get("is_correct", None))
     try:
         quized = int(data.get("quized", 0))
     except:
-        raise HTTPException(status_code=400, detail="Invalid/Missing `quized`")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `quized`")
     
     try:
         occurrence = int(data.get("occurrence", 0))
     except:
-        raise HTTPException(status_code=400, detail="Invalid/Missing `occurrence`")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `occurrence`")
     
     success = update_word_prio_after_answering(db, word_id, is_correct, quized, occurrence)
     return {"success": success}
@@ -444,7 +449,7 @@ async def toggle_word_known(
     try:
         word_id = int(data.get("word_id", 0))
     except:
-        raise HTTPException(status_code=400, detail="Invalid/Missing `word_id`")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `word_id`")
     
     update_to_known = parse_bool_param(data.get("update_to_known", False))
     occurrence, quized = 0, 0

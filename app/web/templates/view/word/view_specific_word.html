@@ -2,10 +2,10 @@
 <html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>View word</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/word/view_specific_word.css') }}">
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
-  <script src="{{ url_for('main_ep.static', filename='js/view/view.js') }}" defer></script>
-  <script src="{{ url_for('main_ep.static', filename='js/base.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url('static', 'css/view/word/view_specific_word.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/view/view.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
@@ -20,7 +20,7 @@
         <button id="wordStarToggle" type="button"
             class="star {{ 'yellow' if word_details.star else 'white' }}"
             aria-pressed="{{ 'true' if word_details.star else 'false' }}"
-            data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
+            data-toggle-url="{{ url('toggle_star') }}"
             data-id="{{ word_details.id | e }}"
         >★</button>
 
@@ -34,7 +34,7 @@
           class="known-btn"
           data-id="{{ word_details.id }}"
           data-priority="{{ word_details.priority }}"
-          data-toggle-url="{{ url_for('main_ep.toggle_word_known') }}"
+          data-toggle-url="{{ url('toggle_word_known') }}"
           data-quized="{{ word_details.quized }}"
           data-occurrence="{{ word_details.occurrence }}">
         {% if word_details.priority and word_details.priority > 0.0 %}

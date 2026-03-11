@@ -1,5 +1,6 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Tuple, Dict, Any
 import os
+from http import HTTPStatus
 
 from app.common import do_insert_word_sentence_book_2_db
 from handlers.helpers import do_insert_book, str_2_byte, reset_view_word_count
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-def handle_insert_file(pdata: "ProcessData", db: "DBHandling", filename: str, saved_tmp_path: str, is_api_call: bool = False):
+def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", filename: str, saved_tmp_path: str):
     """
     Handle input-ing a file, check file exist, insert as book (the book name is the file name),
     sentences, words to DB and link word-book, word-sentence, sentence-book IDs.
@@ -22,11 +23,9 @@ def handle_insert_file(pdata: "ProcessData", db: "DBHandling", filename: str, sa
     - filename: the filename to be use as book's name, only the name, no path.
     - saved_tmp_path: the full path of the saved tmp file if use UI, or the og file if use API calls
 
-    Output: if is_api_call, return dict. Otherwise, yield bytes to show on UI.
+    Output: bytes of response data or error dict
     """
     if not filename or not saved_tmp_path:
-        if is_api_call:
-            return {"error": "No file selected"}
         yield str_2_byte("Error: No file selected")
         return
     
@@ -34,6 +33,7 @@ def handle_insert_file(pdata: "ProcessData", db: "DBHandling", filename: str, sa
     
     book_id, resp = int(0), None
     content_len = os.path.getsize(saved_tmp_path)
+    print("LEN", content_len)
     
     progress = 0
     # Does not strip now to keep originality for book insertion
@@ -41,10 +41,8 @@ def handle_insert_file(pdata: "ProcessData", db: "DBHandling", filename: str, sa
         # Insert book sentence by sentence
         if not progress:
             # First time will create new row
-            book_id, resp = do_insert_book(db, filename, sentence)
+            book_id, resp, _ = do_insert_book(db, filename, sentence)
             if resp:
-                if is_api_call:
-                    return resp
                 yield str_2_byte(str(resp))
                 return
         else:
@@ -54,18 +52,13 @@ def handle_insert_file(pdata: "ProcessData", db: "DBHandling", filename: str, sa
         do_insert_word_sentence_book_2_db(pdata, db, sentence.strip("\n").strip(), book_id)
         progress += len(sentence)
         # use "data: " to mark the progress display for JS
-        if not is_api_call:
-            yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
+        yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
     
-    # If is saved temp file (not API call), remove tmp file
-    if not is_api_call:
-        os.remove(saved_tmp_path)
-
-    if is_api_call:
-        return {"message": f"Processed and inserted {filename}"}
+    # Remove tmp file
+    os.remove(saved_tmp_path)
     yield str_2_byte(f"Processed and inserted {filename}")
 
-def handle_insert_str(pdata: "ProcessData", db: "DBHandling", name: str, data: str, is_api_call: bool = False):
+def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name: str, data: str):
     """
     Handle input-ing a string, insert as book, sentences, words to DB
     and link word-book, word-sentence, sentence-book IDs.
@@ -73,21 +66,20 @@ def handle_insert_str(pdata: "ProcessData", db: "DBHandling", name: str, data: s
     Input:
     - pdata: ProcessData instance
     - db: DBHandling instance
-    - name: the name to be use as book's name.
-    - data: the JP text to be processed and inserted.
+    - name: the name to be use as book's name
+    - data: the JP text to be processed and inserted
 
-    Output: return dict for API or yield bytes for UI
+    Output: bytes of response data or error dict
     """
     if not name or not data:
-        return {"error": "Missing name or text"}
+        yield str_2_byte("Error: Missing name or text")
+        return
 
     reset_view_word_count()
 
     content_len = len(data)
-    book_id, resp = do_insert_book(db, name, data)
+    book_id, resp, _ = do_insert_book(db, name, data)
     if resp:
-        if is_api_call:
-            return resp
         yield str_2_byte(str(resp))
         return
     
@@ -96,9 +88,6 @@ def handle_insert_str(pdata: "ProcessData", db: "DBHandling", name: str, data: s
         do_insert_word_sentence_book_2_db(pdata, db, sentence, book_id)
         progress += len(sentence)
         # use "data: " to mark the progress display for JS
-        if not is_api_call:
-            yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
+        yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
     
-    if is_api_call:
-        return {"message": "Processed and inserted text"}
     yield str_2_byte(f"Processed and inserted text")

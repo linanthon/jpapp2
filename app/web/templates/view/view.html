@@ -2,8 +2,8 @@
 <html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>View</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
-  <script src="{{ url_for('main_ep.static', filename='js/base.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
@@ -12,16 +12,16 @@
     <button class="home-btn" onclick="goHome()">🏠Home</button>
   </div>
   
-  <form method="GET" action="{{ url_for('main_ep.search_word') }}">
+  <form method="GET" action="{{ url('search_word') }}">
     <button type="submit">Search word</button>
   </form>
 
-  <form method="GET" action="{{ url_for('main_ep.view_words') }}">
+  <form method="GET" action="{{ url('view_words') }}">
     <button type="submit">View words</button>
   </form>
 
 
-  <form method="GET" action="{{ url_for('main_ep.view_books') }}">
+  <form method="GET" action="{{ url('view_books') }}">
     <button type="submit">View books</button>
   </form>
 

@@ -2,13 +2,13 @@
 <html>
 <head>
   <title>JP-EN App</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
 </head>
 <body>
   <h1>Japanese-English App</h1>
-  <form action="{{ url_for('main_ep.insert') }}"><button type="submit">Insert</button></form>
-  <form action="{{ url_for('main_ep.view') }}"><button type="submit">View Collection</button></form>
-  <form action="{{ url_for('main_ep.quiz') }}"><button type="submit">Quiz</button></form>
-  <form action="{{ url_for('main_ep.progress') }}"><button type="submit">Progress</button></form>
+  <form action="{{ url('insert') }}"><button type="submit">Insert</button></form>
+  <form action="{{ url('view') }}"><button type="submit">View Collection</button></form>
+  <form action="{{ url('quiz') }}"><button type="submit">Quiz</button></form>
+  <form action="{{ url('progress') }}"><button type="submit">Progress</button></form>
 </body>
 </html>

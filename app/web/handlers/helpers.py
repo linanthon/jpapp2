@@ -1,17 +1,16 @@
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Request
 from contextlib import asynccontextmanager
 from typing import Tuple
+import os
+from http import HTTPStatus
 
 from utils.db import DBHandling
 from utils.process_data import ProcessData
 from utils.data import read_stop_words, read_jlpt, scrape_all_jlpt
+from handlers.config import DB_USER, DB_PASS, bpv1_url_prefix
 
 # cache word count for /view/word
 view_count_cache = {}
-
-# Load config
-from dotenv import load_dotenv
-load_dotenv()
 
 
 @asynccontextmanager
@@ -45,6 +44,48 @@ def create_app():
     read_jlpt()
     return app
 
+def get_jinja_globals():
+    """Return URL helper function and url_prefix for Jinja2 templates.
+    
+    Usage in templates, example using /v1 url prefix:
+    - {{ url('static', 'css/style.css') }} -> /static/css/style.css
+    - {{ url('insert') }} -> /v1/insert
+    - {{ url_prefix }} -> /v1 (accessible as data attribute in HTML)
+    """
+    url_prefix = bpv1_url_prefix
+
+    def url(endpoint: str, filename: str = None) -> str:
+        """Generate URLs for templates."""
+        routes = {
+            'home': f'{url_prefix}/',
+            'insert': f'{url_prefix}/insert',
+            'upload_file': f'{url_prefix}/insert/file',
+            'upload_string': f'{url_prefix}/insert/str',
+            'view': f'{url_prefix}/view',
+            'search_word': f'{url_prefix}/view/search-word',
+            'view_words': f'{url_prefix}/view/word',
+            'view_specific_word': f'{url_prefix}/view/word/',
+            'toggle_star': f'{url_prefix}/toggle-star',
+            'serve_audio': f'{url_prefix}/audio/',
+            'view_books': f'{url_prefix}/view/book',
+            'view_specific_book': f'{url_prefix}/view/book/',
+            'delete_book': f'{url_prefix}/del/book',
+            'progress': f'{url_prefix}/progress',
+            'quiz': f'{url_prefix}/quiz',
+            'quiz_jp': f'{url_prefix}/quiz/jp',
+            'quiz_known': f'{url_prefix}/quiz/known',
+            'quiz_en': f'{url_prefix}/quiz/en',
+            'quiz_sentence': f'{url_prefix}/quiz/sentence',
+            'update_word_prio': f'{url_prefix}/word/prio',
+            'toggle_word_known': f'{url_prefix}/word/known',
+        }
+        
+        if endpoint == 'static':
+            return f'/static/{filename}'
+        return routes.get(endpoint, '#')
+    
+    return {'url': url, 'url_prefix': url_prefix}
+
 # ===== FastAPI Dependency Injection =====
 def get_db(request: Request) -> DBHandling:
     """Get DB connection from app state"""
@@ -68,7 +109,7 @@ def get_filename_from_path(fullpath: str):
 
     return ".".join(temp[:-1])
 
-def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict | None]:
+def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict | None, int]:
     """Call DB to insert book.
     
     Input:
@@ -82,20 +123,26 @@ def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict
         + -1: if DB failed
         + -2: if file not found
     - dict: error response dict, or None if success
+    - int: HTTP status code
     """
     if not name or not data:
-        return -1, {"error": "No content"}
+        return -1, {"error": "No content"}, HTTPStatus.BAD_REQUEST
     
     book_id = db.insert_book(name, data)
     error_resp = None
+    status_code = HTTPStatus.OK
+    
     if book_id == 0:
         error_resp = {"error": "Name already used"}
+        status_code = HTTPStatus.CONFLICT
     elif book_id == -1:
         error_resp = {"error": "Failed to insert"}
+        status_code = HTTPStatus.INTERNAL_SERVER_ERROR
     elif book_id == -2:
         error_resp = {"error": "File not found"}
+        status_code = HTTPStatus.NOT_FOUND
     
-    return book_id, error_resp
+    return book_id, error_resp, status_code
 
 def str_2_byte(input_str: str):
     return input_str.encode("utf-8")
