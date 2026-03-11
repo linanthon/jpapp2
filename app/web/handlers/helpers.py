@@ -147,10 +147,6 @@ def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict
 def str_2_byte(input_str: str):
     return input_str.encode("utf-8")
 
-def is_api_request(request: Request) -> bool:
-    """Check if request is from API (JSON content-type)"""
-    return request.headers.get("content-type", "").startswith("application/json")
-
 def toggle_star_helper(db: DBHandling, obj_id: int, obj_type: str, star: int) -> bool:
     """Turn star on or off. Return true if success, false otherwise."""
     star_stt = True if star == 1 else False

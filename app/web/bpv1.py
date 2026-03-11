@@ -10,7 +10,7 @@ from handlers.insert import handle_insert_file_stream, handle_insert_str_stream
 from handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                            handle_view_books, handle_view_specific_book)
 from handlers.helpers import (
-    get_filename_from_path, is_api_request, toggle_star_helper, validate_jlpt_level,
+    get_filename_from_path, toggle_star_helper, validate_jlpt_level,
     parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id,
     get_db, get_pdata, get_jinja_globals
 )
@@ -80,29 +80,8 @@ async def upload_string(
     - Via API call: use request body {"name": ..., "data": ...}
     - Via UI: stored in "stringName" and "stringBody" in form
     """
-    # Check if API call
-    is_api_call = is_api_request(request)
-    name = None
-    data = None
-    
-    if is_api_call:
-        body = await request.json()
-        if body:
-            name = body.get("name")
-            data = body.get("data")
-    else:
-        # Handle UI form
-        name = stringName
-        data = stringBody
-    
-    if is_api_call:
-        # API call - return JSON response with proper status code
-        response_data, status_code = handle_insert_str(pdata, db, name, data)
-        return JSONResponse(content=response_data, status_code=status_code)
-    
-    # UI call - stream the response
     return StreamingResponse(
-        handle_insert_str_stream(pdata, db, name, data),
+        handle_insert_str_stream(pdata, db, stringName, stringBody),
         media_type="text/event-stream"
     )
 
