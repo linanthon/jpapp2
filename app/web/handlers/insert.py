@@ -2,8 +2,8 @@ from typing import TYPE_CHECKING, Tuple, Dict, Any
 import os
 from http import HTTPStatus
 
-from app.common import do_insert_word_sentence_book_2_db
-from handlers.helpers import do_insert_book, str_2_byte, reset_view_word_count
+from handlers.helpers import (do_insert_book, str_2_byte, reset_view_word_count,
+                              do_insert_word_sentence_book_2_db)
 from utils.logger import get_logger
 
 if TYPE_CHECKING:

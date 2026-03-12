@@ -13,7 +13,7 @@ psycopg2-binary==2.9.10
 fugashi==1.5.1
 unidic-lite==1.0.8
 jamdict==0.1a11.post2
-jamdict-data==1.5
+# jamdict-data==1.5
 # mecab-python3==1.0.10       # only tokenize
 
 # Split Kanji into Katakana
@@ -31,4 +31,6 @@ typeguard==4.4.4
 
 # Web
 fastapi==0.135.1
+Jinja2==3.1.6
+python-multipart==0.0.22
 uvicorn==0.41.0

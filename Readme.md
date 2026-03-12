@@ -35,8 +35,9 @@ This is another version of the https://github.com/linanthon/jpapp. Focus on mult
     If fail to install jamdict_data on Windows due to wheel:
     - Run `pip install jamdict==0.1a11.post2`, should work normally
     - Manually download jamdict_data 1.5 from pypip: https://files.pythonhosted.org/packages/97/a5/075928aed2b3b70459fc1db396397dfa6714d266c143c51af9b648551a4e/jamdict_data-1.5.tar.gz
-    - Extract the tar.gz (should get jamdict_data folder) into your environment, i.e.: `pyenv/Lib/site-packages`
-    - Inside the extracted jamdict_data folder, remove the small size `jamdict.db` (~500kb) if exist, extract the ~50mb `jamdict.db.xz` here
+    - Extract the tar.gz (should get jamdict_data-1.5 folder) 
+    - Inside, find the `jamdict_data` folder, remove the small size `jamdict.db` (~500kb) if exist, extract the ~50mb `jamdict.db.xz` here (should get ~300mb file). Remove the `jamdict.db.xz`.
+    - Move the `jamdict_data` folder to your environment, i.e.: .venv/Lib/site-packages
 
 ## How to use
 After installation, open your postgres and set password, update `app/web/handlers/config.py`'s `DB_USER` and `DP_PASS`. To use web UI, run:
