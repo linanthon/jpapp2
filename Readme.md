@@ -1,9 +1,5 @@
 ## About this project
-Motivation: JP learning apps usually have their own learning path, and it might not focus on the user desire aspect or gives the user the words they want. This JP learning program only practice the user the documents they put in, so they learn exactly what they want. If you're wondering what if you don't want to input anything and just learn, those apps exist.
-
-Purpose: This is just a side project I do to practice backend solution and front-backend communication. It's not perfect and lacks many functions.
-
-Demo video: https://youtu.be/nVGgHGeae0Q
+This is another version of the https://github.com/linanthon/jpapp. Focus on multi-user support, so the original project meaning might not make sense here. Below sections are just copied over.
 
 ## Installation:
 - Install postgres.
