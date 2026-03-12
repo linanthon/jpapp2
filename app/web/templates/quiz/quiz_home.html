@@ -2,10 +2,10 @@
 <html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>Quiz</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/quiz/quiz_home.css') }}">
-  <script src="{{ url_for('main_ep.static', filename='js/quiz/quiz_home.js') }}" defer></script>
-  <script src="{{ url_for('main_ep.static', filename='js/base.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/quiz/quiz_home.css') }}">
+  <script src="{{ url('static', 'js/quiz/quiz_home.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
@@ -17,7 +17,7 @@
   <!-- ======================= Quiz modes ======================= -->
   <form id="quizJP">
     <button type="button" id="quizSelect"
-            data-action="{{ url_for('main_ep.quiz_jp') }}"
+            data-action="{{ url('quiz_jp') }}"
             data-mode="jp"
             onclick="openQuizOptionsFromButton(this)">
       JP -> EN
@@ -26,7 +26,7 @@
 
   <form id="quizEN">
     <button type="button" id="quizSelect"
-            data-action="{{ url_for('main_ep.quiz_en') }}"
+            data-action="{{ url('quiz_en') }}"
             data-mode="en"
             onclick="openQuizOptionsFromButton(this)">
       EN -> JP
@@ -35,7 +35,7 @@
 
   <form id="quizSentence">
     <button type="button" id="quizSelect"
-            data-action="{{ url_for('main_ep.quiz_sentence') }}"
+            data-action="{{ url('quiz_sentence') }}"
             data-mode="sentence"
             onclick="openQuizOptionsFromButton(this)">
       JP sentence
@@ -44,7 +44,7 @@
 
   <form id="quizKnown">
     <button type="button" id="quizSelect"
-            data-action="{{ url_for('main_ep.quiz_known') }}"
+            data-action="{{ url('quiz_known') }}"
             data-mode="known"
             onclick="openQuizOptionsFromButton(this)">
       Review known JP
@@ -57,29 +57,29 @@
     <div id="jlptFilter" style="display:none">
       <label for="jlpt">JLPT:</label>
       <select name="jlpt_level" id="jlpt">
-        <option value="" {% if request.args.get('jlpt_level','') == '' %}selected{% endif %}></option>
-        <option value="N5" {% if request.args.get('jlpt_level') == 'N5' %}selected{% endif %}>N5</option>
-        <option value="N4" {% if request.args.get('jlpt_level') == 'N4' %}selected{% endif %}>N4</option>
-        <option value="N3" {% if request.args.get('jlpt_level') == 'N3' %}selected{% endif %}>N3</option>
-        <option value="N2" {% if request.args.get('jlpt_level') == 'N2' %}selected{% endif %}>N2</option>
-        <option value="N1" {% if request.args.get('jlpt_level') == 'N1' %}selected{% endif %}>N1</option>
-        <option value="N0" {% if request.args.get('jlpt_level') == 'N0' %}selected{% endif %}>Not categorized</option>
+        <option value="" {% if args.get('jlpt_level','') == '' %}selected{% endif %}></option>
+        <option value="N5" {% if args.get('jlpt_level') == 'N5' %}selected{% endif %}>N5</option>
+        <option value="N4" {% if args.get('jlpt_level') == 'N4' %}selected{% endif %}>N4</option>
+        <option value="N3" {% if args.get('jlpt_level') == 'N3' %}selected{% endif %}>N3</option>
+        <option value="N2" {% if args.get('jlpt_level') == 'N2' %}selected{% endif %}>N2</option>
+        <option value="N1" {% if args.get('jlpt_level') == 'N1' %}selected{% endif %}>N1</option>
+        <option value="N0" {% if args.get('jlpt_level') == 'N0' %}selected{% endif %}>Not categorized</option>
       </select>
     </div>
 
     <div id="starFilter" style="display:none">
       <label for="star">star:</label>
       <input type="checkbox" id="star" name="star" value="1"
-            {% if request.args.get('star') in ['1','true','True','on','yes'] %}checked{% endif %}>
+            {% if args.get('star') in ['1','true','True','on','yes'] %}checked{% endif %}>
     </div>
 
     <div id="bookFilter" style="display:none">
       <label for="book">book:</label>
       <select name="book_id" id="book">
-        <option value="" {% if not request.args.get('select_book') %}selected{% endif %}>&nbsp;</option>
+        <option value="" {% if not args.get('select_book') %}selected{% endif %}>&nbsp;</option>
         {% if all_books %}
           {% for b in all_books %}
-            <option value="{{ b.id }}" {% if request.args.get('select_book') == b.id|string %}selected{% endif %}>{{ b.name }}</option>
+            <option value="{{ b.id }}" {% if args.get('select_book') == b.id|string %}selected{% endif %}>{{ b.name }}</option>
           {% endfor %}
         {% endif %}
       </select>
@@ -103,7 +103,7 @@
         Get word by priority:
       </label>
       <input type="checkbox" id="usePrio" name="use_priority" value="1"
-            {% if request.args.get('use_priority','1') in ['1','true','True','on','yes'] %}checked{% endif %}>
+            {% if args.get('use_priority','1') in ['1','true','True','on','yes'] %}checked{% endif %}>
     </div>
 
     <div id="distractorsDBGroup" style="display:none">
@@ -115,7 +115,7 @@
         Get incorrect choices from inserted words:
       </label>
       <input type="checkbox" id="distractors" name="get_distractors_from_db" value="1"
-            {% if request.args.get('get_distractors_from_db', '1') in ['1','true','True','on','yes'] %}checked{% endif %}>
+            {% if args.get('get_distractors_from_db', '1') in ['1','true','True','on','yes'] %}checked{% endif %}>
     </div>
 
     <button type="submit" id="quizSubmit">Start</button>

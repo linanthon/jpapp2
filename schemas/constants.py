@@ -20,9 +20,9 @@ TABLE_SENTENCE_BOOK_REF = "sentence_book"
 # --- Defaults
 DEFAULT_LIMIT: int = 10
 DEFAULT_DISTRACTOR_COUNT: int = 3
-DEFAULT_FORMULA_K: float = 0.5
+DEFAULT_FORMULA_K: float = 0.5      # smaller = higher prior
 DEFAULT_TIME_EXPODECAY: float = 5
-DEFAULT_MULTI_PENALTY: float = 0.2  # 20% less priority when quized > QUIZ_SOFT_CAP
+DEFAULT_MULTI_PENALTY: float = 0.2  # 20% less priority when quized > QUIZ_SOFT_CAP. Smaller = higher prior
 DEFAULT_SENTENCE_EXAMPLE_LIMIT: int = 5
 
 # --- Quiz related

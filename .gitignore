@@ -4,3 +4,6 @@ app/__pycache__/
 app/cli/__pycache__/
 schemas/__pycache__/
 utils/__pycache__/
+.env
+pyenv
+test-insert-jp.txt

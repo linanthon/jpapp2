@@ -1435,7 +1435,8 @@ class DBHandling:
     def _priority_softcap_formula(self, occurrence: int, quized: int, k: float = DEFAULT_FORMULA_K,
                                   p: float = DEFAULT_MULTI_PENALTY) -> float:
         """
-        Use to calculate priority for a word that has been quized and get corrected > QUIZ_SOFT_CAP times
+        A wrapper function, use to calculate priority for a word that has been quized
+        and get corrected > QUIZ_SOFT_CAP times
         """
         return self._priority_multiplier_penalty(occurrence, quized, k, p)
 

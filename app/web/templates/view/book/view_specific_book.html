@@ -2,10 +2,10 @@
 <html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>View book</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/book/view_specific_book.css') }}">
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
-  <script src="{{ url_for('main_ep.static', filename='js/view/view.js') }}" defer></script>
-  <script src="{{ url_for('main_ep.static', filename='js/base.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url('static', 'css/view/book/view_specific_book.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/view/view.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
@@ -20,7 +20,7 @@
         <button id="bookStarToggle" type="button"
             class="book-star-toggle {{ 'yellow' if book_details.star else 'white' }}"
             aria-pressed="{{ 'true' if book_details.star else 'false' }}"
-            data-toggle-url="{{ url_for('main_ep.toggle_star') }}"
+            data-toggle-url="{{ url('toggle_star') }}"
             data-id="{{ book_details.book_id }}"
         >★</button>
 
@@ -29,7 +29,7 @@
         <button id="deleteBook" type="button"
             data-id="{{ book_details.book_id }}"
             data-name="{{ book_details.name }}"
-            data-delete-url="{{ url_for('main_ep.delete_book') }}"
+            data-delete-url="{{ url('delete_book') }}"
         >Delete</button>
       </div>
     </div>

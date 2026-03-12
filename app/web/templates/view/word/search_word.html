@@ -2,10 +2,10 @@
 <html data-url-prefix="{{ url_prefix }}">
 <head>
   <title>Search word</title>
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/view/word/search_word.css') }}">
-  <link rel="stylesheet" href="{{ url_for('main_ep.static', filename='css/style_common.css') }}">
-  <script src="{{ url_for('main_ep.static', filename='js/view/view.js') }}" defer></script>
-  <script src="{{ url_for('main_ep.static', filename='js/base.js') }}" defer></script>
+  <link rel="stylesheet" href="{{ url('static', 'css/view/word/search_word.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/view/view.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
@@ -15,7 +15,7 @@
   </div>
 
 	<!-- Search bar -->
-  <form class="form-search-word-box" id="searchWordForm" method="GET" action="{{ url_for('main_ep.search_word') }}">
+  <form class="form-search-word-box" id="searchWordForm" method="GET" action="{{ url('search_word') }}">
     <div class="form-search-word-group">
       <label for="word">Enter word (JP or EN):</label>
       <input type="text" id="word" name="word" required>
