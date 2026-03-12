@@ -1,6 +1,9 @@
 typer==0.16.0
 argparse==1.4.0
 python-dotenv==1.2.2
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.22
 
 # Scarpe data
 beautifulsoup4==4.13.4
@@ -8,6 +11,7 @@ requests==2.32.4
 
 # DB
 psycopg2-binary==2.9.10
+asyncpg==0.31.0
 
 # tokenize words and dict
 fugashi==1.5.1

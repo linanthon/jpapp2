@@ -66,12 +66,14 @@ def handle_view_words(db: "DBHandling" = None, jlpt_level: str = "", star: bool 
 
 def handle_view_books(db: "DBHandling" = None, star: bool = False, limit: int = DEFAULT_LIMIT, page: int = 1) -> Tuple[List[dict], int]:
     """
-    Handle viewing a list of `limit` JP words with their 1st EN meaning.
+    Handle viewing a list of `limit` JP books with their 1st EN meaning.
     
-    Output: a list containing dicts with below format:
+    Output:
+    - list: containing dicts with below format:
         - name: the book name
         - created: the book insert timestamp
         - star: star status of the book
+    - int: page count
     """
     # Save count to cache until insert endpoint
     key = tuple(f"book::{star}")
