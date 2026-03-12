@@ -260,8 +260,8 @@ def quiz(
     jlpt_level: str = "",
     star: bool | str = None,
     select_book: str = "",
-    use_priority: bool | str = None,
-    get_distractors_from_db: bool | str = None,
+    use_priority: str = "1",
+    get_distractors_from_db: str = "1",
     db: DBHandling = Depends(get_db)
 ):
     """Quiz home page"""
