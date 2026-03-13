@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException
+from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import tempfile
@@ -14,7 +14,7 @@ from handlers.view import (handle_search_word, handle_view_specific_word, handle
 from handlers.helpers import (
     get_filename_from_path, toggle_star_helper, validate_jlpt_level,
     parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id,
-    get_db, get_pdata, get_jinja_globals, get_redis, get_current_user
+    get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id
 )
 from handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
                            change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
@@ -43,6 +43,11 @@ def home():
 def login_page():
     """Serve login page"""
     return templates.TemplateResponse("login.html", {"request": {}})
+
+@router.get("/register")
+def register_page():
+    """Serve register page"""
+    return templates.TemplateResponse("register.html", {"request": {}})
 
 
 @router.post("/register")
@@ -124,7 +129,7 @@ async def login(
 @router.post("/logout")
 async def logout(
     request: Request,
-    current_user: UserResponse = Depends(get_current_user),
+    current_user_id: int = Depends(get_current_user_id),
     redis: aioredis.Redis = Depends(get_redis)
 ):
     """
@@ -138,7 +143,7 @@ async def logout(
         await redis.setex(f"blacklist:{token}", ACCESS_TOKEN_EXPIRE_MINUTES*60, "true")
     
     # Delete the refresh token
-    await redis.delete(f"refresh_token:{current_user.id}")
+    await redis.delete(f"refresh_token:{current_user_id}")
     
     return {"message": "Logged out successfully"}
 

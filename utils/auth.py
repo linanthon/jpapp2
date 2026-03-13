@@ -7,10 +7,10 @@ from app.web.handlers.config import (ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
                                      REFRESH_TOKEN_EXPIRE_DAYS, SECRET_KEY)
 
 # Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")
 
 def hash_password(password: str) -> str:
-    """Hash a plain text password using bcrypt"""
+    """Hash a plain text password using bcrypt_sha256 (supports any password length)"""
     return pwd_context.hash(password)
 
 

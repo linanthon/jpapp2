@@ -70,6 +70,9 @@ def get_jinja_globals():
         """Generate URLs for templates."""
         routes = {
             'home': f'{url_prefix}/',
+            'login': f'{url_prefix}/login',
+            'register': f'{url_prefix}/register',
+            'logout': f'{url_prefix}/logout',
             'insert': f'{url_prefix}/insert',
             'upload_file': f'{url_prefix}/insert/file',
             'upload_string': f'{url_prefix}/insert/str',
@@ -111,16 +114,16 @@ async def get_redis(request: Request) -> aioredis.Redis:
     """Get Redis connection from app state"""
     return request.app.state.redis
 
-async def get_current_user(
+async def get_current_user_id(
     request: Request,
-    db: DBHandling = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis)
-) -> UserResponse:
+) -> int:
     """
     Dependency to get current user from JWT token in Authorization header.
     Validates token and checks if it's blacklisted.
-    
     Raises HTTPException if token is invalid, expired, or blacklisted.
+
+    Output: user id if found
     """
     # Get toekn from authorization header
     auth_header = request.headers.get("Authorization")
@@ -137,12 +140,24 @@ async def get_current_user(
     user_id = verify_token(token, token_type="access")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
-    # Get user from DB
+    return user_id
+
+async def get_current_user(
+    request: Request,
+    db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis)
+) -> dict:
+    """
+    Dependency to get current user from JWT token in Authorization header.
+    Validates token and checks if it's blacklisted.
+    Raises HTTPException if token is invalid, expired, or blacklisted.
+
+    Output: dict containing id, username, email, is_admin, created_at
+    """
+    user_id = await get_current_user_id(request, redis)
     user = db.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-    
     return user
 
 def get_filename_from_path(fullpath: str):
