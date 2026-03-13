@@ -87,6 +87,82 @@ class DBHandling:
             self._conn.close()
             self._conn = None
 
+    # User ==================================================================================
+    def create_user(self, username: str, email: str, password_hash: str, is_admin: bool = False) -> int:
+        """
+        Create a new user in the database.
+        
+        Input:
+        - username: Username (must be unique)
+        - email: Email address (must be unique)
+        - password_hash: Hashed password
+        - is_admin: Whether user is admin (default False)
+        
+        Output: User ID if successful, -1 if failed
+        """
+        query = sql.SQL(
+            """INSERT INTO {table} (username, email, password_hash, is_admin, created_at, modified_at) 
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id;"""
+        ).format(table=sql.Identifier("users"))
+        
+        if self._safe_execute(query, (username, email, password_hash, is_admin)):
+            self._safe_commit()
+            return self._cursor.fetchone()["id"]
+        self._safe_rollback()
+        return -1
+    
+    def get_user_by_id(self, user_id: int) -> dict | None:
+        """
+        Get user by ID (without password_hash).
+        
+        Output: User dict or None if not found.
+        """
+        query = sql.SQL("SELECT id, username, email, is_admin, created_at FROM {table} WHERE id = %s;").format(
+            table=sql.Identifier("users")
+        )
+        
+        if self._safe_execute(query, (user_id,)):
+            result = self._cursor.fetchone()
+            return dict(result) if result else None
+        return None
+    
+    def get_user_by_username(self, username: str) -> dict | None:
+        """
+        Get user by username (includes password_hash for auth).
+        
+        Output: User dict (including password_hash) or None if not found.
+        """
+        query = sql.SQL(
+            "SELECT id, username, email, password_hash, is_admin, created_at FROM {table} WHERE username = %s;"
+        ).format(table=sql.Identifier("users"))
+        
+        if self._safe_execute(query, (username,)):
+            result = self._cursor.fetchone()
+            return dict(result) if result else None
+        return None
+    
+    def user_exists(self, username: str) -> bool:
+        """Check if username exists"""
+        query = sql.SQL("SELECT COUNT(*) as count FROM {table} WHERE username = %s;").format(
+            table=sql.Identifier("users")
+        )
+        
+        if self._safe_execute(query, (username,)):
+            result = self._cursor.fetchone()
+            return result["count"] > 0 if result else False
+        return False
+    
+    def user_exists_by_email(self, email: str) -> bool:
+        """Check if email exists"""
+        query = sql.SQL("SELECT COUNT(*) as count FROM {table} WHERE email = %s;").format(
+            table=sql.Identifier("users")
+        )
+        
+        if self._safe_execute(query, (email,)):
+            result = self._cursor.fetchone()
+            return result["count"] > 0 if result else False
+        return False
+
     # Book ==================================================================================
     def insert_book(self, filename: str, content: str = "") -> int:
         """
@@ -1625,6 +1701,36 @@ class DBHandling:
         self._safe_rollback()
         return False
     # =======================================================================================
+
+
+    async def get_user_word_progress(self, user_id, word_id):
+        # Try to get existing progress
+        progress = await self._safe_execute(
+            "SELECT * FROM user_word_progress WHERE user_id=$1 AND word_id=$2",
+            user_id, word_id
+        )
+        
+        if not progress:
+            # Return default/empty progress (don't create row yet)
+            return {
+                'quized': 0,
+                'star': False,
+                'priority': 0,
+                'last_tested': None
+            }
+        return progress
+
+    async def quiz_word(self, user_id, word_id, is_correct):
+        # Insert OR UPDATE
+        await self._safe_execute(
+            """
+            INSERT INTO user_word_progress (user_id, word_id, quized, last_tested)
+            VALUES ($1, $2, $3, NOW())
+            ON CONFLICT(user_id, word_id) DO UPDATE
+            SET quized = user_word_progress.quized + $3, last_tested = NOW()
+            """,
+            user_id, word_id, 1 if is_correct else -1
+        )
 
 
 

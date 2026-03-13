@@ -13,6 +13,10 @@ requests==2.32.4
 psycopg2-binary==2.9.10
 asyncpg==0.31.0
 
+# Redis
+redis==5.0.1
+aioredis==2.0.1
+
 # tokenize words and dict
 fugashi==1.5.1
 unidic-lite==1.0.8

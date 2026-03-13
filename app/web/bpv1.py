@@ -4,21 +4,25 @@ from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import tempfile
 import os
+import redis.asyncio as aioredis
 
-from handlers.config import bpv1_url_prefix
+from handlers.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
+                            FAILED_LOGIN_BLOCK_MINUTES)
 from handlers.insert import handle_insert_file_stream, handle_insert_str_stream
 from handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                            handle_view_books, handle_view_specific_book)
 from handlers.helpers import (
     get_filename_from_path, toggle_star_helper, validate_jlpt_level,
     parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id,
-    get_db, get_pdata, get_jinja_globals
+    get_db, get_pdata, get_jinja_globals, get_redis, get_current_user
 )
 from handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
                            change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
+from schemas.user import UserCreate, UserLogin, TokenResponse, UserResponse, TokenRefresh
 from utils.db import DBHandling
 from utils.process_data import ProcessData
+from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
 
 # Create router
 router = APIRouter()
@@ -32,6 +36,154 @@ templates.env.globals.update(get_jinja_globals())
 @router.get("/")
 def home():
     return templates.TemplateResponse("home.html", {"request": {}})
+
+
+# ===== AUTH ========================================================================
+@router.get("/login")
+def login_page():
+    """Serve login page"""
+    return templates.TemplateResponse("login.html", {"request": {}})
+
+
+@router.post("/register")
+async def register(
+    user_data: UserCreate,
+    db: DBHandling = Depends(get_db)
+):
+    """
+    Register a new user.
+    
+    Body: {username, email, password}
+    Returns: {id, username, email, is_admin}
+    """
+    if db.user_exists(user_data.username):
+        raise HTTPException(status_code=409, detail="Username already taken")
+    if db.user_exists_by_email(user_data.email):
+        raise HTTPException(status_code=409, detail="Email already registered")
+    
+    hashed_password = hash_password(user_data.password)
+    user_id = db.create_user(
+        username=user_data.username,
+        email=user_data.email,
+        password_hash=hashed_password,
+        is_admin=False
+    )
+    
+    if not user_id:
+        raise HTTPException(status_code=500, detail="Failed to create user")
+    
+    user = db.get_user_by_id(user_id)
+    return user
+
+
+@router.post("/login")
+async def login(
+    credentials: UserLogin,
+    db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis)
+):
+    """
+    Login user and return JWT tokens.
+    
+    Body: {username, password}
+    Returns: {access_token, refresh_token, token_type}
+    """
+    # Rate limit (check failed login)
+    failed_attempts = await redis.get(f"login_attempts:{credentials.username}")
+    if failed_attempts and int(failed_attempts) >= FAILED_LOGIN_LIMIT:
+        await redis.expire(f"login_attempts:{credentials.username}", FAILED_LOGIN_BLOCK_MINUTES)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed attempts. Try again in {FAILED_LOGIN_BLOCK_MINUTES} minutes."
+        )
+    
+    # Get user from DB + Verify password
+    user = db.get_user_by_username(credentials.username)
+    if not user or not verify_password(credentials.password, user['password_hash']):
+        await redis.incr(f"login_attempts:{credentials.username}")
+        await redis.expire(f"login_attempts:{credentials.username}", FAILED_LOGIN_BLOCK_MINUTES)
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    # Clear failed attempts on successful login
+    await redis.delete(f"login_attempts:{credentials.username}")
+    
+    # Create tokens
+    access_token = create_access_token(user['id'])
+    refresh_token = create_refresh_token(user['id'])
+    
+    # Store refresh token in Redis
+    expire_secs = REFRESH_TOKEN_EXPIRE_DAYS*24*60*60
+    await redis.setex(f"refresh_token:{user['id']}", expire_secs, refresh_token)
+    
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token
+    )
+
+
+@router.post("/logout")
+async def logout(
+    request: Request,
+    current_user: UserResponse = Depends(get_current_user),
+    redis: aioredis.Redis = Depends(get_redis)
+):
+    """
+    Logout user by blacklisting their access token and delete refresh token.
+    Requires Authorization header with valid JWT.
+    """
+    # Extract token and blacklist it
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        await redis.setex(f"blacklist:{token}", 3600, "true")
+    
+    # Delete the refresh token
+    await redis.delete(f"refresh_token:{current_user.id}")
+    
+    return {"message": "Logged out successfully"}
+
+
+@router.post("/refresh")
+async def refresh_token(
+    token_data: TokenRefresh,
+    redis: aioredis.Redis = Depends(get_redis)
+):
+    """
+    Use refresh token to renew access token.
+    'Access token' is the one to be used in headers of the requests.
+    'Refresh token' is used to get new access token when it expires when used logged in and requested an endpoint.
+    
+    Body: {refresh_token}
+    Returns: {access_token, refresh_token, token_type}
+    """
+    # Verify refresh token
+    user_id = verify_token(token_data.refresh_token, token_type="refresh")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+    
+    # Check if refresh token exists in Redis
+    stored_token = await redis.get(f"refresh_token:{user_id}")
+    if stored_token != token_data.refresh_token:
+        raise HTTPException(status_code=401, detail="Refresh token is invalid or expired")
+    
+    # Create new tokens
+    access_token = create_access_token(user_id)
+    new_refresh_token = create_refresh_token(user_id)
+    
+    # Update refresh token in Redis
+    await redis.setex(f"refresh_token:{user_id}", REFRESH_TOKEN_EXPIRE_DAYS*24*60*60, new_refresh_token)
+    
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token
+    )
+
+
+@router.get("/register")
+def register_page():
+    """Serve registration page"""
+    return {}
+
 
 
 # ===== INSERT ===================================================================

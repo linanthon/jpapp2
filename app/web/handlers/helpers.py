@@ -1,13 +1,15 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends, HTTPException
 from contextlib import asynccontextmanager
 from typing import Tuple
-import os
 from http import HTTPStatus
+import redis.asyncio as aioredis
 
 from utils.db import DBHandling
 from utils.process_data import ProcessData
 from utils.data import read_stop_words, read_jlpt, scrape_all_jlpt
-from handlers.config import DB_USER, DB_PASS, bpv1_url_prefix
+from utils.auth import verify_token
+from handlers.config import DB_USER, DB_PASS, REDIS_URL, bpv1_url_prefix
+from schemas.user import UserResponse, UserLogin
 
 # cache word count for /view/word
 view_count_cache = {}
@@ -25,12 +27,21 @@ async def lifespan(app: FastAPI):
     if not app.state.db.migrate():
         raise Exception("Error: DB migration error, please check the tables script. Shutting down.")
 
+    # Connect Redis for caching, sessions, rate limiting
+    try:
+        app.state.redis = await aioredis.from_url(REDIS_URL, decode_responses=True)
+        await app.state.redis.ping()  # Test connection
+    except Exception as e:
+        raise Exception(f"Error: Failed to connect to Redis: {e}")
+
     # Load fugashi tagger and jamdict
     app.state.pdata = ProcessData()
     
     yield
     
     # Shutdown ---------------------------
+    if hasattr(app.state, "redis"):
+        await app.state.redis.close()
     if hasattr(app.state, "db"):
         app.state.db.close_db()
 
@@ -95,6 +106,44 @@ def get_db(request: Request) -> DBHandling:
 def get_pdata(request: Request) -> ProcessData:
     """Get ProcessData instance from app state"""
     return request.app.state.pdata
+
+async def get_redis(request: Request) -> aioredis.Redis:
+    """Get Redis connection from app state"""
+    return request.app.state.redis
+
+async def get_current_user(
+    request: Request,
+    db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis)
+) -> UserResponse:
+    """
+    Dependency to get current user from JWT token in Authorization header.
+    Validates token and checks if it's blacklisted.
+    
+    Raises HTTPException if token is invalid, expired, or blacklisted.
+    """
+    # Get toekn from authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+    token = auth_header.split(" ")[1]
+    
+    # Check if token is blacklisted
+    is_blacklisted = await redis.get(f"blacklist:{token}")
+    if is_blacklisted:
+        raise HTTPException(status_code=401, detail="Token has been revoked")
+    
+    # Verify token and get user_id
+    user_id = verify_token(token, token_type="access")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    # Get user from DB
+    user = db.get_user_by_id(user_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    return user
 
 def get_filename_from_path(fullpath: str):
     """Get filename from full path, i.e.: c:/a/path/the_file.123.txt -> the_file.123"""
