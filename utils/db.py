@@ -64,7 +64,7 @@ class DBHandling:
         )
         self._cursor = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     
-    def migrate(self, filename: str = SQL_TABLE_SCRIPT) -> None:
+    def migrate(self, filename: str = SQL_TABLE_SCRIPT) -> bool:
         """Init all tables from file, including:
         - words: stores words, meaning, spelling, jlpt level, ...
         - books: the literature piece that user input
@@ -75,8 +75,9 @@ class DBHandling:
             sql_script = f.read()
         if self._safe_execute(sql_script):
             self._safe_commit()
-        else:
-            self._safe_rollback()
+            return True
+        self._safe_rollback()
+        return False
 
     def close_db(self) -> None:
         if self._cursor:

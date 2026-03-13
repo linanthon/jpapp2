@@ -22,7 +22,8 @@ async def lifespan(app: FastAPI):
         username=DB_USER,
         password=DB_PASS
     )
-    app.state.db.migrate()
+    if not app.state.db.migrate():
+        raise Exception("Error: DB migration error, please check the tables script. Shutting down.")
 
     # Load fugashi tagger and jamdict
     app.state.pdata = ProcessData()

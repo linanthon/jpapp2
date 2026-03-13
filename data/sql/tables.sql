@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS words (
     forms TEXT,
     occurrence INT, -- occurring frequency
     jlpt_level TEXT,
-    audio_mapping TEXT[],
+    audio_mapping TEXT[]
 );
 
 -- Store a book
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS word_book (
 CREATE TABLE IF NOT EXISTS sentences (
     id SERIAL PRIMARY KEY,
     sentence TEXT NOT NULL,
-    occurrence INT,     -- count sentence occrences to decide if is popular or not (current auto alg)
+    occurrence INT     -- count sentence occrences to decide if is popular or not (current auto alg)
 );
 
 -- Store the reference of a word and the sentence contains it
@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS sentence_book (
     PRIMARY KEY (sentence_id, book_id)
 );
 
+-- Store user info
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     is_admin BOOLEAN DEFAULT FALSE,
@@ -58,24 +59,24 @@ CREATE TABLE IF NOT EXISTS users (
     modified_at TIMESTAMP
 );
 
+-- Store users progress of word quiz
 CREATE TABLE IF NOT EXISTS user_word_progress (
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
     word_id INT REFERENCES words(id) ON DELETE CASCADE,
     quized INT,     -- quiz_ed times, +1 if correct, -1 if fail
     last_tested TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- the last time this word has been quiz_ed
     star BOOLEAN,
-    priority NUMERIC    -- use occurrence and quized to calc
-
+    priority NUMERIC,    -- use occurrence and quized to calc
     PRIMARY KEY(user_id, word_id)
 );
 
+-- Store users progress of sentence quiz
 CREATE TABLE IF NOT EXISTS user_sentence_progress (
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
     sentence_id INT REFERENCES sentences(id) ON DELETE CASCADE,
     quized INT,     -- quiz_ed times, +1 if correct, -1 if fail
     last_tested TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- the last time this word has been quiz_ed
     star BOOLEAN,
-    priority NUMERIC    -- use occurrence and quized to calc
-
+    priority NUMERIC,    -- use occurrence and quized to calc
     PRIMARY KEY(user_id, sentence_id)
 );
