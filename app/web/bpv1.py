@@ -7,7 +7,7 @@ import os
 import redis.asyncio as aioredis
 
 from handlers.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
-                            FAILED_LOGIN_BLOCK_MINUTES)
+                            FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
 from handlers.insert import handle_insert_file_stream, handle_insert_str_stream
 from handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                            handle_view_books, handle_view_specific_book)
@@ -135,7 +135,7 @@ async def logout(
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         token = auth_header.split(" ")[1]
-        await redis.setex(f"blacklist:{token}", 3600, "true")
+        await redis.setex(f"blacklist:{token}", ACCESS_TOKEN_EXPIRE_MINUTES*60, "true")
     
     # Delete the refresh token
     await redis.delete(f"refresh_token:{current_user.id}")
@@ -177,13 +177,6 @@ async def refresh_token(
         access_token=access_token,
         refresh_token=new_refresh_token
     )
-
-
-@router.get("/register")
-def register_page():
-    """Serve registration page"""
-    return {}
-
 
 
 # ===== INSERT ===================================================================

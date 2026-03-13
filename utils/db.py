@@ -7,6 +7,7 @@ import psycopg2.extras
 from psycopg2 import sql, extensions
 from typing import List, Tuple, Dict
 
+from app.web.handlers.config import DB_HOST, DB_PORT
 from utils.logger import get_logger
 from schemas.book import Book
 from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,
@@ -30,7 +31,7 @@ class DBHandling:
         self._in_transaction = False
     
     def connect_2_db(self, username: str = "", password: str = "", 
-                     dbname: str = "", host: str = "localhost", port: int = 5432) -> None:
+                     dbname: str = "", host: str = DB_HOST, port: int = DB_PORT) -> None:
         if username == "" or password == "":
             return -1
         
