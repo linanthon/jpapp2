@@ -232,9 +232,6 @@ async def upload_string(
     Handle upload JP text directly.
     Book name = "stringName" and book content = "stringBody" in form
     """
-    print("AAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-    print("name", stringName)
-    print("content", stringBody)
     return StreamingResponse(
         handle_insert_str_stream(pdata, db, stringName, stringBody),
         media_type="text/event-stream"

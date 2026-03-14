@@ -33,7 +33,6 @@ def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", filename: 
     
     book_id, resp = int(0), None
     content_len = os.path.getsize(saved_tmp_path)
-    print("LEN", content_len)
     
     progress = 0
     # Does not strip now to keep originality for book insertion

@@ -309,6 +309,7 @@ def scrape_all_jlpt(option: int = 0) -> str:
         # write to file
         with open(filename, "w", encoding="utf-8") as f:
             f.write("\n".join(vocab))
+    log.info("Finish scraping JLPT levels data")
     return err
         
 def scrape_wikipedia(level: int) -> Tuple[set, str]:
@@ -326,7 +327,7 @@ def scrape_wikipedia(level: int) -> Tuple[set, str]:
         return (list(), "invalid level")
 
     vocab = set()
-    print(f"Scraping dict for JLPT N{level} vocab on Wikipedia...", end="")
+    log.info(f"Scraping dict for JLPT N{level} vocab on Wikipedia...")
     # Request
     url = f"https://en.wiktionary.org/wiki/Appendix:JLPT/N{level}"
     response = requests.get(url)
@@ -361,9 +362,6 @@ def scrape_wikipedia(level: int) -> Tuple[set, str]:
                 kanji = tds[0].text.strip()
                 furigana = tds[1].text.strip()
                 vocab.add(kanji) if kanji != "" else vocab.add(furigana)
-                    
-    
-    print(" Success!")
     return (vocab, "")
 
 
@@ -389,7 +387,7 @@ def scrape_jlpt_sensei(level: int, filename: str):
     if filename == "":
         filename = f"data/jlpt/n{level}.txt"
 
-    print(f"Scraping dict for N{level} vocab...", end="")
+    log.info(f"Scraping dict for N{level} vocab...")
     with open(filename, "a") as f:
         page_num = 1
         while True:
@@ -410,5 +408,4 @@ def scrape_jlpt_sensei(level: int, filename: str):
                 f.write(page_job.text + ",")
             page_num += 1
 
-    print(" Success!")
     return 0
