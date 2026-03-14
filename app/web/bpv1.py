@@ -311,7 +311,8 @@ def view_specific_word(
 @router.post("/toggle-star")
 async def toggle_star(
     request: Request,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """Toggle star status for word or book"""
     data = await request.json()
@@ -382,7 +383,8 @@ def view_specific_book(
 @router.post("/del/book")
 async def delete_book(
     request: Request,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    get_current_admin_user: dict = Depends(get_current_admin_user)
 ):
     """Delete a book"""
     data = await request.json()
@@ -399,7 +401,9 @@ async def delete_book(
 
 # ===== PROGRESS % ================================================================
 @router.get("/progress")
-def progress():
+def progress(
+    current_user_id: int = Depends(get_current_user_id)
+):
     return {"message": "Progress function here"}
 
 # =================================================================================
@@ -436,7 +440,8 @@ def quiz_jp(
     use_priority: bool | str = None,
     get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db),
-    pdata: ProcessData = Depends(get_pdata)
+    pdata: ProcessData = Depends(get_pdata),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """Get JP-to-EN quiz questions"""
     jlpt_level_validated = validate_jlpt_level(jlpt_level)
@@ -470,7 +475,8 @@ def quiz_known(
     limit: int = DEFAULT_LIMIT,
     get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db),
-    pdata: ProcessData = Depends(get_pdata)
+    pdata: ProcessData = Depends(get_pdata),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """Get 'already known' quiz questions"""
     jlpt_level_validated = validate_jlpt_level(jlpt_level)
@@ -505,7 +511,8 @@ def quiz_en(
     limit: int = DEFAULT_LIMIT,
     use_priority: bool | str = None,
     get_distractors_from_db: bool | str = None,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """Get EN-to-JP quiz questions"""
     jlpt_level_validated = validate_jlpt_level(jlpt_level)
@@ -532,7 +539,9 @@ def quiz_en(
 
 # ----- Quiz Sentence (JP) --------- TODO: NOT IMPLEMENTED YET
 @router.get("/quiz/sentence")
-def quiz_sentence():
+def quiz_sentence(
+    current_user_id: int = Depends(get_current_user_id)
+):
     return {"message": "Not implemented yet"}
 
 
@@ -540,7 +549,8 @@ def quiz_sentence():
 @router.post("/word/prio")
 async def update_word_prio(
     request: Request,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """
     Update word priority based on quiz result.
@@ -570,7 +580,8 @@ async def update_word_prio(
 @router.post("/word/known")
 async def toggle_word_known(
     request: Request,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """
     Update word priority to either -1 or recalculate based on quiz/occurrence.
