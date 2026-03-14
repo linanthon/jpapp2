@@ -6,13 +6,14 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     const username = document.getElementById('username').value;
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
+    const is_admin = document.getElementById('is_admin').checked;
     const messageDiv = document.getElementById('message');
     
     try {
         messageDiv.className = '';
         messageDiv.textContent = 'Creating account...';
         
-        await AUTH.register(username, email, password);
+        await AUTH.register(username, email, password, is_admin);
         
         messageDiv.className = 'success';
         messageDiv.textContent = 'Account created successfully! Logging in...';

@@ -58,7 +58,7 @@ async def register(
     """
     Register a new user.
     
-    Body: {username, email, password}
+    Body: {username, email, password, is_admin}
     Returns: {id, username, email, is_admin}
     """
     if db.user_exists(user_data.username):
@@ -71,7 +71,7 @@ async def register(
         username=user_data.username,
         email=user_data.email,
         password_hash=hashed_password,
-        is_admin=False
+        is_admin=user_data.is_admin
     )
     
     if not user_id:

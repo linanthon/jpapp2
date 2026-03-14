@@ -96,11 +96,11 @@ const AUTH = {
 	},
 
 	// Register
-	async register(username, email, password) {
+	async register(username, email, password, is_admin = false) {
 		const response = await this.request(REGISTER_URL, {
 			method: 'POST',
 			headers: {'Content-Type': 'application/json'},
-			body: JSON.stringify({ username, email, password }),
+			body: JSON.stringify({ username, email, password, is_admin }),
 		});
 		
 		if (!response.ok) {

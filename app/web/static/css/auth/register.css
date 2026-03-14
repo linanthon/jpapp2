@@ -22,12 +22,26 @@
     font-weight: bold;
 }
 
-.form-group input {
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"] {
     width: 100%;
     padding: 10px;
     border: 1px solid #ddd;
     border-radius: 4px;
     box-sizing: border-box;
+}
+
+.form-group input[type="checkbox"] {
+    margin-right: 8px;
+    cursor: pointer;
+}
+
+.form-group label[for="is_admin"] {
+    display: flex;
+    align-items: center;
+    font-weight: normal;
+    margin-bottom: 0;
 }
 
 .form-group input:focus {
