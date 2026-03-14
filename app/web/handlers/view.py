@@ -34,16 +34,16 @@ def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix: str) 
         w["senses"] = db.get_meanings(w["word"], w["senses"])[0]
     return {"results": res, "bpPrefix": bp_prefix}
 
-def handle_view_specific_word(db: "DBHandling", word_id: int, sentence_limit: int) -> Tuple[dict, List[str]]:
+def handle_view_specific_word(db: "DBHandling", user_id: int, word_id: int, sentence_limit: int) -> Tuple[dict, List[str]]:
     """
     Handle viewing a JP word with `sentence_limit` amount of sentence examples.
     """
-    res: dict = db.get_exact_word(word_id=word_id, parse_dict=True)
+    res: dict = db.get_exact_word(user_id=user_id, word_id=word_id, parse_dict=True)
     res["meanings"] = [chunk.strip() for chunk in res["senses"].split(";") if chunk.strip()]
     sentence_examples = db.get_sentences_containing_word_by_id(res["word_id"], sentence_limit)
     return res, sentence_examples
 
-def handle_view_words(db: "DBHandling" = None, jlpt_level: str = "", star: bool = False,
+def handle_view_words(db: "DBHandling" = None, user_id: int = None, jlpt_level: str = "", star: bool = False,
                       limit: int = DEFAULT_LIMIT, page: int = 1) -> Tuple[List[dict], int]:
     """
     Handle viewing a list of `limit` JP words with their 1st EN meaning.
@@ -62,7 +62,7 @@ def handle_view_words(db: "DBHandling" = None, jlpt_level: str = "", star: bool 
     page_count = int(math.ceil(view_count_cache[key] / limit))
     if page > page_count:
         return [], page_count
-    return db.list_words(jlpt_level, star, limit, limit*(page-1)), page_count
+    return db.list_words(user_id, jlpt_level, star, limit, limit*(page-1)), page_count
 
 def handle_view_books(db: "DBHandling" = None, star: bool = False, limit: int = DEFAULT_LIMIT, page: int = 1) -> Tuple[List[dict], int]:
     """

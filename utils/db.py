@@ -15,7 +15,7 @@ from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_
                               SQL_TABLE_SCRIPT, DEFAULT_LIMIT, SQL_WORD_PRIO_SCRIPT,
                               DEFAULT_FORMULA_K, DEFAULT_TIME_EXPODECAY, QUIZ_WORD_SORT_COLUMNS,
                               WORD_SENSES_REGEX, QUIZ_SOFT_CAP, QUIZ_HARD_CAP, DEFAULT_MULTI_PENALTY,
-                              DEFAULT_DISTRACTOR_COUNT)
+                              DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS)
 from schemas.quiz import Quiz
 from schemas.sentence import Sentence
 from schemas.word import Word
@@ -478,9 +478,8 @@ class DBHandling:
         query = sql.SQL(
             """
             INSERT INTO {table} (word, senses, spelling, forms,
-                occurrence, jlpt_level, audio_mapping, quized,
-                star, priority)
-            VALUES (%s, %s, %s, %s, 1, %s, %s, 0, false, 1) RETURNING id;
+                occurrence, jlpt_level, audio_mapping)
+            VALUES (%s, %s, %s, %s, 1, %s, %s) RETURNING id;
             """
         ).format(table=sql.Identifier(TABLE_WORDS))
         if self._safe_execute(query, (word.word, word.senses, word.spelling,
@@ -493,28 +492,46 @@ class DBHandling:
         self._safe_rollback()
         return 0
 
-    def update_word_occurrence(self, word: str) -> bool:
+    def update_word_occurrence(self, word: str, user_ids: list = []) -> bool:
         """
-        Update a word's occurrence (word must match exact) and
-        its priority using priority formula.
+        Update a word's occurrence (word must match exact) in word table and
+        priority using priority formula in the user word progress table (if input user_id).
         Return true if success, false if fail/not found.
         """
-        # Get word occurrence and quized
-        (occurrence, quized) = self.get_word_occurence_quized(word=word)
+        # Get word occurrence
+        word_id, occurrence = self.get_word_occurence(word=word)
         if occurrence == 0:
             return False
         
-        # Calc priority and update
-        priority = self._priority_formula(occurrence, quized)
-        query = sql.SQL("""UPDATE {table} SET occurrence = %s,
-                        priority = %s WHERE word = %s;""").format(
-            table=sql.Identifier(TABLE_WORDS)
-        )
-        if self._safe_execute(query, (occurrence+1, priority, word,)):
+        with self.transaction():
+            # Update word occurrence
+            query1 = sql.SQL("""UPDATE {table1} SET occurrence = %s WHERE id = {wid};""").format(
+                table1=sql.Identifier(TABLE_WORDS),
+                wid=sql.Literal(word_id)
+            )
+            if not self._safe_execute(query1, (occurrence,)):
+                self._safe_rollback()
+                return False
+        
+            # Get quized and calc priority
+            if user_ids:
+                for user_id in user_ids:
+                    quized = self.get_word_quized(word_id)
+                    priority = self._priority_formula(occurrence, quized)
+                    query2 = sql.SQL(
+                        """UPDATE {table2} SET priority = %s WHERE user_id = {uid} AND word_id = {uid};"""
+                    ).format(
+                        table2=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+                        uid=sql.Literal(user_id),
+                        wid=sql.Literal(word_id)
+                    )
+
+                    if not self._safe_execute(query2, (priority,)):
+                        self._safe_rollback()
+                        return False
+                
             self._safe_commit()
-            return True
-        self._safe_rollback()
-        return False
+        return True
     
     def update_word_jlpt(self, word: str, new_jlpt_level: str) -> bool:
         """
@@ -530,49 +547,37 @@ class DBHandling:
         self._safe_rollback()
         return False
 
-    def update_words_known(self, word_ids: List[int] = [], words: List[str] = []) -> bool:
+    def update_words_known(self, user_id: int, word_ids: List[int] = []) -> bool:
         """Update words priority to -1.0 (to fail the > 0.0 check when query for quiz).
         Returns True if success, False if fail."""
-        if not word_ids and not words:
+        if not user_id or not word_ids:
             return False
         
-        query = sql.SQL("UPDATE {table} SET priority = -1.0").format(
-            table=sql.Identifier(TABLE_WORDS)
+        query = sql.SQL("""UPDATE {table} SET priority = -1.0 
+                        WHERE user_id = {uid} AND word_id IN %s;""").format(
+            table=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+            uid=sql.Literal(user_id)
         )
-        if word_ids:
-            query += sql.SQL(" WHERE id IN %s;")
-            params = (tuple(word_ids),)
-        else:
-            query += sql.SQL(" WHERE word IN %s;")
-            params = (tuple(words),)
-
-        if self._safe_execute(query, params) and self._cursor.rowcount > 0:
+        if self._safe_execute(query, (tuple(word_ids),)) and self._cursor.rowcount > 0:
             self._safe_commit()
             return True
         self._safe_rollback()
         return False
 
-    def update_word_star(self, word_id: int = None, word: str = "", new_star_status: bool = None) -> bool:
+    def update_word_star(self, user_id: int, word_id: int, new_star_status: bool = None) -> bool:
         """
         Update a word's star. If specified 'new_star_status', will update to that.
         Returns True if success, Fail if not found/failed.
         """
-        if (not word_id and not word) or new_star_status is None:
+        if not user_id or not word_id or new_star_status is None:
             return False
         
-        if word_id:
-            patch_where = sql.SQL(" WHERE id = %s;")
-            params = [word_id]
-        else:
-            patch_where = sql.SQL(" WHERE word = %s;")
-            params = [word]
-        
-        query = sql.SQL("UPDATE {table} SET star = %s").format(
-            table=sql.Identifier(TABLE_WORDS)
+        query = sql.SQL("UPDATE {table} SET star = %s WHERE user_id = {uid} AND word_id = {wid};").format(
+            table=sql.Identifier(TABLE_WORDS),
+            uid=sql.Literal(user_id),
+            wid=sql.Literal(word_id)
         )
-        query += patch_where
-        params.insert(0, new_star_status)
-        if self._safe_execute(query, params) and self._cursor.rowcount > 0:
+        if self._safe_execute(query, (new_star_status,)) and self._cursor.rowcount > 0:
             self._safe_commit()
             return True
         self._safe_rollback()
@@ -603,30 +608,28 @@ class DBHandling:
                     res.append(self._parse_word(instance))
         return res
     
-    def get_exact_word(self, word_id: int = None, word: str = "", parse_dict: bool = False) -> Word | dict:
+    def get_exact_word(self, user_id: int = None, word_id: int = None, parse_dict: bool = False) -> Word | dict:
         """
-        Query a word in DB, will return a word that is `= 'word'`.
+        Query a word by word ID and user ID (to get star) in DB.
 
         Input:
+        - user_id: the user ID.
         - word_id: the word ID.
-        - word: the exact JP word to search.
         - parse_dict: true to parse to dict, false to parse to class Word. Default: false.
         """
-        if (not word_id and not word) or (word_id and word):
+        if not user_id or not word_id:
             return None
         
-        if word_id:
-            query = sql.SQL("SELECT * FROM {table} WHERE id = {wid};").format(
-                table=sql.Identifier(TABLE_WORDS),
-                wid=sql.Literal(word_id)
-            )
-            params = []
-        else:
-            query = sql.SQL("SELECT * FROM {table} WHERE word = %s;").format(
-                table=sql.Identifier(TABLE_WORDS)
-            )
-            params = [word]
-        if self._safe_execute(query, params):
+        query = sql.SQL("""SELECT a.id, a.word, a.spelling, a.senses, a.forms, a.occurrence
+                        FROM {table1} AS a
+                        JOIN {table2} AS b ON a.id = b.word_id
+                        WHERE b.user_id = {uid} AND a.id = {wid};""").format(
+            table1=sql.Identifier(TABLE_WORDS),
+            table2=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+            uid=sql.Literal(user_id),
+            wid=sql.Literal(word_id)
+        )
+        if self._safe_execute(query):
             res = self._cursor.fetchone()
             if res:
                 if parse_dict:
@@ -665,37 +668,15 @@ class DBHandling:
                     res.append(self._parse_word(instance))
         return res
     
-    def get_words_by_jlptlevel(self, level: str = "N5", limit: int = DEFAULT_LIMIT) -> List[str]:
+    def get_word_occurence(self, word_id: int = None, word: str = "") -> Tuple[int, int]:
         """
-        Query 'words' table to get words by JLPT level (i.e.: 'N5').
-
-        Input:
-        - level: the JLPT level (N0 - for non-categorized, N5, N4, N3, N2, N1)
-        - limit: the amount of return records, if <= 0, use default value of 10.
-
-        Output: a list of word of this level (only the word, no other info such as spelling, senses, ...)
-        """
-        res: List[str] = []
-        if limit < 1:
-            limit = DEFAULT_LIMIT
-        
-        level = level.upper()
-        query = sql.SQL("SELECT word FROM {table} WHERE jlpt_level = %s LIMIT {limit};").format(
-            table=sql.Identifier(TABLE_WORDS),
-            limit=sql.Literal(limit)
-        )
-        if self._safe_execute(query, (level,)):
-            res = [instance["word"] for instance in self._cursor.fetchall() if len(instance.get("word", "")) > 0]
-        return res
-    
-    def get_word_occurence_quized(self, word_id: int = None, word: str = "") -> Tuple[int, int]:
-        """
-        Get a word's 'occurrence' and 'quized' (use either `word_id` or exact `word`), 0 if not found
+        Get a word's 'id' and 'occurrence' (use either `word_id` or exact `word`).
+        Return (0, 0) if not found.
         """
         if not word_id and not word:
             return (0, 0)
         
-        query = sql.SQL("SELECT occurrence, quized FROM {table}").format(
+        query = sql.SQL("SELECT id, occurrence FROM {table}").format(
             table=sql.Identifier(TABLE_WORDS)
         )
         if word_id:
@@ -709,51 +690,34 @@ class DBHandling:
         if self._safe_execute(query, params):
             res = self._cursor.fetchone()
             if res:
-                return (res.get("occurrence", 0), res.get("quized", 0))
+                return (res.get("id", 0), res.get("occurrence", 0))
         return (0, 0)
     
-    def get_all_words_quized(self, grb_jlpt: bool = False) -> Dict[str, List[int]]:
+    def get_user_word_quized(self, user_id: int, word_id: int = None) -> int:
         """
-        Query the entire words table, get all `quized` as a list. If `grb_jlpt` is true,
-        sort them into JLPT levels.
-
-        Input:
-        - grb_jlpt: to groupby jlpt_level or not.
-
-        Output: a dict of keys are the JLPT levels ('N0' for non-jlpt level words, 'N5' -> 'N1') and
-        "ALL", the values are list of 3 elements:
-        [x <= QUIZ_SOFT_CAP, QUIZ_SOFT_CAP < x <= QUIZ_HARD_CAP, x > QUIZ_HARD_CAP].
-        Note that if grb_jlpt=True, the values are only in the 'N0', 'N5' -> 'N1' keys.
-        Otherwise, the values are only in 'ALL'.
+        Get a word's 'quized' by `user_id` and `word_id`, 0 if not found.
         """
-        res = {"N0": [0, 0, 0], "N1": [0, 0, 0], "N2": [0, 0, 0],
-               "N3": [0, 0, 0], "N4": [0, 0, 0], "N5": [0, 0, 0], "ALL": [0, 0, 0]}
-        query = sql.SQL("SELECT quized, jlpt_level FROM {table};").format(
-            table=sql.Identifier(TABLE_WORDS)
+        if not word_id:
+            return 0
+        
+        query = sql.SQL("""SELECT quized FROM {table} 
+                        WHERE user_id = {uid} AND word_id = {wid};""").format(
+            table=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+            uid=sql.Literal(user_id),
+            wid=sql.Literal(word_id)
         )
         if self._safe_execute(query):
-            for row in self._cursor.fetchall():
-                if grb_jlpt:
-                    if row["quized"] > QUIZ_HARD_CAP:
-                        res[row.get("jlpt_level", "N0")][2] += 1
-                    elif row["quized"] > QUIZ_SOFT_CAP:
-                        res[row.get("jlpt_level", "N0")][1] += 1
-                    else:
-                        res[row.get("jlpt_level", "N0")][0] += 1
-                else:
-                    if row["quized"] > QUIZ_HARD_CAP:
-                        res["ALL"][2] += 1
-                    elif row["quized"] > QUIZ_SOFT_CAP:
-                        res["ALL"][1] += 1
-                    else:
-                        res["ALL"][0] += 1
-        return res
+            res = self._cursor.fetchone()
+            if res:
+                return res.get("quized", 0)
+        return 0
     
-    def list_words(self, jlpt_level: str = "", star: bool = False, limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
+    def list_words(self, user_id: int = None, jlpt_level: str = "", star: bool = False, limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
         """
         Query 'words' table to get a list of JP words and its 1st EN meaning, sort by `id`.
 
         Input:
+        - user_id: user specific (for `star`)
         - jlpt_level: the JLPT level (N0 - for non-categorized, N5, N4, N3, N2, N1).
         - star: get only the starred words.
         - limit: the amount of return records, if <= 0, use default value of 10.
@@ -766,20 +730,22 @@ class DBHandling:
             limit = DEFAULT_LIMIT
         
         params = []
-        query = sql.SQL("SELECT id, word, spelling, senses, star, priority FROM {table}").format(
-            table=sql.Identifier(TABLE_WORDS)
+        query = sql.SQL("""SELECT a.id, a.word, a.spelling, a.senses, b.star
+                        FROM {table1} AS a
+                        JOIN {table2} AS b ON a.id = b.word_id
+                        WHERE b.user_id = {uid}""").format(
+            table1=sql.Identifier(TABLE_WORDS),
+            table2=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+            uid=sql.Literal(user_id)
         )
         if jlpt_level:
             jlpt_level = jlpt_level.upper()
-            query += sql.SQL(" WHERE jlpt_level = %s")
+            query += sql.SQL(" AND a.jlpt_level = %s")
             params.append(jlpt_level)
         if star:
-            if jlpt_level:
-                query += sql.SQL(" AND star = true")
-            else:
-                query += sql.SQL(" WHERE star = true")
+            query += sql.SQL(" AND b.star = true")
 
-        query += sql.SQL(" ORDER BY id OFFSET {offset} LIMIT {limit};").format(
+        query += sql.SQL(" ORDER BY a.id OFFSET {offset} LIMIT {limit};").format(
             offset=sql.Literal(offset),
             limit=sql.Literal(limit)
         )
@@ -950,8 +916,8 @@ class DBHandling:
         # Insert
         query = sql.SQL(
             """
-            INSERT INTO {table} (sentence, occurrence, star)
-            VALUES (%s, 1, false) RETURNING id;
+            INSERT INTO {table} (sentence, occurrence)
+            VALUES (%s, 1) RETURNING id;
             """
         ).format(table=sql.Identifier(TABLE_SENTENCES))
         if self._safe_execute(query, (sentence,)):
@@ -964,6 +930,8 @@ class DBHandling:
         """
         Get a word's occurrence (word must match exact).
         Return true if success, false if fail/not found.
+
+        TODO: Need update when implement quiz sentence
         """
         query = sql.SQL("UPDATE {table} SET occurrence = %s WHERE id = %s;").format(
             table=sql.Identifier(TABLE_SENTENCES)
@@ -979,6 +947,8 @@ class DBHandling:
         Update a sentence's star. If specified 'new_star_status', will update to that.
         Otherwise, will query sentence first then update the star to the opposite status.
         Returns True if success, Fail if not found/failed.
+
+        TODO: update when support user starring sentences
         """
         if not new_star_status:
             query = sql.SQL("SELECT star FROM {table} WHERE sentence = %s;").format(
@@ -1154,7 +1124,7 @@ class DBHandling:
     # =======================================================================================
 
     # Quiz ==================================================================================
-    def get_quiz(self, limit: int = DEFAULT_LIMIT,
+    def get_quiz(self, user_id: int = None, limit: int = DEFAULT_LIMIT,
                 sorts: List[Tuple[str]] = [], jlpt_filter: str = "",
                 star_only: bool = False, book_id: int = 0,
                 use_priority: bool = True, is_known: bool = False,
@@ -1172,6 +1142,8 @@ class DBHandling:
         the correct answers.
 
         Input:
+        - user_id: user ID, used to get priority and/or star value.
+        - limit: the number of quiz, default as DEFAULT_LIMIT.
         - sorts: a list of length 2 tuples, i.e.: [ ('col1', 'asc'), ('col2', 'desc') ]. Default: empty.
         Note that the order of this list is important, the smaller indexes will be prioritized when query.
         - jlpt_filter: the JLPT level to filter in query. Default: not use.
@@ -1188,7 +1160,7 @@ class DBHandling:
         Output: a list of QuizEN objects.
         """
         # Build SQL
-        sql_full, params = self._build_sort_filter_prio_sql(limit, sorts, jlpt_filter, star_only, book_id,
+        sql_full, params = self._build_sort_filter_prio_sql(user_id, limit, sorts, jlpt_filter, star_only, book_id,
                                                             use_priority, is_known, True, exclude_jp, exclude_en)
 
         # Query
@@ -1202,7 +1174,7 @@ class DBHandling:
             res.append(self._parse_quiz(row))
         return res
 
-    def update_quized_prio_ts(self, word_id: int = None, word: str = None,
+    def update_quized_prio_ts(self, user_id: int = None, word_id: int = None,
                               occurrence: int = None, quized: int = None) -> bool:
         """
         Query `occurrence`, `quized` and `last_tested` (if didn't passed value in, `quized` will +1).
@@ -1210,8 +1182,8 @@ class DBHandling:
         and QUIZ_HARD_CAP. Get current timestamp for last_tested. Save the new values to DB.
 
         Input:
-        - word_id: the word ID. Use either this or `word`. Prioritise if pass both.
-        - word: the word to update. Use either this or `word_id`.
+        - user_id: the user ID.
+        - word_id: the word ID.
         - occurrence (optional): the word's occurrence
         - quized (optional): the word's correct quiz count
         If both occurrence and quized are provided, will use these to calculate priority
@@ -1219,12 +1191,12 @@ class DBHandling:
 
         Output: returns True if success, False if fail
         """
-        if word_id is None and word is None:
+        if word_id is None:
             return False
         
         # Get occurrence and quized if no value
         if occurrence is None or quized is None:
-            row = self.get_exact_word(word)
+            row = self.get_exact_word(word_id)
             occurrence = row.occurrence
             quized = row.quized + 1
 
@@ -1238,16 +1210,13 @@ class DBHandling:
 
         query = sql.SQL("""UPDATE {table} SET quized = %s, priority = %s,
                         last_tested = NOW()""").format(
-            table=sql.Identifier(TABLE_WORDS)
+            table=sql.Identifier(TABLE_USER_WORD_PROGRESS)
         )
         params = [quized, prio]
-        if word_id:
-            query += sql.SQL(" WHERE id = {wid}").format(
-                wid=sql.Literal(word_id)
-            )
-        else:
-            query += sql.SQL(" WHERE word = %s")
-            params.append(word)
+        query += sql.SQL(" WHERE user_id = {uid} AND word_id = {wid}").format(
+            uid=sql.Literal(user_id),
+            wid=sql.Literal(word_id)
+        )
         if self._safe_execute(query, params) and self._cursor.rowcount > 0:
             self._safe_commit()
             return True
@@ -1530,7 +1499,7 @@ class DBHandling:
     # ----------------------------------
 
     # -------- Build SQLs --------------
-    def _build_sort_filter_prio_sql(self, limit: int = DEFAULT_LIMIT, sorts: List[Tuple[str]] = [],
+    def _build_sort_filter_prio_sql(self, user_id: int, limit: int = DEFAULT_LIMIT, sorts: List[Tuple[str]] = [],
                                     jlpt_filter: str = "", star_only: bool = False,
                                     book_id: int = 0, use_priority: bool = True, 
                                     is_known: bool = False, avoid_dash_sense: bool = False,
@@ -1554,22 +1523,30 @@ class DBHandling:
         """
         conditions = []
         params = []
-        sql_full = sql.SQL("""SELECT w.id, w.word, w.senses, w.jlpt_level, w.spelling, w.audio_mapping,
-                           w.occurrence, w.quized, w.star FROM {table} AS w""").format(
-                               table=sql.Identifier(TABLE_WORDS)
+        sql_full = sql.SQL("""SELECT w.id, w.word, w.senses, w.jlpt_level, w.spelling,
+                           w.audio_mapping, w.occurrence
+                           FROM {table1} AS w
+                           JOIN {table2} AS b ON w.id = b.word_id""").format(
+                               table1=sql.Identifier(TABLE_WORDS)
                             )
         
         # ----- Book Filter ----- Guarantee keyword "WHERE"
         if book_id:
             # Join ref table to limit book_id
-            sql_full += sql.SQL(" JOIN {ref_table} AS r ON w.id = r.word_id WHERE ").format(
+            sql_full += sql.SQL(" JOIN {ref_table} AS r ON w.id = r.word_id").format(
                                     ref_table=sql.Identifier(TABLE_WORD_BOOK_REF)
                                 )
+        
+        # Put the user_id condition first to make use of index
+        sql_full += sql.SQL(" WHERE b.user_id = {uid}").format(
+            uid=sql.Literal(user_id)
+        )
+
+        # continue the book condition
+        if book_id:
             conditions.append(sql.SQL("r.book_id = {bid}").format(
                 bid=sql.Literal(book_id)
             ))
-        else:
-            sql_full += sql.SQL(" WHERE ")
         
         # ----- Filter -----
         if exclude_jp:
@@ -1600,7 +1577,7 @@ class DBHandling:
 
         # Combine conditions
         if conditions:
-            sql_full += sql.SQL(" AND ").join(conditions)
+            sql_full = sql_full + sql.SQL(" AND ") + sql.SQL(" AND ").join(conditions)
         
         # ----- Sort & Prio -----
         conditions.clear()  # clear condition for sort

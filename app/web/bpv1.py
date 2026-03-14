@@ -251,7 +251,8 @@ def view_words(
     star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
     page: int = 1,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """
     View X words per page, with/without filters
@@ -265,7 +266,7 @@ def view_words(
     jlpt_level = validate_jlpt_level(jlpt_level)
     star_bool = parse_bool_param(star)
 
-    result, page_count = handle_view_words(db, jlpt_level, star_bool, limit, page)
+    result, page_count = handle_view_words(db, current_user_id, jlpt_level, star_bool, limit, page)
     return templates.TemplateResponse(
         "view/word/view_words.html",
         {"request": {}, "word_list": result, "page_count": page_count, "page": page,
@@ -298,10 +299,11 @@ async def search_word(
 def view_specific_word(
     word_id: int,
     sen_limit: int = DEFAULT_SENTENCE_EXAMPLE_LIMIT,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
 ):
     """View details info of 1 word"""
-    result, sentence_examples = handle_view_specific_word(db, word_id, sen_limit)
+    result, sentence_examples = handle_view_specific_word(db, current_user_id, word_id, sen_limit)
     return templates.TemplateResponse(
         "view/word/view_specific_word.html",
         {"request": {}, "word_details": result, "sen_ex": sentence_examples}
@@ -384,7 +386,7 @@ def view_specific_book(
 async def delete_book(
     request: Request,
     db: DBHandling = Depends(get_db),
-    get_current_admin_user: dict = Depends(get_current_admin_user)
+    current_admin_user: dict = Depends(get_current_admin_user)
 ):
     """Delete a book"""
     data = await request.json()
@@ -452,6 +454,7 @@ def quiz_jp(
     quizes = get_word_jp_quizes(
         pdata,
         db,
+        user_id=current_user_id,
         limit=limit,
         jlpt_level=jlpt_level_validated,
         star=star_bool,
@@ -486,6 +489,7 @@ def quiz_known(
     quizes = get_word_jp_quizes(
         pdata,
         db,
+        user_id=current_user_id,
         limit=limit,
         jlpt_level=jlpt_level_validated,
         star=star_bool,
@@ -522,6 +526,7 @@ def quiz_en(
 
     quizes = get_word_en_quizes(
         db,
+        user_id=current_user_id,
         limit=limit,
         jlpt_level=jlpt_level_validated,
         star=star_bool,
@@ -573,7 +578,7 @@ async def update_word_prio(
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `occurrence`")
     
-    success = update_word_prio_after_answering(db, word_id, is_correct, quized, occurrence)
+    success = update_word_prio_after_answering(db, current_user_id, word_id, is_correct, quized, occurrence)
     return {"success": success}
 
 
@@ -605,7 +610,7 @@ async def toggle_word_known(
     if update_to_known:
         success = change_word_prio_to_negative(db, word_id)
     else:
-        success = reset_word_prio(db, word_id, occurrence, quized)
+        success = reset_word_prio(db, current_user_id, word_id, occurrence, quized)
     return {"success": success}
 
 # =================================================================================
