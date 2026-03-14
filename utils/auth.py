@@ -1,7 +1,6 @@
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
-import os
 
 from app.web.handlers.config import (ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
                                      REFRESH_TOKEN_EXPIRE_DAYS, SECRET_KEY)

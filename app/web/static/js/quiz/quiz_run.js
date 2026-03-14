@@ -254,7 +254,7 @@ async function playAudio(audioMapping) {
 async function updateWordPriority(wordId, isCorrect, quized, occurrence) {
   // About `quized` and `occurrence`, just pass in the number got from querying DB, no change
   try {
-    const response = await fetch(updatePrioUrl, {
+    const response = await AUTH.request(updatePrioUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -286,9 +286,11 @@ async function toggleQuizWordStar(starBtn, wordId, toggleStarUrl) {
   const starParam = (!isYellow).toString();
   
   try {
-    const resp = await fetch(toggleStarUrl, {
+    const resp = await AUTH.request(toggleStarUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+	  headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ id: wordId, objType: 'word', star: starParam })
     });
     const data = await resp.json();

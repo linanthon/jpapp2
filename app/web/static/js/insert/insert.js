@@ -74,7 +74,11 @@ async function handleFormSubmit(form, noticeId, progressId, formData) {
     formData = new FormData(form);
   }
 
-  const response = await fetch(form.action, { method: "POST", body: formData });
+  // No content type header for formdata
+  const response = await AUTH.request(form.action, {
+    method: 'POST',
+    body: formData
+  });
   const notice = document.getElementById(noticeId);
   const progressLine = document.getElementById(progressId);
 

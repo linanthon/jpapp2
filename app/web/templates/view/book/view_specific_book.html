@@ -6,8 +6,16 @@
   <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
   <script src="{{ url('static', 'js/view/view.js') }}" defer></script>
   <script src="{{ url('static', 'js/base.js') }}" defer></script>
+  <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
 </head>
 <body>
+  <script>
+    // Redirect to login if not authenticated
+    if (!localStorage.getItem('access_token')) {
+      window.location.href = document.documentElement.getAttribute('data-login-url');
+    }
+  </script>
+  
   <div class="header-container">
     <button class="back-btn" onclick="goBack()">← Back</button>
     <h2>View book</h2>

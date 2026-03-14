@@ -14,7 +14,7 @@ from handlers.view import (handle_search_word, handle_view_specific_word, handle
 from handlers.helpers import (
     get_filename_from_path, toggle_star_helper, validate_jlpt_level,
     parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id,
-    get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id
+    get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user
 )
 from handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
                            change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
@@ -187,6 +187,7 @@ async def refresh_token(
 # ===== INSERT ===================================================================
 @router.get("/insert")
 def insert():
+    """Serve insert page"""
     return templates.TemplateResponse("insert/insert.html", {"request": {}})
 
 
@@ -195,11 +196,12 @@ async def upload_file(
     request: Request,
     submittedFilename: UploadFile = File(None),
     db: DBHandling = Depends(get_db),
-    pdata: ProcessData = Depends(get_pdata)
+    pdata: ProcessData = Depends(get_pdata),
+    current_admin: dict = Depends(get_current_admin_user)
 ):
     """
     Handle file upload. submittedFilename form field with file
-    """    
+    """
     if not submittedFilename:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No file uploaded")
     file_name = get_filename_from_path(submittedFilename.filename)
@@ -223,13 +225,16 @@ async def upload_string(
     stringName: str = Form(None),
     stringBody: str = Form(None),
     db: DBHandling = Depends(get_db),
-    pdata: ProcessData = Depends(get_pdata)
+    pdata: ProcessData = Depends(get_pdata),
+    current_admin: dict = Depends(get_current_admin_user)
 ):
     """
     Handle upload JP text directly.
-    - Via API call: use request body {"name": ..., "data": ...}
-    - Via UI: stored in "stringName" and "stringBody" in form
+    Book name = "stringName" and book content = "stringBody" in form
     """
+    print("AAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+    print("name", stringName)
+    print("content", stringBody)
     return StreamingResponse(
         handle_insert_str_stream(pdata, db, stringName, stringBody),
         media_type="text/event-stream"

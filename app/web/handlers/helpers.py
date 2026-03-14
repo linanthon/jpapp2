@@ -9,7 +9,7 @@ from utils.process_data import ProcessData
 from utils.data import read_stop_words, read_jlpt, scrape_all_jlpt
 from utils.auth import verify_token
 from handlers.config import DB_USER, DB_PASS, REDIS_URL, bpv1_url_prefix
-from schemas.user import UserResponse, UserLogin
+from schemas.user import UserResponse, UserLogin, UserCreate
 
 # cache word count for /view/word
 view_count_cache = {}
@@ -72,6 +72,7 @@ def get_jinja_globals():
             'home': f'{url_prefix}/',
             'login': f'{url_prefix}/login',
             'register': f'{url_prefix}/register',
+            'refresh': f'{url_prefix}/refresh',
             'logout': f'{url_prefix}/logout',
             'insert': f'{url_prefix}/insert',
             'upload_file': f'{url_prefix}/insert/file',
@@ -159,6 +160,19 @@ async def get_current_user(
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+async def get_current_admin_user(
+    current_user: dict = Depends(get_current_user)
+) -> dict:
+    """
+    Dependency to ensure current user is an admin.
+    Raises 403 Forbidden if user is not admin.
+    
+    Output: dict containing id, username, email, is_admin, created_at
+    """
+    if not current_user.get('is_admin'):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return current_user
 
 def get_filename_from_path(fullpath: str):
     """Get filename from full path, i.e.: c:/a/path/the_file.123.txt -> the_file.123"""

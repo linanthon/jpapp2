@@ -35,7 +35,6 @@ const AUTH = {
 	async request(endpoint, options = {}) {
 		const url = endpoint;
 		const headers = {
-			'Content-Type': 'application/json',
 			...options.headers,
 		};
 		
@@ -78,9 +77,9 @@ const AUTH = {
 		if (!refreshToken) return false;
 		
 		try {
-			const response = await fetch(REFRESH_URL, {
+			const response = await AUTH.request(REFRESH_URL, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {'Content-Type': 'application/json'},
 				body: JSON.stringify({ refresh_token: refreshToken }),
 		});
 		
@@ -100,6 +99,7 @@ const AUTH = {
 	async register(username, email, password) {
 		const response = await this.request(REGISTER_URL, {
 			method: 'POST',
+			headers: {'Content-Type': 'application/json'},
 			body: JSON.stringify({ username, email, password }),
 		});
 		
@@ -122,9 +122,9 @@ const AUTH = {
 
 	// Login
 	async login(username, password) {
-		const response = await fetch(LOGIN_URL, {
+		const response = await AUTH.request(LOGIN_URL, {
 			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
+			headers: {'Content-Type': 'application/json'},
 			body: JSON.stringify({ username, password }),
 		});
 		
