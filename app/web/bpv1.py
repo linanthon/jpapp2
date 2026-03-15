@@ -608,7 +608,7 @@ async def toggle_word_known(
             pass
     
     if update_to_known:
-        success = change_word_prio_to_negative(db, word_id)
+        success = change_word_prio_to_negative(db, current_user_id, word_id)
     else:
         success = reset_word_prio(db, current_user_id, word_id, occurrence, quized)
     return {"success": success}

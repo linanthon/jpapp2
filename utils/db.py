@@ -210,9 +210,9 @@ class DBHandling:
                 return -2
 
         # Insert
-        query = sql.SQL("INSERT INTO {table} (name, star, content) VALUES (%s, %s, %s) RETURNING id;"
+        query = sql.SQL("INSERT INTO {table} (name, content) VALUES (%s, %s) RETURNING id;"
                         ).format(table=sql.Identifier(TABLE_BOOKS))
-        if self._safe_execute(query, (bookname, False, content,)):
+        if self._safe_execute(query, (bookname, content,)):
             self._safe_commit()
             return self._cursor.fetchone()["id"]
         self._safe_rollback()
@@ -252,54 +252,62 @@ class DBHandling:
         self._safe_rollback()
         return False
 
-    def query_like_book(self, name: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Book] | List[dict]:
-        """
-        Query a list of books via LIKE %name%
+    # TODO: fix when enable search book
+    # def query_like_book(self, name: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Book] | List[dict]:
+    #     """
+    #     Query a list of books via LIKE %name%
 
-        Input:
-        - name: the book's name
-        - limit: the amount of return records, if <= 0, use default value of 10.
+    #     Input:
+    #     - name: the book's name
+    #     - limit: the amount of return records, if <= 0, use default value of 10.
          
-        Output: a list of book's id and name, no content
-        """
-        res: List[Book] = []
-        query = sql.SQL("SELECT id, name FROM {table} WHERE name LIKE %s LIMIT %s;").format(
-            table=sql.Identifier(TABLE_BOOKS)
-        )
-        if limit < 1:
-            limit = DEFAULT_LIMIT
-        if self._safe_execute(query, (f"%{name}%", limit,)):
-            for instance in self._cursor.fetchall():
-                if parse_dict:
-                    res.append(self._parse_book_dict(instance))
-                else:
-                    res.append(self._parse_book(instance))
-        return res
+    #     Output: a list of book's id and name, no content
+    #     """
+    #     res: List[Book] = []
+    #     query = sql.SQL("SELECT id, name FROM {table} WHERE name LIKE %s LIMIT %s;").format(
+    #         table=sql.Identifier(TABLE_BOOKS)
+    #     )
+    #     if limit < 1:
+    #         limit = DEFAULT_LIMIT
+    #     if self._safe_execute(query, (f"%{name}%", limit,)):
+    #         for instance in self._cursor.fetchall():
+    #             if parse_dict:
+    #                 res.append(self._parse_book_dict(instance))
+    #             else:
+    #                 res.append(self._parse_book(instance))
+    #     return res
     
     def get_exact_book(self, user_id: int = None, book_id: int = None, parse_dict: bool = False) -> Book | dict:
         """
         Query a book with the exact name or its ID.
-        Returns the row of that book.
+        Returns the row of that book, empty dict if fail to get.
         """
         if not book_id:
-            return {} if parse_dict else Book()
+            return None if parse_dict else Book()
         
-        query = sql.SQL("""SELECT a.id, a.created_at, a.name, a.content, b.star
-                        FROM {table1} AS a
-                        JOIN {table2} AS b ON b.book_id = a.id 
-                        WHERE b.user_id = {uid} AND b.book_id = {bid};""").format(
-            table1=sql.Identifier(TABLE_BOOKS),
-            table2=sql.Identifier(TABLE_USER_BOOK_STAR),
-            uid=sql.Literal(user_id),
+        # Check if is starred by user
+        is_star = False
+        query = sql.SQL("""SELECT book_id FROM {table} 
+                        WHERE user_id = {uid} AND star = true;""").format(
+            table=sql.Identifier(TABLE_USER_BOOK_STAR),
+            uid=sql.Literal(user_id)
+        )
+        if self._safe_execute(query):
+            if self._cursor.fetchone():
+                is_star = True
+        
+        # get the book
+        query = sql.SQL("""SELECT id, created_at, name, content
+                        FROM {table} WHERE book_id = {bid};""").format(
+            table=sql.Identifier(TABLE_BOOKS),
             bid=sql.Literal(book_id)
         )
-
-        res = Book()
+        res = None
         if self._safe_execute(query):
             if parse_dict:
-                res = self._parse_book_dict(self._cursor.fetchone())
+                res = self._parse_book_dict(self._cursor.fetchone(), is_star)
             else:
-                res = self._parse_book(self._cursor.fetchone())
+                res = self._parse_book(self._cursor.fetchone(), is_star)
         return res
     
     def list_books(self, user_id: int = None, star: bool = False, 
@@ -316,33 +324,40 @@ class DBHandling:
 
         Output: a list of books (id, name, star, created_at)
         """
-        if not user_id:
-            return []
+        book_star_ids = set()
+        if star:
+            if not user_id:
+                return []
+            
+            query = sql.SQL("""SELECT book_id FROM {table} 
+                            WHERE user_id = {uid} AND star = true;""").format(
+                table=sql.Identifier(TABLE_BOOKS),
+                uid=sql.Literal(user_id)
+            )
+            if self._safe_execute(query):
+                for instance in self._cursor.fetchall():
+                    book_star_ids.add(instance.get("id", 0))
         
         res: list = []
-        query = sql.SQL("""SELECT a.id, a.name, a.created_at, b.star
-                        FROM {table1} AS a
-                        JOIN {table2} AS b ON b.book_id = a.id
-                        WHERE b.user_id = {uid}""").format(
+        query = sql.SQL("SELECT id, name, created_at FROM {table1}").format(
             table1=sql.Identifier(TABLE_BOOKS),
-            table2=sql.Identifier(TABLE_USER_BOOK_STAR)
         )
-        if star:
-            query += sql.SQL(" AND b.star = true")
 
         if limit is None:
-            query += sql.SQL(" ORDER BY a.id OFFSET {offset}").format(
+            query += sql.SQL(" ORDER BY id OFFSET {offset}").format(
                 offset=sql.Literal(offset)
             )
         elif limit < 1:
-            query += sql.SQL(" ORDER BY a.id OFFSET {offset} LIMIT {limit};").format(
+            query += sql.SQL(" ORDER BY id OFFSET {offset} LIMIT {limit};").format(
                 offset=sql.Literal(offset),
                 limit=sql.Literal(limit)
             )
         
         if self._safe_execute(query):
             for instance in self._cursor.fetchall():
-                res.append(self._parse_book_dict(instance))
+                res.append(self._parse_book_dict(
+                    instance, instance.get("id", 0) in book_star_ids
+                ))
         return res
 
     def count_books(self, star: bool = False) -> int:
@@ -523,6 +538,7 @@ class DBHandling:
             self._safe_commit()
         return True
     
+    #TODO: currently not used, remove?
     def update_word_jlpt(self, word: str, new_jlpt_level: str) -> bool:
         """
         Update a word's jlpt level (word must match exact).
@@ -562,12 +578,35 @@ class DBHandling:
         if not user_id or not word_id or new_star_status is None:
             return False
         
+        # Update star
         query = sql.SQL("UPDATE {table} SET star = %s WHERE user_id = {uid} AND word_id = {wid};").format(
             table=sql.Identifier(TABLE_USER_WORD_PROGRESS),
             uid=sql.Literal(user_id),
             wid=sql.Literal(word_id)
         )
-        if self._safe_execute(query, (new_star_status,)) and self._cursor.rowcount > 0:
+        if self._safe_execute(query, (new_star_status,)):
+            if self._cursor.rowcount > 0:
+                self._safe_commit()
+                return True
+        else:
+            self._safe_rollback()
+            return False
+        
+        # Reach here = no update = need insert new row
+        # Get word occurrence
+        _, occurrence = self.get_word_occurence(word_id)
+        if not occurrence:
+            return False
+        quized = 0  # insert here = never quized before
+        priority = self._priority_formula(occurrence, quized)
+
+        # Write
+        query = sql.SQL("INSERT INTO {table} VALUES ({uid}, {wid}, %s, NOW(), %s, %s);").format(
+            table=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+            uid=sql.Literal(user_id),
+            wid=sql.Literal(word_id)
+        )
+        if self._safe_execute(query, (quized, new_star_status, priority,)):
             self._safe_commit()
             return True
         self._safe_rollback()
@@ -592,10 +631,11 @@ class DBHandling:
         )
         if self._safe_execute(query, (f"%{word}%",)):
             for instance in self._cursor.fetchall():
+                # Search word doesn't care about user' specifics, use empty {}
                 if parse_dict:
-                    res.append(self._parse_word_dict(instance))
+                    res.append(self._parse_word_dict(instance, {}))
                 else:
-                    res.append(self._parse_word(instance))
+                    res.append(self._parse_word(instance, {}))
         return res
     
     def get_exact_word(self, user_id: int = None, word_id: int = None, parse_dict: bool = False) -> Word | dict:
@@ -607,25 +647,34 @@ class DBHandling:
         - word_id: the word ID.
         - parse_dict: true to parse to dict, false to parse to class Word. Default: false.
         """
-        if not user_id or not word_id:
+        if not word_id:
             return None
         
-        query = sql.SQL("""SELECT a.id, a.word, a.spelling, a.senses, a.forms, a.occurrence
-                        FROM {table1} AS a
-                        JOIN {table2} AS b ON a.id = b.word_id
-                        WHERE b.user_id = {uid} AND a.id = {wid};""").format(
-            table1=sql.Identifier(TABLE_WORDS),
-            table2=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+        # Get user related fields: star, quized, priority
+        user_progress = {}
+        query = sql.SQL("""SELECT star, quized, priority FROM {table} 
+                        WHERE user_id = {uid} AND word_id = {wid};""").format(
+            table=sql.Identifier(TABLE_USER_WORD_PROGRESS),
             uid=sql.Literal(user_id),
+            wid=sql.Literal(word_id)
+        )
+        if self._safe_execute(query):
+            row = self._cursor.fetchone()
+            if row:
+                user_progress = row
+
+        # Get word fields
+        query = sql.SQL("""SELECT * FROM {table} WHERE id = {wid};""").format(
+            table=sql.Identifier(TABLE_WORDS),
             wid=sql.Literal(word_id)
         )
         if self._safe_execute(query):
             res = self._cursor.fetchone()
             if res:
                 if parse_dict:
-                    return self._parse_word_dict(res)
+                    return self._parse_word_dict(res, user_progress)
                 else:
-                    return self._parse_word(res)
+                    return self._parse_word(res, user_progress)
         return None
     
     def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word] | List[dict]:
@@ -652,10 +701,11 @@ class DBHandling:
         sense_q = f"%{sense.lower()}%"
         if self._safe_execute(query, (sense_q, sense_q,)):
             for instance in self._cursor.fetchall():
+                # Search word doesn't care about user' specifics, use empty {}
                 if parse_dict:
-                    res.append(self._parse_word_dict(instance))
+                    res.append(self._parse_word_dict(instance, {}))
                 else:
-                    res.append(self._parse_word(instance))
+                    res.append(self._parse_word(instance, {}))
         return res
     
     def get_word_occurence(self, word_id: int = None, word: str = "") -> Tuple[int, int]:
@@ -719,46 +769,68 @@ class DBHandling:
         if limit < 1:
             limit = DEFAULT_LIMIT
         
-        params = []
-        query = sql.SQL("""SELECT a.id, a.word, a.spelling, a.senses, b.star
-                        FROM {table1} AS a
-                        JOIN {table2} AS b ON a.id = b.word_id
-                        WHERE b.user_id = {uid}""").format(
-            table1=sql.Identifier(TABLE_WORDS),
-            table2=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+        # Get user' specifics
+        user_progress = {}
+        query = sql.SQL("""SELECT word_id, star, quized, priority 
+                        FROM {table} WHERE user_id = {uid}""").format(
+            table=sql.Identifier(TABLE_USER_WORD_PROGRESS),
             uid=sql.Literal(user_id)
+        )
+        if star:
+            query += sql.SQL(" AND star = true")
+        if self._safe_execute(query):
+            for instance in self._cursor.fetchall():
+                user_progress[instance.get("word_id", 0)] = {
+                    "star": instance.get("star"),
+                    "quized": instance.get("quized"),
+                    "priority": instance.get("priority")
+                }
+
+        params = []
+        query = sql.SQL("SELECT * FROM {table}").format(
+            table=sql.Identifier(TABLE_WORDS)
         )
         if jlpt_level:
             jlpt_level = jlpt_level.upper()
-            query += sql.SQL(" AND a.jlpt_level = %s")
+            query += sql.SQL(" WHERE jlpt_level = %s")
             params.append(jlpt_level)
-        if star:
-            query += sql.SQL(" AND b.star = true")
 
-        query += sql.SQL(" ORDER BY a.id OFFSET {offset} LIMIT {limit};").format(
+        query += sql.SQL(" ORDER BY id OFFSET {offset} LIMIT {limit};").format(
             offset=sql.Literal(offset),
             limit=sql.Literal(limit)
         )
         if self._safe_execute(query, params):
             for instance in self._cursor.fetchall():
                 instance["senses"] = self._extract_meanings(instance["senses"])[0]
-                res.append(self._parse_word_dict(instance))
+                res.append(self._parse_word_dict(
+                    instance, user_progress.get(instance.get("id", None), {})
+                ))
         return res
 
-    def count_words(self, jlpt_level: str = "", star: bool = False) -> int:
+    def count_words(self, user_id: int = 0, jlpt_level: str = "", star: bool = False) -> int:
         """Count words in table (with filters)"""
+        if star and not user_id:
+            return 0
+        
         params = []
         res = 0
-        query = sql.SQL("SELECT COUNT(id) FROM {table}").format(
-            table=sql.Identifier(TABLE_WORDS)
+        query = sql.SQL("SELECT COUNT(a.id) FROM {table1} AS a").format(
+            table1=sql.Identifier(TABLE_WORDS)
         )
+
         where_clauses = []
+        if star:
+            query += sql.SQL(" JOIN {table2} AS b ON b.word_id = a.id").format(
+                table2=sql.Identifier(TABLE_USER_WORD_PROGRESS)
+            )
+            where_clauses.append(
+                sql.SQL("b.user_id = {uid}").format(uid=sql.Literal(user_id))
+            )
+            where_clauses.append(sql.SQL("b.star = true"))
         if jlpt_level:
             jlpt_level = jlpt_level.upper()
-            where_clauses.append(sql.SQL("jlpt_level = %s"))
+            where_clauses.append(sql.SQL("a.jlpt_level = %s"))
             params.append(jlpt_level)
-        if star:
-            where_clauses.append(sql.SQL("star = true"))
         if where_clauses:
             query = query + sql.SQL(" WHERE ") + sql.SQL(" AND ").join(where_clauses)
 
@@ -1382,7 +1454,7 @@ class DBHandling:
     # =======================================================================================
 
     # Parsing ===============================================================================
-    def _parse_word(self, word: dict) -> Word:
+    def _parse_word(self, word: dict, user_progress: dict = {}) -> Word:
         """Parse word dict from query result into Word class"""
         return Word(
             word_id=word.get("id", 0),
@@ -1392,13 +1464,13 @@ class DBHandling:
             forms=word.get("forms", ""),
             jlpt_level=word.get("jlpt_level", ""),
             audio_mapping=word.get("audio_mapping", []),
-            star=word.get("star", False),
             occurrence=word.get("occurrence", 1),
-            quized=word.get("quized", 0),
-            priority=word.get("priority", 0.0)
+            star=user_progress.get("star", False),
+            quized=user_progress.get("quized", 0),
+            priority=user_progress.get("priority", 0.0)
         )
     
-    def _parse_word_dict(self, word: dict) -> dict:
+    def _parse_word_dict(self, word: dict, user_progress: dict) -> dict:
         """Keep the dict form, assure have enough fields, modify in-place and also return"""
         word["word_id"] = word.get("id", 0)
         word["word"] = word.get("word", "")
@@ -1407,10 +1479,10 @@ class DBHandling:
         word["forms"] = word.get("forms", "")
         word["jlpt_level"] = word.get("jlpt_level", "")
         word["audio_mapping"] = word.get("audio_mapping", [])
-        word["star"] = word.get("star", False)
         word["occurrence"] = word.get("occurrence", 1)
-        word["quized"] = word.get("quized", 0)
-        word["priority"] = word.get("priority", 0.0)
+        word["star"] = user_progress.get("star", False)
+        word["quized"] = user_progress.get("quized", 0)
+        word["priority"] = user_progress.get("priority", 0.0)
         return word
 
     def _parse_sentence(self, sentence: dict) -> Sentence:
@@ -1423,22 +1495,22 @@ class DBHandling:
             quized=sentence.get("quized")
         )
 
-    def _parse_book(self, book: dict) -> Book:
+    def _parse_book(self, book: dict, star: bool = False) -> Book:
         """Parse book dict from query result into Book class"""
         return Book(
             book_id=book.get("id", 0),
             created_at=book.get("created_at", ""),
-            star=book.get("star", False),
+            star=star,
             name=book.get("name", ""),
             content=book.get("content", ""),
         )
     
-    def _parse_book_dict(self, book: dict) -> dict:
+    def _parse_book_dict(self, book: dict, star: bool = False) -> dict:
         """Parse book dict from query result into a dict of Book"""
         book["book_id"] = book.get("id", 0)
         book["created_at"] = book.get("created_at", "")
         book["name"] = book.get("name", "")
-        book["star"] = book.get("star", False)
+        book["star"] = star
         book["content"] = book.get("content", "")
         return book
     

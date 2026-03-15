@@ -25,9 +25,9 @@
   </div>
 
   <!-- Filters: JLPT dropdown + starred checkbox (auto-submit on change) -->
-  <form id="viewWordsForm" method="GET" action="{{ url('view_words') }}">
+  <form id="viewWordsForm" onsubmit="event.preventDefault(); navigateWithAuthForm(this)">
     <label for="jlpt"><strong>JLPT:</strong></label>
-    <select name="jlpt_level" id="jlpt" onchange="this.form.submit()">
+    <select name="jlpt_level" id="jlpt" onchange="navigateWithAuthForm(this.form)">
       <option value="" {% if args.get('jlpt_level','') == '' %}selected{% endif %}></option>
       <option value="N5" {% if args.get('jlpt_level') == 'N5' %}selected{% endif %}>N5</option>
       <option value="N4" {% if args.get('jlpt_level') == 'N4' %}selected{% endif %}>N4</option>
@@ -39,7 +39,7 @@
 
     <label for="star"><strong>star:</strong></label>
     <input type="checkbox" id="star" name="star" value="1"
-           onchange="this.form.submit()"
+           onchange="navigateWithAuthForm(this.form)"
            {% if args.get('star') in ['1','true','True','on','yes'] %}checked{% endif %}>
   </form>
   
@@ -54,7 +54,7 @@
               data-toggle-url="{{ url('toggle_star') }}"
               data-id="{{ w.word_id }}"
             >★</button>
-            <a href="{{ url('view_specific_word') }}{{ w.word_id }}">
+            <a href="{{ url('view_specific_word') }}{{ w.word_id }}" onclick="event.preventDefault(); navigateWithAuth(this.href)">
               <strong>{{ w.word }}</strong>
             </a>
             {% if w.spelling %} ({{ w.spelling }}){% endif %}
@@ -75,20 +75,20 @@
 
     {# Prev link #}
     {% if page > 1 %}
-      <a href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ page-1 }}">prev</a>
+      <a href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ page-1 }}" onclick="event.preventDefault(); navigateWithAuth(this.href)">prev</a>
     {% else %}
       <span class="disabled">prev</span>
     {% endif %}
 
     {# Always show first page #}
-    <a class="{{ 'current' if page==1 else '' }}" href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page=1">1</a>
+    <a class="{{ 'current' if page==1 else '' }}" href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page=1" onclick="event.preventDefault(); navigateWithAuth(this.href)">1</a>
 
     {# Decide window #}
     {% set total = page_count %}
     {% if total <= 7 %}
       {# small number of pages: show all #}
       {% for p in range(2, total+1) %}
-        <a class="{{ 'current' if page==p else '' }}" href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ p }}">{{ p }}</a>
+        <a class="{{ 'current' if page==p else '' }}" href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ p }}" onclick="event.preventDefault(); navigateWithAuth(this.href)">{{ p }}</a>
       {% endfor %}
     {% else %}
       {% set window = 2 %} {# show current +/-2 -> 5 middle pages #}
@@ -102,7 +102,7 @@
       {% endif %}
 
       {% for p in range(left, right+1) %}
-        <a class="{{ 'current' if page==p else '' }}" href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ p }}">{{ p }}</a>
+        <a class="{{ 'current' if page==p else '' }}" href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ p }}" onclick="event.preventDefault(); navigateWithAuth(this.href)">{{ p }}</a>
       {% endfor %}
 
       {% if right < total-1 %}
@@ -110,12 +110,12 @@
       {% endif %}
 
       {# Last page #}
-      <a class="{{ 'current' if page==total else '' }}" href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ total }}">{{ total }}</a>
+      <a class="{{ 'current' if page==total else '' }}" href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ total }}" onclick="event.preventDefault(); navigateWithAuth(this.href)">{{ total }}</a>
     {% endif %}
 
     {# Next link #}
     {% if page < page_count %}
-      <a href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ page+1 }}">next</a>
+      <a href="{{ url('view_words') }}?jlpt_level={{ cur_jlpt }}&star={{ cur_star }}&page={{ page+1 }}" onclick="event.preventDefault(); navigateWithAuth(this.href)">next</a>
     {% else %}
       <span class="disabled">next</span>
     {% endif %}

@@ -6,6 +6,7 @@ from jamdict.util import LookupResult
 from jamdict.jmdict import JMDEntry
 import jamorasep
 import os
+import threading
 from psycopg2 import sql
 
 from typing import List, TYPE_CHECKING
@@ -26,7 +27,14 @@ class ProcessData():
     
     def __init__(self):
         self.tagger = Tagger()
-        self.jam = Jamdict()
+        self._local = threading.local()
+
+    @property
+    def jam(self) -> Jamdict:
+        """Return a per-thread Jamdict instance to avoid SQLite cross-thread errors."""
+        if not hasattr(self._local, 'jam'):
+            self._local.jam = Jamdict()
+        return self._local.jam
     
     def process_sentence(self, sentence: str, db: DBHandling) -> List[Word]:
         """

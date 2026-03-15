@@ -1,5 +1,7 @@
 <!doctype html>
-<html data-url-prefix="{{ url_prefix }}">
+<html data-url-prefix="{{ url_prefix }}" data-home-url="{{ url('home') }}"
+      data-login-url="{{ url('login') }}" data-logout-url="{{ url('logout') }}"
+      data-register-url="{{ url('register') }}" data-refresh-url="{{ url('refresh') }}">
 <head>
   <title>Quiz</title>
   <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
@@ -61,7 +63,7 @@
 
 
   <!-- ======================= Quiz option box ======================= -->
-  <form id="quizOptionsForm" style="display:none" method="GET">
+  <form id="quizOptionsForm" style="display:none" onsubmit="event.preventDefault(); navigateWithAuthForm(this)">
     <div id="jlptFilter" style="display:none">
       <label for="jlpt">JLPT:</label>
       <select name="jlpt_level" id="jlpt">

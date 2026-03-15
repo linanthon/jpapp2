@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
   <script src="{{ url('static', 'js/base.js') }}" defer></script>
   <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
+  <script src="{{ url('static', 'js/view/view.js') }}" defer></script>
 </head>
 <body>
   <div class="header-container">
@@ -19,14 +20,9 @@
     <button type="submit">Search word</button>
   </form>
 
-  <form method="GET" action="{{ url('view_words') }}">
-    <button type="submit">View words</button>
-  </form>
+  <button id="btn-view-words" data-url="{{ url('view_words') }}">View words</button>
 
-
-  <form method="GET" action="{{ url('view_books') }}">
-    <button type="submit">View books</button>
-  </form>
+  <button id="btn-view-books" data-url="{{ url('view_books') }}">View books</button>
 
 
 </body>

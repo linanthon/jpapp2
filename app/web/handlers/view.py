@@ -57,7 +57,7 @@ def handle_view_words(db: "DBHandling" = None, user_id: int = None, jlpt_level: 
     # Save count to cache until insert endpoint
     key = tuple(f"word::{jlpt_level}::{star}")
     if key not in view_count_cache:
-        view_count_cache[key] = db.count_words(jlpt_level, star)
+        view_count_cache[key] = db.count_words(user_id, jlpt_level, star)
 
     page_count = int(math.ceil(view_count_cache[key] / limit))
     if page > page_count:

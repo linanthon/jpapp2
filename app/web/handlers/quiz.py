@@ -51,10 +51,10 @@ def update_word_prio_after_answering(db: "DBHandling", user_id: int = 0, word_id
     new_quized = quized + 1 if is_correct else max(0, quized - 1)
     return db.update_quized_prio_ts(user_id=user_id, word_id=word_id, occurrence=occurrence, quized=new_quized)
 
-def change_word_prio_to_negative(db: "DBHandling", word_id: int = 0) -> bool:
+def change_word_prio_to_negative(db: "DBHandling", user_id: int = 0, word_id: int = 0) -> bool:
     """Update the word priority value to -1 (to fail the > 0.0 check when query for quiz).
     Returns true if success, false otherwise"""
-    return db.update_words_known(word_ids=[word_id])
+    return db.update_words_known(user_id=user_id, word_ids=[word_id])
 
 def reset_word_prio(db: "DBHandling", user_id: int = 0, word_id: int = 0,
                     occurrence: int = None, quized: int = None) -> bool:
