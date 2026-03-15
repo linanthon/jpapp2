@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import contextvars
 import math
 import os
 import re
@@ -31,12 +32,17 @@ def _records_to_dicts(records: list) -> List[dict]:
     return [dict(r) for r in records] if records else []
 
 
+# Allows transaction per connection (coroutine ok)
+_txn_conn_var: contextvars.ContextVar[asyncpg.Connection | None] = contextvars.ContextVar(
+    'txn_conn', default=None
+)
+
+
 class DBHandling:
     def __init__(self, db_name: str = DB_NAME):
         """Init DB manage instance, no input"""
         self._pool: asyncpg.Pool = None
         self._dbname = db_name
-        self._txn_conn: asyncpg.Connection = None  # set when inside transaction()
 
     async def connect_2_db(self, username: str = "", password: str = "",
                            dbname: str = "", host: str = DB_HOST, port: int = DB_PORT) -> None:
@@ -98,8 +104,8 @@ class DBHandling:
 
     # ---- Internal: acquire a connection (transaction-aware) ----
     def _get_conn(self):
-        """Return the transaction connection if inside a transaction, else None."""
-        return self._txn_conn
+        """Return the transaction connection for this coroutine context, or None."""
+        return _txn_conn_var.get()
 
     async def _fetchrow(self, query: str, *args) -> dict | None:
         """Execute query and return a single row as dict, or None."""
@@ -149,20 +155,25 @@ class DBHandling:
         Usage example:
             async with db.transaction():
                 await db.delete_book(...)
+
+        Nested calls automatically use a savepoint so only the inner block
+        rolls back on failure, leaving the outer transaction intact.
         """
         if not self._pool:
             raise RuntimeError("No DB connection")
-        # Nested transaction: just yield (use the existing connection)
-        if self._txn_conn is not None:
-            yield
+        conn = _txn_conn_var.get()
+        if conn is not None:
+            # Already inside a transaction: use a savepoint for the nested block
+            async with conn.transaction():
+                yield
             return
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                self._txn_conn = conn
+                token = _txn_conn_var.set(conn)
                 try:
                     yield
                 finally:
-                    self._txn_conn = None
+                    _txn_conn_var.reset(token)
 
     # User ==================================================================================
     async def create_user(self, username: str, email: str, password_hash: str, is_admin: bool = False) -> int:
