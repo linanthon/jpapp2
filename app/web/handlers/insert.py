@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", filename: str, saved_tmp_path: str):
+async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", filename: str, saved_tmp_path: str):
     """
     Handle input-ing a file, check file exist, insert as book (the book name is the file name),
     sentences, words to DB and link word-book, word-sentence, sentence-book IDs.
@@ -40,15 +40,15 @@ def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", filename: 
         # Insert book sentence by sentence
         if not progress:
             # First time will create new row
-            book_id, resp, _ = do_insert_book(db, filename, sentence)
+            book_id, resp, _ = await do_insert_book(db, filename, sentence)
             if resp:
                 yield str_2_byte(str(resp))
                 return
         else:
             # append next sentences to the created row 
-            db.update_book(book_id=book_id, append_content=sentence)
+            await db.update_book(book_id=book_id, append_content=sentence)
 
-        do_insert_word_sentence_book_2_db(pdata, db, sentence.strip("\n").strip(), book_id)
+        await do_insert_word_sentence_book_2_db(pdata, db, sentence.strip("\n").strip(), book_id)
         progress += len(sentence)
         # use "data: " to mark the progress display for JS
         yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
@@ -57,7 +57,7 @@ def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", filename: 
     os.remove(saved_tmp_path)
     yield str_2_byte(f"Processed and inserted {filename}")
 
-def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name: str, data: str):
+async def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name: str, data: str):
     """
     Handle input-ing a string, insert as book, sentences, words to DB
     and link word-book, word-sentence, sentence-book IDs.
@@ -77,14 +77,14 @@ def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name: str, 
     reset_view_word_count()
 
     content_len = len(data)
-    book_id, resp, _ = do_insert_book(db, name, data)
+    book_id, resp, _ = await do_insert_book(db, name, data)
     if resp:
         yield str_2_byte(str(resp))
         return
     
     progress = 0
     for sentence in pdata.stream_sentences_str(data):
-        do_insert_word_sentence_book_2_db(pdata, db, sentence, book_id)
+        await do_insert_word_sentence_book_2_db(pdata, db, sentence, book_id)
         progress += len(sentence)
         # use "data: " to mark the progress display for JS
         yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")

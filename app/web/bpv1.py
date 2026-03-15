@@ -61,13 +61,13 @@ async def register(
     Body: {username, email, password, is_admin}
     Returns: {id, username, email, is_admin}
     """
-    if db.user_exists(user_data.username):
+    if await db.user_exists(user_data.username):
         raise HTTPException(status_code=409, detail="Username already taken")
-    if db.user_exists_by_email(user_data.email):
+    if await db.user_exists_by_email(user_data.email):
         raise HTTPException(status_code=409, detail="Email already registered")
     
     hashed_password = hash_password(user_data.password)
-    user_id = db.create_user(
+    user_id = await db.create_user(
         username=user_data.username,
         email=user_data.email,
         password_hash=hashed_password,
@@ -77,7 +77,7 @@ async def register(
     if not user_id:
         raise HTTPException(status_code=500, detail="Failed to create user")
     
-    user = db.get_user_by_id(user_id)
+    user = await db.get_user_by_id(user_id)
     return user
 
 
@@ -103,7 +103,7 @@ async def login(
         )
     
     # Get user from DB + Verify password
-    user = db.get_user_by_username(credentials.username)
+    user = await db.get_user_by_username(credentials.username)
     if not user or not verify_password(credentials.password, user['password_hash']):
         await redis.incr(f"login_attempts:{credentials.username}")
         await redis.expire(f"login_attempts:{credentials.username}", FAILED_LOGIN_BLOCK_MINUTES)
@@ -244,7 +244,7 @@ def view():
 
 
 @router.get("/view/word")
-def view_words(
+async def view_words(
     jlpt_level: str = "",
     star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
@@ -264,7 +264,7 @@ def view_words(
     jlpt_level = validate_jlpt_level(jlpt_level)
     star_bool = parse_bool_param(star)
 
-    result, page_count = handle_view_words(db, current_user_id, jlpt_level, star_bool, limit, page)
+    result, page_count = await handle_view_words(db, current_user_id, jlpt_level, star_bool, limit, page)
     return templates.TemplateResponse(
         "view/word/view_words.html",
         {"request": {}, "word_list": result, "page_count": page_count, "page": page,
@@ -285,7 +285,7 @@ async def search_word(
     if not word:
         return templates.TemplateResponse("view/word/search_word.html", {"request": {}})
 
-    response_data = handle_search_word(db, word, limit, bpv1_url_prefix)
+    response_data = await handle_search_word(db, word, limit, bpv1_url_prefix)
 
     # Check for error in response
     if "error" in response_data:
@@ -294,14 +294,14 @@ async def search_word(
 
 
 @router.get("/view/word/{word_id}")
-def view_specific_word(
+async def view_specific_word(
     word_id: int,
     sen_limit: int = DEFAULT_SENTENCE_EXAMPLE_LIMIT,
     db: DBHandling = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
     """View details info of 1 word"""
-    result, sentence_examples = handle_view_specific_word(db, current_user_id, word_id, sen_limit)
+    result, sentence_examples = await handle_view_specific_word(db, current_user_id, word_id, sen_limit)
     return templates.TemplateResponse(
         "view/word/view_specific_word.html",
         {"request": {}, "word_details": result, "sen_ex": sentence_examples}
@@ -332,7 +332,7 @@ async def toggle_star(
     if star == -1:
         return {"success": False}
     
-    updated_star = toggle_star_helper(db, current_user_id, obj_id, obj_type, star)
+    updated_star = await toggle_star_helper(db, current_user_id, obj_id, obj_type, star)
     return {"success": updated_star}
 
 
@@ -345,7 +345,7 @@ def serve_audio(filename: str):
 
 
 @router.get("/view/book")
-def view_books(
+async def view_books(
     star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
     page: int = 1,
@@ -361,7 +361,7 @@ def view_books(
     - page: the number of page to show
     """
     star_bool = parse_bool_param(star)
-    result, page_count = handle_view_books(db, current_user, star_bool, limit, page)
+    result, page_count = await handle_view_books(db, current_user, star_bool, limit, page)
     return templates.TemplateResponse(
         "view/book/view_books.html",
         {"request": {}, "book_list": result, "page_count": page_count, "page": page,
@@ -370,7 +370,7 @@ def view_books(
 
 
 @router.get("/view/book/{book_id}")
-def view_specific_book(
+async def view_specific_book(
     book_id: int,
     db: DBHandling = Depends(get_db),
     current_user: dict = Depends(get_current_user_id)
@@ -378,7 +378,7 @@ def view_specific_book(
     """View content of 1 book"""
     return templates.TemplateResponse(
         "view/book/view_specific_book.html",
-        {"request": {}, "book_details": handle_view_specific_book(db, current_user, book_id)}
+        {"request": {}, "book_details": await handle_view_specific_book(db, current_user, book_id)}
     )
 
 
@@ -395,7 +395,7 @@ async def delete_book(
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing book `id`")
     
-    deleted = delete_book_helper(db, obj_id)
+    deleted = await delete_book_helper(db, obj_id)
     return {"success": deleted}
 
 
@@ -414,7 +414,7 @@ def progress(
 
 # ===== QUIZ % ====================================================================
 @router.get("/quiz")
-def quiz(
+async def quiz(
     jlpt_level: str = "",
     star: bool | str = None,
     select_book: str = "",
@@ -423,7 +423,7 @@ def quiz(
     db: DBHandling = Depends(get_db)
 ):
     """Quiz home page"""
-    all_books = get_all_book_name_and_id(db)
+    all_books = await get_all_book_name_and_id(db)
     return templates.TemplateResponse(
         "quiz/quiz_home.html",
         {"request": {}, "all_books": all_books,
@@ -434,7 +434,7 @@ def quiz(
 
 # ----- Quiz JP ---------
 @router.get("/quiz/jp")
-def quiz_jp(
+async def quiz_jp(
     book_id: str = "",
     jlpt_level: str = "",
     star: bool | str = None,
@@ -451,7 +451,7 @@ def quiz_jp(
     use_priority_bool = parse_bool_param(use_priority)
     get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
-    quizes = get_word_jp_quizes(
+    quizes = await get_word_jp_quizes(
         pdata,
         db,
         user_id=current_user_id,
@@ -471,7 +471,7 @@ def quiz_jp(
 
 
 @router.get("/quiz/known")
-def quiz_known(
+async def quiz_known(
     book_id: str = "",
     jlpt_level: str = "",
     star: bool | str = None,
@@ -486,7 +486,7 @@ def quiz_known(
     star_bool = parse_bool_param(star)
     get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
-    quizes = get_word_jp_quizes(
+    quizes = await get_word_jp_quizes(
         pdata,
         db,
         user_id=current_user_id,
@@ -508,7 +508,7 @@ def quiz_known(
 
 # ----- Quiz EN ---------
 @router.get("/quiz/en")
-def quiz_en(
+async def quiz_en(
     book_id: str = "",
     jlpt_level: str = "",
     star: bool | str = None,
@@ -524,7 +524,7 @@ def quiz_en(
     use_priority_bool = parse_bool_param(use_priority)
     get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
-    quizes = get_word_en_quizes(
+    quizes = await get_word_en_quizes(
         db,
         user_id=current_user_id,
         limit=limit,
@@ -578,7 +578,7 @@ async def update_word_prio(
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `occurrence`")
     
-    success = update_word_prio_after_answering(db, current_user_id, word_id, is_correct, quized, occurrence)
+    success = await update_word_prio_after_answering(db, current_user_id, word_id, is_correct, quized, occurrence)
     return {"success": success}
 
 
@@ -608,9 +608,9 @@ async def toggle_word_known(
             pass
     
     if update_to_known:
-        success = change_word_prio_to_negative(db, current_user_id, word_id)
+        success = await change_word_prio_to_negative(db, current_user_id, word_id)
     else:
-        success = reset_word_prio(db, current_user_id, word_id, occurrence, quized)
+        success = await reset_word_prio(db, current_user_id, word_id, occurrence, quized)
     return {"success": success}
 
 # =================================================================================
