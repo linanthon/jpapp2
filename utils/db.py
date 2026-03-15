@@ -15,7 +15,7 @@ from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_
                               SQL_TABLE_SCRIPT, DEFAULT_LIMIT, SQL_WORD_PRIO_SCRIPT,
                               DEFAULT_FORMULA_K, DEFAULT_TIME_EXPODECAY, QUIZ_WORD_SORT_COLUMNS,
                               WORD_SENSES_REGEX, QUIZ_SOFT_CAP, QUIZ_HARD_CAP, DEFAULT_MULTI_PENALTY,
-                              DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS)
+                              DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS, TABLE_USER_BOOK_STAR)
 from schemas.quiz import Quiz
 from schemas.sentence import Sentence
 from schemas.word import Word
@@ -276,60 +276,66 @@ class DBHandling:
                     res.append(self._parse_book(instance))
         return res
     
-    def get_exact_book(self, name: str = "", book_id: int = None, parse_dict: bool = False) -> Book | dict:
+    def get_exact_book(self, user_id: int = None, book_id: int = None, parse_dict: bool = False) -> Book | dict:
         """
         Query a book with the exact name or its ID.
         Returns the row of that book.
         """
-        if not name and not book_id:
-            return [] if parse_dict else Book()
+        if not book_id:
+            return {} if parse_dict else Book()
         
-        query = sql.SQL("SELECT * FROM {table}").format(
-            table=sql.Identifier(TABLE_BOOKS)
+        query = sql.SQL("""SELECT a.id, a.created_at, a.name, a.content, b.star
+                        FROM {table1} AS a
+                        JOIN {table2} AS b ON b.book_id = a.id 
+                        WHERE b.user_id = {uid} AND b.book_id = {bid};""").format(
+            table1=sql.Identifier(TABLE_BOOKS),
+            table2=sql.Identifier(TABLE_USER_BOOK_STAR),
+            uid=sql.Literal(user_id),
+            bid=sql.Literal(book_id)
         )
-        params = []
-
-        if book_id:
-            query += sql.SQL(" WHERE id = %s;")
-            params.append(book_id)
-        else:
-            query += sql.SQL(" WHERE name = %s;")
-            params.append(name)
 
         res = Book()
-        if self._safe_execute(query, params):
+        if self._safe_execute(query):
             if parse_dict:
                 res = self._parse_book_dict(self._cursor.fetchone())
             else:
                 res = self._parse_book(self._cursor.fetchone())
         return res
     
-    def list_books(self, star: bool = False, limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
+    def list_books(self, user_id: int = None, star: bool = False, 
+                   limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
         """
         Query 'books' table to get a list of books
 
         Input:
+        - user_id: the user ID
         - star: get only the starred books.
         - limit: the amount of return records. If <= 0, use default value of 10.
             If purposely left None, query all.
         - offset: skip the first X records.
 
-        Output: a list of books (id, name, star, created)
+        Output: a list of books (id, name, star, created_at)
         """
-        res: list = []
+        if not user_id:
+            return []
         
-        query = sql.SQL("SELECT id, name, star, created FROM {table}").format(
-            table=sql.Identifier(TABLE_BOOKS)
+        res: list = []
+        query = sql.SQL("""SELECT a.id, a.name, a.created_at, b.star
+                        FROM {table1} AS a
+                        JOIN {table2} AS b ON b.book_id = a.id
+                        WHERE b.user_id = {uid}""").format(
+            table1=sql.Identifier(TABLE_BOOKS),
+            table2=sql.Identifier(TABLE_USER_BOOK_STAR)
         )
         if star:
-            query += sql.SQL(" WHERE star = true")
+            query += sql.SQL(" AND b.star = true")
 
         if limit is None:
-            query += sql.SQL(" ORDER BY id OFFSET {offset}").format(
+            query += sql.SQL(" ORDER BY a.id OFFSET {offset}").format(
                 offset=sql.Literal(offset)
             )
         elif limit < 1:
-            query += sql.SQL(" ORDER BY id OFFSET {offset} LIMIT {limit};").format(
+            query += sql.SQL(" ORDER BY a.id OFFSET {offset} LIMIT {limit};").format(
                 offset=sql.Literal(offset),
                 limit=sql.Literal(limit)
             )
@@ -353,42 +359,33 @@ class DBHandling:
             res = self._cursor.fetchone()["count"]
         return res
 
-    def update_book_star(self, book_id: int = None, book: str = "", new_star_status: bool = None) -> bool:
+    def update_book_star(self, user_id: int = None, book_id: int = None, 
+                         new_star_status: bool = None) -> bool:
         """
         Update a book's star. If specified 'new_star_status', will update to that.
         Returns True if success, Fail if not found/failed.
         """
-        if (not book_id and not book) or new_star_status is None:
+        if not book_id or new_star_status is None:
             return False
         
-        if book_id:
-            patch_where = sql.SQL(" WHERE id = %s;")
-            params = [book_id]
-        else:
-            patch_where = sql.SQL(" WHERE name = %s;")
-            params = [book]
-        
-        query = sql.SQL("UPDATE {table} SET star = %s").format(
-            table=sql.Identifier(TABLE_BOOKS)
+        query = sql.SQL("""UPDATE {table} SET star = %s 
+                        WHERE user_id = {uid} AND book_id = {bid};""").format(
+            table=sql.Identifier(TABLE_USER_BOOK_STAR),
+            uid=sql.Literal(user_id),
+            bid=sql.Literal(book_id)
         )
-        query += patch_where
-        params.insert(0, new_star_status)
-        if self._safe_execute(query, params) and self._cursor.rowcount > 0:
+        if self._safe_execute(query, (new_star_status,)) and self._cursor.rowcount > 0:
             self._safe_commit()
             return True
         self._safe_rollback()
         return False
 
-    def delete_book(self, name: str = "", book_id: int = None) -> bool:
+    def delete_book(self, book_id: int = None) -> bool:
         """Remove book by name (exact match) or id, will also remove all
         its sentences and words. If those sentences/words have duplicate in another book,
         reduce their counts instead. Return true if success, otherwise false.
-        
-        Params:
-            - name: book full name (no extension)
-            - book_id: book ID
         """
-        if not name and not book_id:
+        if not book_id:
             return False
         
         # Get all its sentence IDs
@@ -417,30 +414,23 @@ class DBHandling:
                 self._safe_rollback()
                 return False
         
-        # Now delete book (this will cascade and delete sentence_book refs)
-        query = sql.SQL("DELETE FROM {table} WHERE").format(
-            table=sql.Identifier(TABLE_BOOKS)
+        # Now delete book (this will cascade and delete sentence_book, word_book and user_book_star refs)
+        query = sql.SQL("DELETE FROM {table} WHERE id = {bid}").format(
+            table=sql.Identifier(TABLE_BOOKS),
+            bid=sql.Literal(book_id)
         )
-        if book_id:
-            query += sql.SQL(" id = {bid}").format(
-                bid=sql.Literal(book_id)
-            )
-            params = []
-        else:
-            query += sql.SQL(" name = ?")
-            params = [name]
-        deleted_book = self._safe_execute(query, params)
+        deleted_book = self._safe_execute(query)
         if not deleted_book:
             self._safe_rollback()
             return False
 
-        # Decrease count/Delete sentences
+        # Decrease count/Delete sentences (cascade delete word_sentence ref)
         for sen_id, decrement_count in sen_decrements.items():
             deleted_sen = self._decrement_sentece_occurrence(sen_id, decrement_count)
             if not deleted_sen:
                 self._safe_rollback()
                 return False
-        # Decrease count/Delete words
+        # Decrease count/Delete words (cascade delete user_word_progress ref)
         for word_id, decrement_count in word_decrements.items():
             if not self._decrement_word_occurrence(word_id, decrement_count):
                 self._safe_rollback()
@@ -573,7 +563,7 @@ class DBHandling:
             return False
         
         query = sql.SQL("UPDATE {table} SET star = %s WHERE user_id = {uid} AND word_id = {wid};").format(
-            table=sql.Identifier(TABLE_WORDS),
+            table=sql.Identifier(TABLE_USER_WORD_PROGRESS),
             uid=sql.Literal(user_id),
             wid=sql.Literal(word_id)
         )
@@ -779,7 +769,7 @@ class DBHandling:
     def _collect_word_decrements(self, sen_id: int, word_decrements: dict) -> bool:
         """
         Get all word IDs in a sentence and add them to the decrement tracking dict.
-        Results are saved into `sen_decrements`.
+        Results are saved into `word_decrements`.
         """
         if not sen_id:
             return False
@@ -816,14 +806,25 @@ class DBHandling:
         new_count = word_count - decrement_count
 
         if new_count > 0:
-            query = sql.SQL("UPDATE {table} SET occurrence = {new_count} WHERE id = {wid}").format(
+            query = sql.SQL("UPDATE {table} SET occurrence = {new_count} WHERE id = {wid};").format(
                 table=sql.Identifier(TABLE_WORDS),
                 new_count=sql.Literal(new_count),
                 wid=sql.Literal(word_id)
             )
+            # Trade off: either re-calc all user word priority here or just leave it to the next time they quiz
+            # it will update after the quiz. On the user side, will seemingly see no difference.
         else:
-            # Delete sentence if new_count = 0
-            query = sql.SQL("DELETE FROM {table} WHERE id = {wid}").format(
+            # if new_count = 0 --> delete user progress for this word ID
+            query_del_progress = sql.SQL("DELETE FROM {table} WHERE word_id = {wid};").format(
+                table=sql.Identifier(TABLE_USER_WORD_PROGRESS),
+                wid=sql.Literal(word_id)
+            )
+            if not self._safe_execute(query_del_progress):
+                self._safe_rollback()
+                return False
+
+            # Delete the word in word table 
+            query = sql.SQL("DELETE FROM {table} WHERE id = {wid};").format(
                 table=sql.Identifier(TABLE_WORDS),
                 wid=sql.Literal(word_id)
             )
@@ -1426,7 +1427,7 @@ class DBHandling:
         """Parse book dict from query result into Book class"""
         return Book(
             book_id=book.get("id", 0),
-            created=book.get("created", ""),
+            created_at=book.get("created_at", ""),
             star=book.get("star", False),
             name=book.get("name", ""),
             content=book.get("content", ""),
@@ -1435,7 +1436,7 @@ class DBHandling:
     def _parse_book_dict(self, book: dict) -> dict:
         """Parse book dict from query result into a dict of Book"""
         book["book_id"] = book.get("id", 0)
-        book["created"] = book.get("created", "")
+        book["created_at"] = book.get("created_at", "")
         book["name"] = book.get("name", "")
         book["star"] = book.get("star", False)
         book["content"] = book.get("content", "")

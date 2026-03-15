@@ -226,13 +226,13 @@ def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict
 def str_2_byte(input_str: str):
     return input_str.encode("utf-8")
 
-def toggle_star_helper(db: DBHandling, obj_id: int, obj_type: str, star: int) -> bool:
+def toggle_star_helper(db: DBHandling, user_id: int, obj_id: int, obj_type: str, star: int) -> bool:
     """Turn star on or off. Return true if success, false otherwise."""
     star_stt = True if star == 1 else False
     if obj_type == "word":
-        return db.update_word_star(word_id=obj_id, new_star_status=star_stt)
+        return db.update_word_star(user_id=user_id, word_id=obj_id, new_star_status=star_stt)
     elif obj_type == "book":
-        return db.update_book_star(book_id=obj_id, new_star_status=star_stt)
+        return db.update_book_star(user_id=user_id, book_id=obj_id, new_star_status=star_stt)
     else:
         return False
 

@@ -19,6 +19,7 @@ TABLE_SENTENCE_BOOK_REF = "sentence_book"
 TABLE_USER = "users"
 TABLE_USER_WORD_PROGRESS = "user_word_progress"
 TABLE_USER_SENTENCE_PROGRESS = "user_sentence_progress"
+TABLE_USER_BOOK_STAR = "user_book_star"
 
 # --- Defaults
 DEFAULT_LIMIT: int = 10

@@ -199,9 +199,7 @@ async def upload_file(
     pdata: ProcessData = Depends(get_pdata),
     current_admin: dict = Depends(get_current_admin_user)
 ):
-    """
-    Handle file upload. submittedFilename form field with file
-    """
+    """Handle file upload. submittedFilename form field with file. Admin only."""
     if not submittedFilename:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No file uploaded")
     file_name = get_filename_from_path(submittedFilename.filename)
@@ -229,7 +227,7 @@ async def upload_string(
     current_admin: dict = Depends(get_current_admin_user)
 ):
     """
-    Handle upload JP text directly.
+    Handle upload JP text directly. Admin only.
     Book name = "stringName" and book content = "stringBody" in form
     """
     return StreamingResponse(
@@ -334,7 +332,7 @@ async def toggle_star(
     if star == -1:
         return {"success": False}
     
-    updated_star = toggle_star_helper(db, obj_id, obj_type, star)
+    updated_star = toggle_star_helper(db, current_user_id, obj_id, obj_type, star)
     return {"success": updated_star}
 
 
@@ -351,7 +349,8 @@ def view_books(
     star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
     page: int = 1,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    current_user: dict = Depends(get_current_user_id)
 ):
     """
     View X book names per page, with/without star
@@ -362,7 +361,7 @@ def view_books(
     - page: the number of page to show
     """
     star_bool = parse_bool_param(star)
-    result, page_count = handle_view_books(db, star_bool, limit, page)
+    result, page_count = handle_view_books(db, current_user, star_bool, limit, page)
     return templates.TemplateResponse(
         "view/book/view_books.html",
         {"request": {}, "book_list": result, "page_count": page_count, "page": page,
@@ -373,12 +372,13 @@ def view_books(
 @router.get("/view/book/{book_id}")
 def view_specific_book(
     book_id: int,
-    db: DBHandling = Depends(get_db)
+    db: DBHandling = Depends(get_db),
+    current_user: dict = Depends(get_current_user_id)
 ):
     """View content of 1 book"""
     return templates.TemplateResponse(
         "view/book/view_specific_book.html",
-        {"request": {}, "book_details": handle_view_specific_book(db, book_id)}
+        {"request": {}, "book_details": handle_view_specific_book(db, current_user, book_id)}
     )
 
 
@@ -388,10 +388,10 @@ async def delete_book(
     db: DBHandling = Depends(get_db),
     current_admin_user: dict = Depends(get_current_admin_user)
 ):
-    """Delete a book"""
+    """Delete a book, admin account is required."""
     data = await request.json()
     try:
-        obj_id = int(data.get("id", "a"))
+        obj_id = int(data.get("id", ""))
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing book `id`")
     

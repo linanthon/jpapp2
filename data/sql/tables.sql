@@ -13,9 +13,8 @@ CREATE TABLE IF NOT EXISTS words (
 -- Store a book
 CREATE TABLE IF NOT EXISTS books (
     id SERIAL PRIMARY KEY NOT NULL,
-    created TIMESTAMP NOT NULL DEFAULT now(),
+    created_at TIMESTAMP NOT NULL DEFAULT now(),
     name TEXT UNIQUE NOT NULL,
-    star BOOLEAN,
     content TEXT    -- the entire book content, the limit is 1GB which no books achieve
 );
 
@@ -79,4 +78,12 @@ CREATE TABLE IF NOT EXISTS user_sentence_progress (
     star BOOLEAN,
     priority NUMERIC,    -- use occurrence and quized to calc
     PRIMARY KEY(user_id, sentence_id)
+);
+
+-- Store users favorite books
+CREATE TABLE IF NOT EXISTS user_book_star (
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    book_id INT REFERENCES sentences(id) ON DELETE CASCADE,
+    star BOOLEAN,
+    PRIMARY KEY(user_id, book_id)
 );
