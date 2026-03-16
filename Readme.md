@@ -8,7 +8,7 @@ Changes:
 - API: Adds auth
 
 TODO backend:
-- Fix N+1 query
+- ~~Fix N+1 query~~
 - Stop convert db Record
 - Redis LRU words
 
@@ -16,3 +16,4 @@ TODO frontend
 - Fix view specific book page
 - Fix go back button in view specific
 - Quiz not starting
+- Unauthorize insert string goes to /v1/null

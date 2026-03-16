@@ -433,12 +433,10 @@ class DBHandling:
 
         # Get all sentences from ref table to know how much we need to reduce its occurrence
         # Get before delete book to not lost ref
-        if not await self._collect_sentence_decrements(book_id, sen_decrements):
-            return False
         # Get all words from ref table for the same reason
-        for sen_id in sentence_ids:
-            if not await self._collect_word_decrements(sen_id, word_decrements):
-                return False
+        if not await self._collect_object_decrements([book_id], "sentence_id", TABLE_SENTENCE_BOOK_REF, "book_id", sen_decrements) or \
+            not await self._collect_object_decrements(sentence_ids, "word_id", TABLE_WORD_SENTENCE_REF, "sentence_id", word_decrements):
+            return False
 
         # Now delete book (this will cascade and delete sentence_book, word_book and user_book_star refs)
         status = await self._execute(
@@ -448,13 +446,10 @@ class DBHandling:
             return False
 
         # Decrease count/Delete sentences (cascade delete word_sentence ref)
-        for sen_id, decrement_count in sen_decrements.items():
-            if not await self._decrement_sentence_occurrence(sen_id, decrement_count):
-                return False
         # Decrease count/Delete words (cascade delete user_word_progress ref)
-        for word_id, decrement_count in word_decrements.items():
-            if not await self._decrement_word_occurrence(word_id, decrement_count):
-                return False
+        if not await self._decrement_object_occurrence(sen_decrements, TABLE_SENTENCES) or \
+            not await self._decrement_object_occurrence(word_decrements, TABLE_WORDS):
+            return False
 
         return True
 
@@ -793,61 +788,55 @@ class DBHandling:
         row = await self._fetchrow(query, *params)
         return row["count"] if row else 0
 
-    async def _collect_word_decrements(self, sen_id: int, word_decrements: dict) -> bool:
+    async def _collect_object_decrements(self, obj_ids: list, obj_id_col: str, ref_table: str,
+                                         target_id_col: str, obj_decrements: dict) -> bool:
         """
-        Get all word IDs in a sentence and add them to the decrement tracking dict.
-        Results are saved into `word_decrements`.
+        Get all wor/sentence IDs of a sentence/book and add them to the decrement tracking dict.
+        Results are saved into `obj_decrements`.
         """
-        if not sen_id:
+        if not obj_ids:
             return False
 
         rows = await self._fetch(
-            f"SELECT word_id FROM {TABLE_WORD_SENTENCE_REF} WHERE sentence_id = $1",
-            sen_id
+            f"SELECT {obj_id_col} FROM {ref_table} WHERE {target_id_col} = ANY($1)",
+            obj_ids
         )
         for item in rows:
-            word_id = item["word_id"]
-            word_decrements[word_id] = word_decrements.get(word_id, 0) + 1
+            obj_id = item[obj_id_col]
+            obj_decrements[obj_id] = obj_decrements.get(obj_id, 0) + 1
         return True
+    
+    async def _decrement_object_occurrence(self, obj_decrements: dict, table_name: str) -> bool:
+        """
+        Decrement word/sentence occurrence. Deletes the word if occurrence - decrement count = 0.
 
-    async def _decrement_word_occurrence(self, word_id: int = None, decrement_count: int = 0) -> bool:
+        Input:
+        - obj_decrements: key = word/sentence ID, value = decrement count
+        - table_name: the word or sentence table name
         """
-        Decrement word occurrence by `decrement_count`.
-        Deletes the word if new count = 0.
-        """
-        if not word_id or not decrement_count:
+        if not obj_decrements:
             return False
+        
+        obj_ids = list(obj_decrements.keys())
+        decrements = list(obj_decrements.values())
 
-        # Get the words count
-        row = await self._fetchrow(
-            f"SELECT occurrence FROM {TABLE_WORDS} WHERE id = $1", word_id
+        await self._execute(
+            f"""DELETE FROM {table_name}
+                USING unnest($1::int[], $2::int[]) AS d(wid, dec)
+                WHERE {table_name}.id = d.wid
+                AND {table_name}.occurrence - d.dec <= 0""",
+            obj_ids, decrements
         )
-        if not row:
-            return False
 
-        # Update count - 1 if has more than 1
-        word_count = row["occurrence"]
-        new_count = word_count - decrement_count
+        # Update the rest
+        status = await self._execute(
+            f"""UPDATE {table_name} SET occurrence = {table_name}.occurrence - d.dec
+                FROM unnest($1::int[], $2::int[]) AS d(sid, dec)
+                WHERE {table_name}.id = d.sid
+                AND {table_name}.occurrence - d.dec > 0""",
+            obj_ids, decrements
+        )
 
-        if new_count > 0:
-            status = await self._execute(
-                f"UPDATE {TABLE_WORDS} SET occurrence = $1 WHERE id = $2;",
-                new_count, word_id
-            )
-            # Trade off: either re-calc all user word priority here or just leave it to the next time they quiz
-            # it will update after the quiz. On the user side, will seemingly see no difference.
-        else:
-            # if new_count = 0 --> delete user progress for this word ID
-            status = await self._execute(
-                f"DELETE FROM {TABLE_USER_WORD_PROGRESS} WHERE word_id = $1;", word_id
-            )
-            if status is None:
-                return False
-
-            # Delete the word in word table
-            status = await self._execute(
-                f"DELETE FROM {TABLE_WORDS} WHERE id = $1;", word_id
-            )
         return status is not None
     # =======================================================================================
 
@@ -976,47 +965,6 @@ class DBHandling:
             f"SELECT occurrence FROM {TABLE_SENTENCES} WHERE sentence = $1;", sentence
         )
         return row.get("occurrence", 0) if row else 0
-
-    async def _collect_sentence_decrements(self, book_id: int, sen_decrements: dict) -> bool:
-        """
-        Get all sentence IDs in a book and add them to the decrement tracking dict.
-        Results are saved into `sen_decrements`.
-        """
-        if not book_id:
-            return False
-
-        rows = await self._fetch(
-            f"SELECT sentence_id FROM {TABLE_SENTENCE_BOOK_REF} WHERE book_id = $1",
-            book_id
-        )
-        for item in rows:
-            sen_id = item["sentence_id"]
-            sen_decrements[sen_id] = sen_decrements.get(sen_id, 0) + 1
-        return True
-
-    async def _decrement_sentence_occurrence(self, sen_id: int = None, decrement_count: int = 0) -> bool:
-        if not sen_id or not decrement_count:
-            return False
-
-        # Get the sentence count
-        row = await self._fetchrow(
-            f"SELECT occurrence FROM {TABLE_SENTENCES} WHERE id = $1", sen_id
-        )
-        if not row:
-            return False
-
-        # Update count, delete if new count = 0
-        new_count = row["occurrence"] - decrement_count
-        if new_count > 0:
-            status = await self._execute(
-                f"UPDATE {TABLE_SENTENCES} SET occurrence = $1 WHERE id = $2",
-                new_count, sen_id
-            )
-        else:
-            status = await self._execute(
-                f"DELETE FROM {TABLE_SENTENCES} WHERE id = $1", sen_id
-            )
-        return status is not None
 
     async def get_sentences_containing_word_by_id(self, word_id: int = None, limit: int = DEFAULT_LIMIT) -> List[str]:
         """
