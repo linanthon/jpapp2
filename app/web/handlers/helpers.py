@@ -20,11 +20,11 @@ async def lifespan(app: FastAPI):
     # Startup ----------------------------
     # Connect DB, migrate tables
     app.state.db = DBHandling()
-    app.state.db.connect_2_db(
+    await app.state.db.connect_2_db(
         username=DB_USER,
         password=DB_PASS
     )
-    if not app.state.db.migrate():
+    if not await app.state.db.migrate():
         raise Exception("Error: DB migration error, please check the tables script. Shutting down.")
 
     # Connect Redis for caching, sessions, rate limiting
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     if hasattr(app.state, "redis"):
         await app.state.redis.close()
     if hasattr(app.state, "db"):
-        app.state.db.close_db()
+        await app.state.db.close_db()
 
 def create_app():
     """
@@ -156,7 +156,7 @@ async def get_current_user(
     Output: dict containing id, username, email, is_admin, created_at
     """
     user_id = await get_current_user_id(request, redis)
-    user = db.get_user_by_id(user_id)
+    user = await db.get_user_by_id(user_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return user
@@ -188,7 +188,7 @@ def get_filename_from_path(fullpath: str):
 
     return ".".join(temp[:-1])
 
-def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict | None, int]:
+async def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict | None, int]:
     """Call DB to insert book.
     
     Input:
@@ -207,7 +207,7 @@ def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict
     if not name or not data:
         return -1, {"error": "No content"}, HTTPStatus.BAD_REQUEST
     
-    book_id = db.insert_book(name, data)
+    book_id = await db.insert_book(name, data)
     error_resp = None
     status_code = HTTPStatus.OK
     
@@ -226,13 +226,13 @@ def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict
 def str_2_byte(input_str: str):
     return input_str.encode("utf-8")
 
-def toggle_star_helper(db: DBHandling, user_id: int, obj_id: int, obj_type: str, star: int) -> bool:
+async def toggle_star_helper(db: DBHandling, user_id: int, obj_id: int, obj_type: str, star: int) -> bool:
     """Turn star on or off. Return true if success, false otherwise."""
     star_stt = True if star == 1 else False
     if obj_type == "word":
-        return db.update_word_star(user_id=user_id, word_id=obj_id, new_star_status=star_stt)
+        return await db.update_word_star(user_id=user_id, word_id=obj_id, new_star_status=star_stt)
     elif obj_type == "book":
-        return db.update_book_star(user_id=user_id, book_id=obj_id, new_star_status=star_stt)
+        return await db.update_book_star(user_id=user_id, book_id=obj_id, new_star_status=star_stt)
     else:
         return False
 
@@ -279,16 +279,15 @@ def reset_view_word_count():
     """call this when insert new book/word"""
     view_count_cache.clear()
 
-def delete_book_helper(db: DBHandling, book_id: int) -> bool:
-    with db.transaction():
-        return db.delete_book(book_id=book_id)
-    return False
+async def delete_book_helper(db: DBHandling, book_id: int) -> bool:
+    async with db.transaction():
+        return await db.delete_book(book_id=book_id)
 
-def get_all_book_name_and_id(db: DBHandling):
+async def get_all_book_name_and_id(db: DBHandling):
     """call db.list_books with no star, 0 offset, query all"""
-    return db.list_books(star=None, limit=None, offset=0)
+    return await db.list_books(star=None, limit=None, offset=0)
 
-def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandling", sentence: str, book_id: int) -> None:
+async def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandling", sentence: str, book_id: int) -> None:
     """
     Insert sentence, update occurrence if already in DB.
 
@@ -298,16 +297,16 @@ def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandling", se
     Insert references of the word-book, word-sentence, sentence-book
     """
     # Insert sentence
-    sentence_id = db.insert_update_sentence(sentence)
+    sentence_id = await db.insert_update_sentence(sentence)
     
     # Insert words
-    words = pdata.process_sentence(sentence, db)
+    words = await pdata.process_sentence(sentence, db)
     for word in words:
-        word_id = db.insert_word(word)
+        word_id = await db.insert_word(word)
 
         # Insert references if sentece and word insert/updated successfully
         if word_id and sentence_id and book_id:
-            db.insert_word_book_ref(word_id, book_id)
-            db.insert_word_sentence_ref(word_id, sentence_id)
-            db.insert_sentence_book_ref(sentence_id, book_id)
+            await db.insert_word_book_ref(word_id, book_id)
+            await db.insert_word_sentence_ref(word_id, sentence_id)
+            await db.insert_sentence_book_ref(sentence_id, book_id)
             

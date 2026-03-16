@@ -7,11 +7,11 @@ from jamdict.jmdict import JMDEntry
 import jamorasep
 import os
 import threading
-from psycopg2 import sql
 
 from typing import List, TYPE_CHECKING
 
-from utils.db import DBHandling
+if TYPE_CHECKING:
+    from utils.db import DBHandling
 from utils.data import JLPT_DICT, STOP_WORDS, ROMAJI_MAP, is_japanese_word
 from utils.logger import get_logger
 from schemas.constants import DEFAULT_DISTRACTOR_COUNT
@@ -36,7 +36,7 @@ class ProcessData():
             self._local.jam = Jamdict()
         return self._local.jam
     
-    def process_sentence(self, sentence: str, db: DBHandling) -> List[Word]:
+    async def process_sentence(self, sentence: str, db: "DBHandling") -> List[Word]:
         """
         Tokenize the sentence into words -> ignore non Japanese words
         -> get their info into a dict -> return the list of them.
@@ -56,7 +56,7 @@ class ProcessData():
             if not is_japanese_word(word.surface):
                 continue
 
-            row = self._get_jamdict_info(word, db)
+            row = await self._get_jamdict_info(word, db)
             if row:
                 # Save borrow English words for potential wasei-eigo
                 if row.eigo:
@@ -66,7 +66,7 @@ class ProcessData():
         # Handle possible Wasei-eigo combinations
         potential_wasei_eigo = self._get_waseieigo_combs(eigo)
         for wasei_eigo in potential_wasei_eigo:
-            row = self._get_jamdict_info(wasei_eigo, db)
+            row = await self._get_jamdict_info(wasei_eigo, db)
             if row:
                 words.append(row)
         return words
@@ -193,7 +193,7 @@ class ProcessData():
                     waseieigo.append(''.join(combo))
         return waseieigo
 
-    def _get_jamdict_info(self, word: UnidicNode | str, db: DBHandling) -> Word:
+    async def _get_jamdict_info(self, word: UnidicNode | str, db: "DBHandling") -> Word:
         """
         Get the word's Jamdict entry via `self.get_word_entry()`, parse its info
         into the returning Word:
@@ -231,7 +231,7 @@ class ProcessData():
 
         # Check and update occurrence if word existed.
         # Stop proccess and return Word as is (only has value for `word`)
-        if db.update_word_occurrence(row.word):
+        if await db.update_word_occurrence(row.word):
             return row
 
         row.forms = ", ".join([k.text for k in entry.kanji_forms[1:]]) if len(entry.kanji_forms) > 1 else ""

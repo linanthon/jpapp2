@@ -225,7 +225,7 @@ def str_2_int(input_str: str) -> int:
     return inte
 
 
-def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = "",
+async def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = "",
                          en_word: str = "", get_distractors_from_db: bool = True,
                          distractor_count: int = DEFAULT_DISTRACTOR_COUNT) -> QuizDistractors:
     """
@@ -252,7 +252,7 @@ def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: str = 
     res = QuizDistractors([], [])   # use empty params to avoid "mutable default value as argument"
     instances = []
     if get_distractors_from_db:
-        instances = db.get_distractors(jp_word, en_word, distractor_count)
+        instances = await db.get_distractors(jp_word, en_word, distractor_count)
 
     # if obtained enough distractors from DB -> use them
     # Otherwise, get from jamdict instead
