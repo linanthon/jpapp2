@@ -22,16 +22,6 @@ from schemas.word import Word
 log = get_logger(__file__)
 
 
-def _record_to_dict(record: asyncpg.Record) -> dict:
-    """Convert an asyncpg Record to a plain dict."""
-    return dict(record) if record else {}
-
-
-def _records_to_dicts(records: list) -> List[dict]:
-    """Convert a list of asyncpg Records to a list of dicts."""
-    return [dict(r) for r in records] if records else []
-
-
 # Allows transaction per connection (coroutine ok)
 _txn_conn_var: contextvars.ContextVar[asyncpg.Connection | None] = contextvars.ContextVar(
     'txn_conn', default=None
@@ -110,8 +100,8 @@ class DBHandling:
         """Return the transaction connection for this coroutine context, or None."""
         return _txn_conn_var.get()
 
-    async def _fetchrow(self, query: str, *args) -> dict | None:
-        """Execute query and return a single row as dict, or None."""
+    async def _fetchrow(self, query: str, *args) -> asyncpg.Record | None:
+        """Execute query and return a single row as asyncpg.Record, or None."""
         conn = self._get_conn()
         try:
             if conn:
@@ -119,13 +109,13 @@ class DBHandling:
             else:
                 async with self._pool.acquire() as c:
                     row = await c.fetchrow(query, *args)
-            return _record_to_dict(row) if row else None
+            return row
         except Exception as e:
             log.error(f"Query failed: {query}, error: {e}")
             return None
 
-    async def _fetch(self, query: str, *args) -> List[dict]:
-        """Execute query and return all rows as list of dicts."""
+    async def _fetch(self, query: str, *args) -> List[asyncpg.Record]:
+        """Execute query and return all rows as list of asyncpg.Records."""
         conn = self._get_conn()
         try:
             if conn:
@@ -133,7 +123,7 @@ class DBHandling:
             else:
                 async with self._pool.acquire() as c:
                     rows = await c.fetch(query, *args)
-            return _records_to_dicts(rows)
+            return rows if rows else []
         except Exception as e:
             log.error(f"Query failed: {query}, error: {e}")
             return []
@@ -198,22 +188,22 @@ class DBHandling:
         )
         return row["id"] if row else -1
 
-    async def get_user_by_id(self, user_id: int) -> dict | None:
+    async def get_user_by_id(self, user_id: int) -> asyncpg.Record | None:
         """
         Get user by ID (without password_hash).
 
-        Output: User dict or None if not found.
+        Output: User record or None if not found.
         """
         return await self._fetchrow(
             f"SELECT id, username, email, is_admin, created_at FROM {TABLE_USER} WHERE id = $1;",
             user_id
         )
 
-    async def get_user_by_username(self, username: str) -> dict | None:
+    async def get_user_by_username(self, username: str) -> asyncpg.Record | None:
         """
         Get user by username (includes password_hash for auth).
 
-        Output: User dict (including password_hash) or None if not found.
+        Output: User record (including password_hash) or None if not found.
         """
         return await self._fetchrow(
             f"SELECT id, username, email, password_hash, is_admin, created_at FROM {TABLE_USER} WHERE username = $1;",
@@ -364,7 +354,7 @@ class DBHandling:
                 user_id
             )
             for instance in star_rows:
-                book_star_ids.add(instance.get("book_id", 0))
+                book_star_ids.add(instance["book_id"])
 
         if limit is None:
             rows = await self._fetch(
@@ -382,7 +372,7 @@ class DBHandling:
         res = []
         for instance in rows:
             res.append(self._parse_book_dict(
-                instance, instance.get("id", 0) in book_star_ids
+                instance, instance["id"] in book_star_ids
             ))
         return res
 
@@ -474,7 +464,7 @@ class DBHandling:
             f"SELECT id FROM {TABLE_WORDS} WHERE word = $1;", word.word
         )
         if row:
-            return row.get("id", 0)
+            return row["id"]
 
         # Insert
         row = await self._fetchrow(
@@ -485,7 +475,7 @@ class DBHandling:
             word.forms, word.jlpt_level, word.audio_mapping
         )
         if row:
-            return row.get("id", 0)
+            return row["id"]
         return 0
 
     async def update_word_occurrence(self, word: str, user_ids: list = []) -> bool:
@@ -623,14 +613,12 @@ class DBHandling:
             return None
 
         # Get user related fields: star, quized, priority
-        user_progress = {}
+        user_progress = None
         if user_id is not None:
-            row = await self._fetchrow(
+            user_progress = await self._fetchrow(
                 f"SELECT star, quized, priority FROM {TABLE_USER_WORD_PROGRESS} WHERE user_id = $1 AND word_id = $2;",
                 user_id, word_id
             )
-            if row:
-                user_progress = row
 
         # Get word fields
         row = await self._fetchrow(
@@ -690,7 +678,7 @@ class DBHandling:
                 f"SELECT id, occurrence FROM {TABLE_WORDS} WHERE word = $1;", word
             )
         if row:
-            return (row.get("id", 0), row.get("occurrence", 0))
+            return (row["id"], row["occurrence"])
         return (0, 0)
 
     async def get_user_word_quized(self, user_id: int, word_id: int = None) -> int:
@@ -705,7 +693,7 @@ class DBHandling:
             user_id, word_id
         )
         if row:
-            return row.get("quized", 0)
+            return row["quized"]
         return 0
 
     async def list_words(self, user_id: int = None, jlpt_level: str = "", star: bool = False,
@@ -739,10 +727,10 @@ class DBHandling:
                 user_id
             )
         for instance in progress_rows:
-            user_progress[instance.get("word_id", 0)] = {
-                "star": instance.get("star"),
-                "quized": instance.get("quized"),
-                "priority": instance.get("priority")
+            user_progress[instance["word_id"]] = {
+                "star": instance["star"],
+                "quized": instance["quized"],
+                "priority": instance["priority"]
             }
 
         if jlpt_level:
@@ -758,9 +746,9 @@ class DBHandling:
             )
 
         for instance in rows:
-            instance["senses"] = self._extract_meanings(instance["senses"])[0]
+            senses = self._extract_meanings(instance["senses"])[0]
             res.append(self._parse_word_dict(
-                instance, user_progress.get(instance.get("id", None), {})
+                instance, user_progress.get(instance["id"], {}), senses_override=senses
             ))
         return res
 
@@ -892,7 +880,7 @@ class DBHandling:
         row = await self._fetchrow(
             f"SELECT * FROM {TABLE_SENTENCES} WHERE sentence = $1;", sentence
         )
-        return row if row else {}
+        return dict(row) if row else {}
 
     async def insert_update_sentence(self, sentence: str) -> int:
         """
@@ -909,8 +897,8 @@ class DBHandling:
             sentence
         )
         if row:
-            await self.update_sentence_occurence(row.get("id"), row.get("occurrence") + 1)
-            return row.get("id")
+            await self.update_sentence_occurence(row["id"], row["occurrence"] + 1)
+            return row["id"]
 
         # Insert
         row = await self._fetchrow(
@@ -945,7 +933,7 @@ class DBHandling:
                 f"SELECT star FROM {TABLE_SENTENCES} WHERE sentence = $1;", sentence
             )
             if row:
-                db_star = row.get("star", False)
+                db_star = row["star"]
                 new_star_status = False if db_star else True
 
         if new_star_status is None:
@@ -967,7 +955,7 @@ class DBHandling:
         row = await self._fetchrow(
             f"SELECT occurrence FROM {TABLE_SENTENCES} WHERE sentence = $1;", sentence
         )
-        return row.get("occurrence", 0) if row else 0
+        return row["occurrence"] if row else 0
 
     async def get_sentences_containing_word_by_id(self, word_id: int = None, limit: int = DEFAULT_LIMIT) -> List[str]:
         """
@@ -992,7 +980,7 @@ class DBHandling:
             ORDER BY RANDOM() LIMIT $2;""",
             word_id, limit
         )
-        return [sen["sentence"] for sen in rows if sen.get("sentence", "")]
+        return [sen["sentence"] for sen in rows if sen["sentence"]]
     # =======================================================================================
 
     # Insert References =====================================================================
@@ -1195,7 +1183,7 @@ class DBHandling:
         row = await self._fetchrow(
             f"SELECT senses FROM {TABLE_WORDS} WHERE word = $1;", word
         )
-        senses = row.get("senses", "") if row else ""
+        senses = row["senses"] if row else ""
         return self._extract_meanings(senses)
 
     def _extract_meanings(self, senses: str) -> List[str]:
@@ -1236,72 +1224,74 @@ class DBHandling:
     # =======================================================================================
 
     # Parsing ===============================================================================
-    def _parse_word(self, word: dict, user_progress: dict = {}) -> Word:
-        """Parse word dict from query result into Word class"""
+    def _parse_word(self, word: asyncpg.Record, user_progress: asyncpg.Record) -> Word:
+        """Parse word record from query result into Word class"""
         return Word(
-            word_id=word.get("id", 0),
-            word=word.get("word", ""),
-            senses=word.get("senses", ""),
-            spelling=word.get("spelling", ""),
-            forms=word.get("forms", ""),
-            jlpt_level=word.get("jlpt_level", ""),
-            audio_mapping=word.get("audio_mapping", []),
-            occurrence=word.get("occurrence", 1),
-            star=user_progress.get("star", False),
-            quized=user_progress.get("quized", 0),
-            priority=user_progress.get("priority", 0.0)
+            word_id=word["id"],
+            word=word["word"],
+            senses=word["senses"],
+            spelling=word["spelling"],
+            forms=word["forms"],
+            jlpt_level=word["jlpt_level"],
+            audio_mapping=word["audio_mapping"],
+            occurrence=word["occurrence"],
+            star=user_progress["star"] if user_progress else False,
+            quized=user_progress["quized"] if user_progress else 0,
+            priority=user_progress["priority"] if user_progress else 0,
         )
 
-    def _parse_word_dict(self, word: dict, user_progress: dict) -> dict:
-        """Keep the dict form, assure have enough fields, modify in-place and also return"""
-        word["word_id"] = word.get("id", 0)
-        word["word"] = word.get("word", "")
-        word["senses"] = word.get("senses", "")
-        word["spelling"] = word.get("spelling", "")
-        word["forms"] = word.get("forms", "")
-        word["jlpt_level"] = word.get("jlpt_level", "")
-        word["audio_mapping"] = word.get("audio_mapping", [])
-        word["occurrence"] = word.get("occurrence", 1)
-        word["star"] = user_progress.get("star", False)
-        word["quized"] = user_progress.get("quized", 0)
-        word["priority"] = user_progress.get("priority", 0.0)
-        return word
+    def _parse_word_dict(self, word, user_progress, senses_override: str = None) -> dict:
+        """Build a word dict from a DB record and user progress."""
+        return {
+            "word_id": word["id"],
+            "word": word["word"],
+            "senses": senses_override if senses_override is not None else word["senses"],
+            "spelling": word["spelling"],
+            "forms": word["forms"],
+            "jlpt_level": word["jlpt_level"],
+            "audio_mapping": word["audio_mapping"],
+            "occurrence": word["occurrence"],
+            "star": user_progress["star"],
+            "quized": user_progress["quized"],
+            "priority": user_progress["priority"],
+        }
 
-    def _parse_sentence(self, sentence: dict) -> Sentence:
-        """Parse sentence dict from query result into Sentence class"""
+    def _parse_sentence(self, sentence) -> Sentence:
+        """Parse sentence record from query result into Sentence class"""
         return Sentence(
-            sen_id=sentence.get("id", 0),
-            sentence=sentence.get("sentence", ""),
-            star=sentence.get("star"),
-            occurrence=sentence.get("occurrence"),
-            quized=sentence.get("quized")
+            sen_id=sentence["id"],
+            sentence=sentence["sentence"],
+            star=sentence["star"],
+            occurrence=sentence["occurrence"],
+            quized=sentence["quized"]
         )
 
-    def _parse_book(self, book: dict, star: bool = False) -> Book:
-        """Parse book dict from query result into Book class"""
+    def _parse_book(self, book, star: bool = False) -> Book:
+        """Parse book record from query result into Book class"""
         return Book(
-            book_id=book.get("id", 0),
-            created_at=book.get("created_at", ""),
+            book_id=book["id"],
+            created_at=book["created_at"],
             star=star,
-            name=book.get("name", ""),
-            content=book.get("content", ""),
+            name=book["name"],
+            content=book["content"] if "content" in book else "",
         )
 
-    def _parse_book_dict(self, book: dict, star: bool = False) -> dict:
-        """Parse book dict from query result into a dict of Book"""
-        book["book_id"] = book.get("id", 0)
-        book["created_at"] = book.get("created_at", "")
-        book["name"] = book.get("name", "")
-        book["star"] = star
-        book["content"] = book.get("content", "")
-        return book
+    def _parse_book_dict(self, book, star: bool = False) -> dict:
+        """Build a book dict from a DB record."""
+        return {
+            "book_id": book["id"],
+            "created_at": book["created_at"],
+            "name": book["name"],
+            "star": star,
+            "content": book["content"] if "content" in book else "",
+        }
 
-    def _parse_quiz(self, record: dict) -> Quiz:
-        """Parse quiz dict from query result into Quiz class"""
+    def _parse_quiz(self, record) -> Quiz:
+        """Parse quiz record from query result into Quiz class"""
         return Quiz(
-            word_id = record.get("id", 0),
-            jp = record.get("word", ""),
-            en = self.get_meanings("", record.get("senses", ""))[0].split(",")[0],
+            word_id = record["id"],
+            jp = record["word"],
+            en = self.get_meanings("", record["senses"])[0].split(",")[0],
             spelling = record["spelling"],
             jlpt_level = record["jlpt_level"],
             audio_mapping = record["audio_mapping"],

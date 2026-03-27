@@ -1,4 +1,5 @@
 from fastapi import Request, Depends, HTTPException
+import asyncpg
 import redis.asyncio as aioredis
 
 from utils.db import DBHandling
@@ -52,7 +53,7 @@ async def get_current_user(
     request: Request,
     db: DBHandling = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis)
-) -> dict:
+) -> asyncpg.Record:
     """
     Dependency to get current user from JWT token in Authorization header.
     Validates token and checks if it's blacklisted.
@@ -67,15 +68,15 @@ async def get_current_user(
     return user
 
 async def get_current_admin_user(
-    current_user: dict = Depends(get_current_user)
-) -> dict:
+    current_user: asyncpg.Record = Depends(get_current_user)
+) -> asyncpg.Record:
     """
     Dependency to ensure current user is an admin.
     Raises 403 Forbidden if user is not admin.
     
     Output: dict containing id, username, email, is_admin, created_at
     """
-    if not current_user.get('is_admin'):
+    if not current_user['is_admin']:
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
 
