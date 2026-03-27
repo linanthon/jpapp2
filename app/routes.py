@@ -19,7 +19,7 @@ from app.handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answer
                                change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
 from utils.helpers import get_filename_from_path, validate_jlpt_level, parse_bool_param, validate_star
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
-from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh
+from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
 from utils.db import DBHandling
 from utils.process_data import ProcessData
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
@@ -50,7 +50,7 @@ def register_page():
     return templates.TemplateResponse("register.html", {"request": {}})
 
 
-@router.post("/register")
+@router.post("/register", response_model=UserResponse)
 async def register(
     user_data: UserCreate,
     db: DBHandling = Depends(get_db)

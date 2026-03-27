@@ -4,20 +4,19 @@ import math
 import os
 import re
 import asyncpg
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from schemas.word import Word
 
 from app.config import DB_HOST, DB_PORT
 from utils.logger import get_logger
-from schemas.book import Book
 from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,
                               TABLE_WORD_SENTENCE_REF, TABLE_SENTENCE_BOOK_REF, DB_NAME,
                               SQL_TABLE_SCRIPT, DEFAULT_LIMIT, SQL_WORD_PRIO_SCRIPT, TABLE_USER,
                               DEFAULT_FORMULA_K, DEFAULT_TIME_EXPODECAY, QUIZ_WORD_SORT_COLUMNS,
                               WORD_SENSES_REGEX, QUIZ_SOFT_CAP, QUIZ_HARD_CAP, DEFAULT_MULTI_PENALTY,
                               DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS, TABLE_USER_BOOK_STAR)
-from schemas.quiz import Quiz
-from schemas.sentence import Sentence
-from schemas.word import Word
 
 log = get_logger(__file__)
 
@@ -301,13 +300,13 @@ class DBHandling:
             )
         return status is not None
 
-    async def get_exact_book(self, user_id: int = None, book_id: int = None, parse_dict: bool = False) -> Book | dict:
+    async def get_exact_book(self, user_id: int = None, book_id: int = None) -> dict | None:
         """
         Query a book with the exact name or its ID.
-        Returns the row of that book, empty dict if fail to get.
+        Returns the row of that book as dict, None if fail to get.
         """
         if not book_id:
-            return None if parse_dict else Book()
+            return None
 
         # Check if is starred by user
         is_star = False
@@ -324,10 +323,7 @@ class DBHandling:
             book_id
         )
         if row:
-            if parse_dict:
-                return self._parse_book_dict(row, is_star)
-            else:
-                return self._parse_book(row, is_star)
+            return self._parse_book(row, is_star)
         return None
 
     async def list_books(self, user_id: int = None, star: bool = False,
@@ -371,7 +367,7 @@ class DBHandling:
 
         res = []
         for instance in rows:
-            res.append(self._parse_book_dict(
+            res.append(self._parse_book(
                 instance, instance["id"] in book_star_ids
             ))
         return res
@@ -449,7 +445,7 @@ class DBHandling:
     # =======================================================================================
 
     # Word ==================================================================================
-    async def insert_word(self, word: Word) -> int:
+    async def insert_word(self, word: "Word") -> int:
         """
         Insert into table `words` (if not in DB yet).
 
@@ -575,7 +571,7 @@ class DBHandling:
         )
         return status is not None
 
-    async def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word] | List[dict]:
+    async def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
         """
         Query word in DB, will return a list of all words that are `LIKE '%word%'`
 
@@ -583,7 +579,7 @@ class DBHandling:
         - word: the word to be query %word%
         - limit: the amount of return records, if <= 0, use default value of 10.
 
-        Output: a list of Word objects
+        Output: a list of word dicts
         """
         if limit < 1:
             limit = DEFAULT_LIMIT
@@ -594,20 +590,16 @@ class DBHandling:
         )
         for instance in rows:
             # Search word doesn't care about user' specifics, use empty {}
-            if parse_dict:
-                res.append(self._parse_word_dict(instance, {}))
-            else:
-                res.append(self._parse_word(instance, {}))
+            res.append(self._parse_word(instance, {}))
         return res
 
-    async def get_exact_word(self, user_id: int = None, word_id: int = None, parse_dict: bool = False) -> Word | dict:
+    async def get_exact_word(self, user_id: int = None, word_id: int = None) -> dict | None:
         """
         Query a word by word ID and user ID (to get star) in DB.
 
         Input:
         - user_id: the user ID.
         - word_id: the word ID.
-        - parse_dict: true to parse to dict, false to parse to class Word. Default: false.
         """
         if not word_id:
             return None
@@ -625,13 +617,10 @@ class DBHandling:
             f"SELECT * FROM {TABLE_WORDS} WHERE id = $1;", word_id
         )
         if row:
-            if parse_dict:
-                return self._parse_word_dict(row, user_progress)
-            else:
-                return self._parse_word(row, user_progress)
+            return self._parse_word(row, user_progress)
         return None
 
-    async def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT, parse_dict: bool = False) -> List[Word] | List[dict]:
+    async def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
         """
         Query words table using sense (in English), aka. search by EN word(s).
         Will sort result based on sense matching position.
@@ -639,13 +628,12 @@ class DBHandling:
         Input:
         - sense: the English meaning of the JP word
         - limit: the amount of return records, if <= 0, use default value of 10.
-        - parse_dict: If true, return list of dict. Otherwise return list of Word.
 
-        Output: Returns a list of Word objects
+        Output: Returns a list of word dicts
         """
         if limit < 1:
             limit = DEFAULT_LIMIT
-        res: List[Word] = []
+        res: list = []
         sense_q = f"%{sense.lower()}%"
         rows = await self._fetch(
             f"""SELECT *, POSITION($1 IN LOWER(senses)) AS match_pos
@@ -655,10 +643,7 @@ class DBHandling:
         )
         for instance in rows:
             # Search word doesn't care about user' specifics, use empty {}
-            if parse_dict:
-                res.append(self._parse_word_dict(instance, {}))
-            else:
-                res.append(self._parse_word(instance, {}))
+            res.append(self._parse_word(instance, {}))
         return res
 
     async def get_word_occurence(self, word_id: int = None, word: str = "") -> Tuple[int, int]:
@@ -747,7 +732,7 @@ class DBHandling:
 
         for instance in rows:
             senses = self._extract_meanings(instance["senses"])[0]
-            res.append(self._parse_word_dict(
+            res.append(self._parse_word(
                 instance, user_progress.get(instance["id"], {}), senses_override=senses
             ))
         return res
@@ -832,7 +817,7 @@ class DBHandling:
     # =======================================================================================
 
     # Sentence ==============================================================================
-    async def query_like_sentence(self, sentence: str, limit: int = DEFAULT_LIMIT) -> List[Sentence]:
+    async def query_like_sentence(self, sentence: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
         """
         Query sentence in DB, will return a list of all sentences that are `LIKE '%sentence%'`
 
@@ -842,7 +827,7 @@ class DBHandling:
         """
         if limit < 1:
             limit = DEFAULT_LIMIT
-        res: List[Sentence] = []
+        res: list = []
         rows = await self._fetch(
             f"SELECT * FROM {TABLE_SENTENCES} WHERE sentence LIKE $1 LIMIT $2;",
             f"%{sentence}%", limit
@@ -851,15 +836,15 @@ class DBHandling:
             res.append(self._parse_sentence(instance))
         return res
 
-    async def query_random_sentences(self, limit: int = DEFAULT_LIMIT, exclude: List[str] = []) -> List[Sentence]:
+    async def query_random_sentences(self, limit: int = DEFAULT_LIMIT, exclude: List[str] = []) -> List[dict]:
         """
-        Query a number of sentences randomly. Returns a list of parsed Sentence_s.
+        Query a number of sentences randomly. Returns a list of sentence dicts.
 
         Input:
         - limit: the amount of return records, if <= 0, use default value of 10.
         - exclude: the list of sentences to ignore
         """
-        res: List[Sentence] = []
+        res: list = []
         if exclude:
             rows = await self._fetch(
                 f"SELECT * FROM {TABLE_SENTENCES} WHERE sentence != ALL($1) LIMIT $2;",
@@ -1038,7 +1023,7 @@ class DBHandling:
                        sorts: List[Tuple[str]] = [], jlpt_filter: str = "",
                        star_only: bool = False, book_id: int = 0,
                        use_priority: bool = True, is_known: bool = False,
-                       exclude_jp: List[str] = [], exclude_en: List[str] = []) -> List[Quiz]:
+                       exclude_jp: List[str] = [], exclude_en: List[str] = []) -> List[dict]:
         """
         Query DB, get random words records and parse into Quiz objects.
         Can sort multiple columns, can have at once multiple filters (jlpt_level, star_only),
@@ -1067,7 +1052,7 @@ class DBHandling:
         - exclude_jp: the list of EN words to not include in query. Default: empty.
         - exclude_en: the list of EN words to not include in query. Default: empty.
 
-        Output: a list of QuizEN objects.
+        Output: a list of quiz dicts.
         """
         # Build SQL
         sql_full, params = self._build_sort_filter_prio_sql(
@@ -1081,7 +1066,7 @@ class DBHandling:
         q_res = await self._fetch(sql_full, *params)
 
         # Get words and meanings
-        res: List[Quiz] = []
+        res: list = []
         for row in q_res:
             res.append(self._parse_quiz(row))
         return res
@@ -1108,11 +1093,10 @@ class DBHandling:
 
         # Get occurrence and quized if no value
         if occurrence is None or quized is None:
-            row = await self.get_exact_word(word_id=word_id)
-            if not row:
+            _, occurrence = await self.get_word_occurence(word_id=word_id)
+            if not occurrence:
                 return False
-            occurrence = row.occurrence
-            quized = row.quized + 1
+            quized = await self.get_user_word_quized(user_id, word_id) + 1
 
         # Calc priority and update table
         if quized > QUIZ_HARD_CAP:
@@ -1132,7 +1116,7 @@ class DBHandling:
         return False
 
     async def get_distractors(self, exclude_jp: str = "", exclude_en: str = "",
-                              limit: int = DEFAULT_DISTRACTOR_COUNT) -> List[Quiz]:
+                              limit: int = DEFAULT_DISTRACTOR_COUNT) -> List[dict]:
         """
         Gets random Japanese words other than the `exclude_jp` for its meaning `exclude_en`.
         Query `limit` random different words and get their first meanings in `senses`.
@@ -1143,16 +1127,16 @@ class DBHandling:
         - exclude_en: the EN/first meaning of the JP word, will query different meaning than this.
         - limit: the number of distractor meanings to query.
 
-        Output: a list of Quiz objects, only include the incorrect JP and EN words. Empty if fail.
+        Output: a list of dicts with 'jp' and 'en' keys. Empty if fail.
         """
-        res: List[Quiz] = []
+        res: list = []
         query, params = self._build_distractors_sql(exclude_jp, exclude_en, limit)
         rows = await self._fetch(query, *params)
         for row in rows:
-            res.append(Quiz(
-                jp=row["word"],
-                en=self.get_meanings("", row["senses"])[0]
-            ))
+            res.append({
+                "jp": row["word"],
+                "en": self.get_meanings("", row["senses"])[0]
+            })
         return res
 
     # quiz sentence requires ProcessData to tag sentence to get the words.
@@ -1224,24 +1208,8 @@ class DBHandling:
     # =======================================================================================
 
     # Parsing ===============================================================================
-    def _parse_word(self, word: asyncpg.Record, user_progress: asyncpg.Record) -> Word:
-        """Parse word record from query result into Word class"""
-        return Word(
-            word_id=word["id"],
-            word=word["word"],
-            senses=word["senses"],
-            spelling=word["spelling"],
-            forms=word["forms"],
-            jlpt_level=word["jlpt_level"],
-            audio_mapping=word["audio_mapping"],
-            occurrence=word["occurrence"],
-            star=user_progress["star"] if user_progress else False,
-            quized=user_progress["quized"] if user_progress else 0,
-            priority=user_progress["priority"] if user_progress else 0,
-        )
-
-    def _parse_word_dict(self, word, user_progress, senses_override: str = None) -> dict:
-        """Build a word dict from a DB record and user progress."""
+    def _parse_word(self, word, user_progress, senses_override: str = None) -> dict:
+        """Build a word dict from a DB record and optional user progress."""
         return {
             "word_id": word["id"],
             "word": word["word"],
@@ -1251,32 +1219,22 @@ class DBHandling:
             "jlpt_level": word["jlpt_level"],
             "audio_mapping": word["audio_mapping"],
             "occurrence": word["occurrence"],
-            "star": user_progress["star"],
-            "quized": user_progress["quized"],
-            "priority": user_progress["priority"],
+            "star": user_progress["star"] if user_progress else False,
+            "quized": user_progress["quized"] if user_progress else 0,
+            "priority": user_progress["priority"] if user_progress else 0,
         }
 
-    def _parse_sentence(self, sentence) -> Sentence:
-        """Parse sentence record from query result into Sentence class"""
-        return Sentence(
-            sen_id=sentence["id"],
-            sentence=sentence["sentence"],
-            star=sentence["star"],
-            occurrence=sentence["occurrence"],
-            quized=sentence["quized"]
-        )
+    def _parse_sentence(self, sentence) -> dict:
+        """Parse sentence record from query result into dict"""
+        return {
+            "sen_id": sentence["id"],
+            "sentence": sentence["sentence"],
+            "star": sentence["star"],
+            "occurrence": sentence["occurrence"],
+            "quized": sentence["quized"],
+        }
 
-    def _parse_book(self, book, star: bool = False) -> Book:
-        """Parse book record from query result into Book class"""
-        return Book(
-            book_id=book["id"],
-            created_at=book["created_at"],
-            star=star,
-            name=book["name"],
-            content=book["content"] if "content" in book else "",
-        )
-
-    def _parse_book_dict(self, book, star: bool = False) -> dict:
+    def _parse_book(self, book, star: bool = False) -> dict:
         """Build a book dict from a DB record."""
         return {
             "book_id": book["id"],
@@ -1286,19 +1244,19 @@ class DBHandling:
             "content": book["content"] if "content" in book else "",
         }
 
-    def _parse_quiz(self, record) -> Quiz:
-        """Parse quiz record from query result into Quiz class"""
-        return Quiz(
-            word_id = record["id"],
-            jp = record["word"],
-            en = self.get_meanings("", record["senses"])[0].split(",")[0],
-            spelling = record["spelling"],
-            jlpt_level = record["jlpt_level"],
-            audio_mapping = record["audio_mapping"],
-            occurrence = record["occurrence"],
-            quized = record["quized"],
-            star = record["star"]
-        )
+    def _parse_quiz(self, record) -> dict:
+        """Parse quiz record from query result into dict"""
+        return {
+            "word_id": record["id"],
+            "jp": record["word"],
+            "en": self.get_meanings("", record["senses"])[0].split(",")[0],
+            "spelling": record["spelling"],
+            "jlpt_level": record["jlpt_level"] if record["jlpt_level"] != "N0" else "",
+            "audio_mapping": record["audio_mapping"],
+            "occurrence": record["occurrence"],
+            "quized": record["quized"],
+            "star": record["star"],
+        }
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================

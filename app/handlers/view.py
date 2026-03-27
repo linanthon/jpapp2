@@ -48,9 +48,9 @@ async def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix:
     res: List[dict] = []
 
     if is_japanese_word(word):
-        res = await db.query_like_word(word, limit, parse_dict=True)
+        res = await db.query_like_word(word, limit)
     elif is_english_word(word):
-        res = await db.query_word_sense(word, limit, parse_dict=True)
+        res = await db.query_word_sense(word, limit)
     else:
         return {"error": "Only accept Japanese or English word"}
     
@@ -63,7 +63,7 @@ async def handle_view_specific_word(db: "DBHandling", user_id: int, word_id: int
     """
     Handle viewing a JP word with `sentence_limit` amount of sentence examples.
     """
-    res: dict = await db.get_exact_word(user_id=user_id, word_id=word_id, parse_dict=True)
+    res: dict = await db.get_exact_word(user_id=user_id, word_id=word_id)
     res["meanings"] = [chunk.strip() for chunk in res["senses"].split(";") if chunk.strip()]
     sentence_examples = await db.get_sentences_containing_word_by_id(res["word_id"], sentence_limit)
     return res, sentence_examples
@@ -115,4 +115,4 @@ async def handle_view_specific_book(db: "DBHandling", user_id: int, book_id: int
     """
     Handle viewing a JP word with `sentence_limit` amount of sentence examples.
     """
-    return await db.get_exact_book(user_id=user_id, book_id=book_id, parse_dict=True)
+    return await db.get_exact_book(user_id=user_id, book_id=book_id)

@@ -28,20 +28,20 @@ async def get_word_jp_quizes(pdata: "ProcessData" = None, db: "DBHandling" = Non
                         book_id=book_id, use_priority=use_priority, is_known=is_known)
     for test_case in tests:
         # randomize correct answer location
-        choices = [test_case.en]
-        distractors = await get_quiz_distractors(pdata, db, test_case.jp, test_case.en, get_distractors_from_db)
+        choices = [test_case["en"]]
+        distractors = await get_quiz_distractors(pdata, db, test_case["jp"], test_case["en"], get_distractors_from_db)
         choices.extend(distractors.en)
         random.shuffle(choices)
         # save to return
-        res[test_case.word_id] = {
-            "question": test_case.jp,
-            "spelling": test_case.spelling,
-            "audio_mapping": test_case.audio_mapping,
-            "correct": test_case.en,
+        res[test_case["word_id"]] = {
+            "question": test_case["jp"],
+            "spelling": test_case["spelling"],
+            "audio_mapping": test_case["audio_mapping"],
+            "correct": test_case["en"],
             "choices": choices,
-            "quized": test_case.quized,
-            "occurrence": test_case.occurrence,
-            "star": test_case.star
+            "quized": test_case["quized"],
+            "occurrence": test_case["occurrence"],
+            "star": test_case["star"]
         }
     return res
 
@@ -88,19 +88,19 @@ async def get_word_en_quizes(pdata: "ProcessData" = None, db: "DBHandling" = Non
                         book_id=book_id, use_priority=use_priority, is_known=is_known)
     for test_case in tests:
         # randomize correct answer location
-        choices = [test_case.jp]
-        distractors = await get_quiz_distractors(pdata, db, test_case.jp, test_case.en, get_distractors_from_db)
+        choices = [test_case["jp"]]
+        distractors = await get_quiz_distractors(pdata, db, test_case["jp"], test_case["en"], get_distractors_from_db)
         choices.extend(distractors.jp)
         random.shuffle(choices)
         # save to return
-        res[test_case.word_id] = {
-            "question": test_case.en,
+        res[test_case["word_id"]] = {
+            "question": test_case["en"],
             "spelling": "",
             "audio_mapping": [],
-            "correct": test_case.jp,
+            "correct": test_case["jp"],
             "choices": choices,
-            "quized": test_case.quized,
-            "occurrence": test_case.occurrence,
-            "star": test_case.star
+            "quized": test_case["quized"],
+            "occurrence": test_case["occurrence"],
+            "star": test_case["star"]
         }
     return res

@@ -258,8 +258,8 @@ async def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: 
     # Otherwise, get from jamdict instead
     if len(instances) == distractor_count:
         for instance in instances:
-            res.jp.append(instance.jp)
-            res.en.append(instance.en)
+            res.jp.append(instance["jp"])
+            res.en.append(instance["en"])
     else:
         for instance in pdata.get_random_jamdict_entries(jp_word, en_word, distractor_count):
             # kanji might be missing for english borrowed words, kana always exists
