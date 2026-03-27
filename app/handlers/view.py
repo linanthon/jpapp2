@@ -1,17 +1,42 @@
 import math
-import os
 from typing import TYPE_CHECKING, List, Tuple, Dict, Any
 
-from handlers.helpers import view_count_cache
 from utils.data import is_japanese_word, is_english_word
+from utils.db import DBHandling
 from utils.logger import get_logger
 from schemas.constants import DEFAULT_LIMIT
 
 if TYPE_CHECKING:
-    from utils.data import ProcessData
-    from utils.db import DBHandling
+    from utils.process_data import ProcessData
 
 log = get_logger(__name__)
+
+# cache word count for /view/word
+view_count_cache = {}
+
+def reset_view_word_count():
+    """call this when insert new book/word"""
+    view_count_cache.clear()
+
+
+async def toggle_star_helper(db: DBHandling, user_id: int, obj_id: int, obj_type: str, star: int) -> bool:
+    """Turn star on or off. Return true if success, false otherwise."""
+    star_stt = True if star == 1 else False
+    if obj_type == "word":
+        return await db.update_word_star(user_id=user_id, word_id=obj_id, new_star_status=star_stt)
+    elif obj_type == "book":
+        return await db.update_book_star(user_id=user_id, book_id=obj_id, new_star_status=star_stt)
+    else:
+        return False
+
+async def delete_book_helper(db: DBHandling, book_id: int) -> bool:
+    async with db.transaction():
+        return await db.delete_book(book_id=book_id)
+
+async def get_all_book_name_and_id(db: DBHandling):
+    """call db.list_books with no star, 0 offset, query all"""
+    return await db.list_books(star=None, limit=None, offset=0)
+
 
 async def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix: str) -> Dict[str, Any]:
     """

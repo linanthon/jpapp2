@@ -6,18 +6,18 @@ import tempfile
 import os
 import redis.asyncio as aioredis
 
-from handlers.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
-                            FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
-from handlers.insert import handle_insert_file_stream, handle_insert_str_stream
-from handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
-                           handle_view_books, handle_view_specific_book)
-from handlers.helpers import (
-    get_filename_from_path, toggle_star_helper, validate_jlpt_level,
-    parse_bool_param, validate_star, delete_book_helper, get_all_book_name_and_id,
+from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
+                        FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
+from app.handlers.insert import handle_insert_file_stream, handle_insert_str_stream
+from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
+                               handle_view_books, handle_view_specific_book,
+                               toggle_star_helper, delete_book_helper, get_all_book_name_and_id)
+from app.dependencies import (
     get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user
 )
-from handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
-                           change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
+from app.handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
+                               change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
+from utils.helpers import get_filename_from_path, validate_jlpt_level, parse_bool_param, validate_star
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh
 from utils.db import DBHandling
@@ -339,8 +339,7 @@ async def toggle_star(
 @router.get("/audio/{filename}")
 def serve_audio(filename: str):
     """Serve audio files"""
-    # main.py is inside `app/web/` so we have to ../../
-    audio_dir = os.path.join(os.path.dirname(__file__), "../../" + AUDIO_DIR)
+    audio_dir = os.path.join(os.path.dirname(__file__), "..", AUDIO_DIR)
     return FileResponse(os.path.join(audio_dir, filename), media_type='audio/wav')
 
 

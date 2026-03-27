@@ -6,7 +6,7 @@ import re
 import asyncpg
 from typing import List, Tuple, Dict
 
-from app.web.handlers.config import DB_HOST, DB_PORT
+from app.config import DB_HOST, DB_PORT
 from utils.logger import get_logger
 from schemas.book import Book
 from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,

@@ -1,16 +1,76 @@
-from typing import TYPE_CHECKING, Tuple, Dict, Any
+from typing import TYPE_CHECKING, Tuple
 import os
 from http import HTTPStatus
 
-from handlers.helpers import (do_insert_book, str_2_byte, reset_view_word_count,
-                              do_insert_word_sentence_book_2_db)
+from app.handlers.view import reset_view_word_count
+from utils.helpers import str_2_byte
+from utils.db import DBHandling
 from utils.logger import get_logger
 
 if TYPE_CHECKING:
-    from utils.data import ProcessData
-    from utils.db import DBHandling
+    from utils.process_data import ProcessData
 
 log = get_logger(__name__)
+
+
+async def do_insert_book(db: DBHandling, name: str, data: str = "") -> Tuple[int, dict | None, int]:
+    """Call DB to insert book.
+    
+    Input:
+    - db
+    - name: the name to be inserted, should have no path, no extension
+    - data (optional): the file's content, will read file if this is empty
+
+    Output:
+    - int: the inserted book_id if success. Otherwise,
+        + 0: name already used
+        + -1: if DB failed
+        + -2: if file not found
+    - dict: error response dict, or None if success
+    - int: HTTP status code
+    """
+    if not name or not data:
+        return -1, {"error": "No content"}, HTTPStatus.BAD_REQUEST
+    
+    book_id = await db.insert_book(name, data)
+    error_resp = None
+    status_code = HTTPStatus.OK
+    
+    if book_id == 0:
+        error_resp = {"error": "Name already used"}
+        status_code = HTTPStatus.CONFLICT
+    elif book_id == -1:
+        error_resp = {"error": "Failed to insert"}
+        status_code = HTTPStatus.INTERNAL_SERVER_ERROR
+    elif book_id == -2:
+        error_resp = {"error": "File not found"}
+        status_code = HTTPStatus.NOT_FOUND
+    
+    return book_id, error_resp, status_code
+
+async def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandling", sentence: str, book_id: int) -> None:
+    """
+    Insert sentence, update occurrence if already in DB.
+
+    Insert each word in a sentence (does not include symbols, stopwords, numbers),
+    update occurrence and new priority (for quiz) if already in DB.
+
+    Insert references of the word-book, word-sentence, sentence-book
+    """
+    # Insert sentence
+    sentence_id = await db.insert_update_sentence(sentence)
+    
+    # Insert words
+    words = await pdata.process_sentence(sentence, db)
+    for word in words:
+        word_id = await db.insert_word(word)
+
+        # Insert references if sentece and word insert/updated successfully
+        if word_id and sentence_id and book_id:
+            await db.insert_word_book_ref(word_id, book_id)
+            await db.insert_word_sentence_ref(word_id, sentence_id)
+            await db.insert_sentence_book_ref(sentence_id, book_id)
+
 
 async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", filename: str, saved_tmp_path: str):
     """

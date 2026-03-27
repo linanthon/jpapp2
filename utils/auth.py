@@ -2,8 +2,8 @@ from passlib.context import CryptContext
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 
-from app.web.handlers.config import (ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
-                                     REFRESH_TOKEN_EXPIRE_DAYS, SECRET_KEY)
+from app.config import (ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
+                        REFRESH_TOKEN_EXPIRE_DAYS, SECRET_KEY)
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt_sha256"], deprecated="auto")

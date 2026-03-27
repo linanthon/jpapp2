@@ -5,7 +5,7 @@ from schemas.constants import DEFAULT_LIMIT
 from utils.data import get_quiz_distractors
 
 if TYPE_CHECKING:
-    from utils.data import ProcessData
+    from utils.process_data import ProcessData
     from utils.db import DBHandling
 
 async def get_word_jp_quizes(pdata: "ProcessData" = None, db: "DBHandling" = None, user_id: int = None, limit: int = DEFAULT_LIMIT, 
