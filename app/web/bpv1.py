@@ -19,7 +19,7 @@ from handlers.helpers import (
 from handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
                            change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
-from schemas.user import UserCreate, UserLogin, TokenResponse, UserResponse, TokenRefresh
+from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh
 from utils.db import DBHandling
 from utils.process_data import ProcessData
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token

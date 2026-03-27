@@ -65,7 +65,10 @@ class DBHandling:
                     "SELECT 1 FROM pg_database WHERE datname = $1;", self._dbname
                 )
                 if not row:
-                    await admin_conn.execute(f'CREATE DATABASE "{self._dbname}";')
+                    try:
+                        await admin_conn.execute(f'CREATE DATABASE "{self._dbname}";')
+                    except asyncpg.exceptions.DuplicateDatabaseError:
+                        pass    # avoid error on race condition when N workers
             finally:
                 await admin_conn.close()
 

@@ -1,6 +1,9 @@
 import sys
 import os
+# root: enables 'from utils.x', 'from schemas.x', ...
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+# app/web/ — enables 'from handlers.x'
+sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 from app.web.handlers.config import bpv1_url_prefix
 from app.web.handlers.helpers import create_app

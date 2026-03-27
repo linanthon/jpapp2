@@ -9,7 +9,6 @@ from utils.process_data import ProcessData
 from utils.data import read_stop_words, read_jlpt, scrape_all_jlpt
 from utils.auth import verify_token
 from handlers.config import DB_USER, DB_PASS, REDIS_URL, bpv1_url_prefix
-from schemas.user import UserResponse, UserLogin, UserCreate
 
 # cache word count for /view/word
 view_count_cache = {}
