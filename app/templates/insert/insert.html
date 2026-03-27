@@ -1,0 +1,71 @@
+<!doctype html>
+<html data-url-prefix="{{ url_prefix }}">
+<head>
+  <title>Insert</title>
+  <link rel="stylesheet" href="{{ url('static', 'css/insert/insert.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/insert/insert.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
+  <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
+</head>
+<body>
+  <script>
+    // Redirect to login if not authenticated
+    if (!localStorage.getItem('access_token')) {
+      window.location.href = document.documentElement.getAttribute('data-login-url');
+    }
+  </script>
+  
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>Insert</h2>
+    <button class="home-btn" onclick="goHome()">🏠Home</button>
+  </div>
+
+  <!-- Choose file -->
+  <button type="button" onclick="document.getElementById('fileInput').click()">Choose file</button>
+  <!-- Putting the form to save chosen filename to backend under "submittedFilename"
+   and only direct to `def upload_file()` after pressing submit -->
+  <form id="fileForm" method="POST" action="{{ url('upload_file') }}" enctype="multipart/form-data">
+    <!-- Default not showing the box (containing filename and submit button), only show after choosing -->
+    
+    <!-- The type="file" allows choosing file, save to JS by `id`, save to Flask by `name`, display nothing -->
+    <input type="file" id="fileInput" name="submittedFilename" style="display:none" onchange="showFileName()">
+    
+    <!-- This is the display box, the `fileName` is got from JS, the `type="submit"` will actually send form -->
+    <div id="fileInfo" style="display:none" class="file-info">
+        <span id="fileName"></span>
+        <button type="submit" id="fileSubmit">Submit</button>
+    </div>
+  </form>
+
+  <!-- Declare a progress line to show number of sentences processed -->
+  <div id="fileProgressLine" style="display:none; margin-top:10px; color:blue;"></div>
+
+  <!-- Declare a notice ready for action (in JS) -->
+  <div id="fileNotice" style="display:none"></div>
+
+  <!-- Enter string -->
+  <button type="button" onclick="showTextBox()">Enter string</button>
+  <form id="stringForm" method="POST" action="{{ url('upload_string') }}">
+    <div id="stringBoxContainer" style="display:none">
+
+      <div class="form-row">
+        <label for="stringName" class="label-left">Name:</label>
+        <input type="text" id="stringName" name="stringName">
+      </div>
+
+      <div class="form-row">
+        <label for="stringBody" class="label-left">Text:</label>
+        <textarea id="stringBody" name="stringBody"></textarea>
+      </div>
+      
+      <button type="submit" id="stringSubmit">Submit</button>
+    </div>
+  </form>
+  
+  <div id="stringProgressLine" style="display:none; margin-top:10px; color:blue;"></div>
+
+  <div id="stringNotice" style="display:none"></div>
+</body>
+</html>

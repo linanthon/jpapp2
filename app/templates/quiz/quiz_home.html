@@ -1,0 +1,135 @@
+<!doctype html>
+<html data-url-prefix="{{ url_prefix }}" data-home-url="{{ url('home') }}"
+      data-login-url="{{ url('login') }}" data-logout-url="{{ url('logout') }}"
+      data-register-url="{{ url('register') }}" data-refresh-url="{{ url('refresh') }}">
+<head>
+  <title>Quiz</title>
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/quiz/quiz_home.css') }}">
+  <script src="{{ url('static', 'js/quiz/quiz_home.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
+  <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
+</head>
+<body>
+  <script>
+    // Redirect to login if not authenticated
+    if (!localStorage.getItem('access_token')) {
+      window.location.href = document.documentElement.getAttribute('data-login-url');
+    }
+  </script>
+  
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>Quiz</h2>
+    <button class="home-btn" onclick="goHome()">🏠Home</button>
+  </div>
+
+  <!-- ======================= Quiz modes ======================= -->
+  <form id="quizJP">
+    <button type="button" id="quizSelect"
+            data-action="{{ url('quiz_jp') }}"
+            data-mode="jp"
+            onclick="openQuizOptionsFromButton(this)">
+      JP -> EN
+    </button>
+  </form>
+
+  <form id="quizEN">
+    <button type="button" id="quizSelect"
+            data-action="{{ url('quiz_en') }}"
+            data-mode="en"
+            onclick="openQuizOptionsFromButton(this)">
+      EN -> JP
+    </button>
+  </form>
+
+  <form id="quizSentence">
+    <button type="button" id="quizSelect"
+            data-action="{{ url('quiz_sentence') }}"
+            data-mode="sentence"
+            onclick="openQuizOptionsFromButton(this)">
+      JP sentence
+    </button>
+  </form>
+
+  <form id="quizKnown">
+    <button type="button" id="quizSelect"
+            data-action="{{ url('quiz_known') }}"
+            data-mode="known"
+            onclick="openQuizOptionsFromButton(this)">
+      Review known JP
+    </button>
+  </form>
+
+
+  <!-- ======================= Quiz option box ======================= -->
+  <form id="quizOptionsForm" style="display:none" onsubmit="event.preventDefault(); navigateWithAuthForm(this)">
+    <div id="jlptFilter" style="display:none">
+      <label for="jlpt">JLPT:</label>
+      <select name="jlpt_level" id="jlpt">
+        <option value="" {% if args.get('jlpt_level','') == '' %}selected{% endif %}></option>
+        <option value="N5" {% if args.get('jlpt_level') == 'N5' %}selected{% endif %}>N5</option>
+        <option value="N4" {% if args.get('jlpt_level') == 'N4' %}selected{% endif %}>N4</option>
+        <option value="N3" {% if args.get('jlpt_level') == 'N3' %}selected{% endif %}>N3</option>
+        <option value="N2" {% if args.get('jlpt_level') == 'N2' %}selected{% endif %}>N2</option>
+        <option value="N1" {% if args.get('jlpt_level') == 'N1' %}selected{% endif %}>N1</option>
+        <option value="N0" {% if args.get('jlpt_level') == 'N0' %}selected{% endif %}>Not categorized</option>
+      </select>
+    </div>
+
+    <div id="starFilter" style="display:none">
+      <label for="star">star:</label>
+      <input type="checkbox" id="star" name="star" value="1"
+            {% if args.get('star') in ['1','true','True','on','yes'] %}checked{% endif %}>
+    </div>
+
+    <div id="bookFilter" style="display:none">
+      <label for="book">book:</label>
+      <select name="book_id" id="book">
+        <option value="" {% if not args.get('select_book') %}selected{% endif %}>&nbsp;</option>
+        {% if all_books %}
+          {% for b in all_books %}
+            <option value="{{ b.id }}" {% if args.get('select_book') == b.id|string %}selected{% endif %}>{{ b.name }}</option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+
+    <div id="limitGroup" style="display:none">
+      <label for="limit">Quiz times:</label>
+
+      <div>
+        <input type="number" id="limit" name="limit" value="10" min="1" max="100" placeholder="Limit">
+        <span>(1-100 results)</span>
+      </div>
+    </div>
+
+    <div id="usePrioGroup" style="display:none">
+      <label for="usePrio">
+        <span class="info-tooltip">
+          <span class="info-icon">?</span>
+          <span class="tooltip-text">Use priority calculation based on word's occurrence and corrected quiz times in retrieving testcases</span>
+        </span>
+        Get word by priority:
+      </label>
+      <input type="checkbox" id="usePrio" name="use_priority" value="1"
+            {% if args.get('use_priority','1') in ['1','true','True','on','yes'] %}checked{% endif %}>
+    </div>
+
+    <div id="distractorsDBGroup" style="display:none">
+      <label for="distractorsFromDB">
+        <span class="info-tooltip">
+          <span class="info-icon">?</span>
+          <span class="tooltip-text">Get incorrect choices for the testcases by querying other words that are inserted via inserting books. Turning this off to get from dictionary instead.</span>
+        </span>
+        Get incorrect choices from inserted words:
+      </label>
+      <input type="checkbox" id="distractors" name="get_distractors_from_db" value="1"
+            {% if args.get('get_distractors_from_db', '1') in ['1','true','True','on','yes'] %}checked{% endif %}>
+    </div>
+
+    <button type="submit" id="quizSubmit">Start</button>
+  </form>
+
+</body>
+</html>

@@ -7,19 +7,14 @@ CREATE TABLE IF NOT EXISTS words (
     forms TEXT,
     occurrence INT, -- occurring frequency
     jlpt_level TEXT,
-    audio_mapping TEXT[],
-    quized INT, -- quiz_ed times, +1 if correct, -1 if fail
-    last_tested TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- the last time this word has been quiz_ed
-    star BOOLEAN,
-    priority NUMERIC    -- use occurrence and quized to calc
+    audio_mapping TEXT[]
 );
 
 -- Store a book
 CREATE TABLE IF NOT EXISTS books (
     id SERIAL PRIMARY KEY NOT NULL,
-    created TIMESTAMP NOT NULL DEFAULT now(),
+    created_at TIMESTAMP NOT NULL DEFAULT now(),
     name TEXT UNIQUE NOT NULL,
-    star BOOLEAN,
     content TEXT    -- the entire book content, the limit is 1GB which no books achieve
 );
 
@@ -35,9 +30,7 @@ CREATE TABLE IF NOT EXISTS word_book (
 CREATE TABLE IF NOT EXISTS sentences (
     id SERIAL PRIMARY KEY,
     sentence TEXT NOT NULL,
-    occurrence INT,     -- count sentence occrences to decide if is popular or not (current auto alg)
-    quized INT,
-    star BOOLEAN DEFAULT FALSE    -- set if sentence is popular (manual set if want)
+    occurrence INT     -- count sentence occrences to decide if is popular or not (current auto alg)
 );
 
 -- Store the reference of a word and the sentence contains it
@@ -54,10 +47,43 @@ CREATE TABLE IF NOT EXISTS sentence_book (
     PRIMARY KEY (sentence_id, book_id)
 );
 
+-- Store user info
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    is_admin BOOLEAN DEFAULT FALSE,
+    username TEXT NOT NULL UNIQUE,
+    email TEXT UNIQUE,
+    password_hash TEXT,
+    created_at TIMESTAMP,
+    modified_at TIMESTAMP
+);
 
--- Store the audio, words can have multiple letters, but only composed of the ones in the alphabets
--- CREATE TABLE IF NOT EXISTS audio (
---     id SERIAL PRIMARY KEY,
---     romaji TEXT NOT NULL
---     sound BYTEA NOT NULL
--- );
+-- Store users progress of word quiz
+CREATE TABLE IF NOT EXISTS user_word_progress (
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    word_id INT REFERENCES words(id) ON DELETE CASCADE,
+    quized INT,     -- quiz_ed times, +1 if correct, -1 if fail
+    last_tested TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- the last time this word has been quiz_ed
+    star BOOLEAN,
+    priority NUMERIC,    -- use occurrence and quized to calc
+    PRIMARY KEY(user_id, word_id)
+);
+
+-- Store users progress of sentence quiz
+CREATE TABLE IF NOT EXISTS user_sentence_progress (
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    sentence_id INT REFERENCES sentences(id) ON DELETE CASCADE,
+    quized INT,     -- quiz_ed times, +1 if correct, -1 if fail
+    last_tested TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- the last time this word has been quiz_ed
+    star BOOLEAN,
+    priority NUMERIC,    -- use occurrence and quized to calc
+    PRIMARY KEY(user_id, sentence_id)
+);
+
+-- Store users favorite books
+CREATE TABLE IF NOT EXISTS user_book_star (
+    user_id INT REFERENCES users(id) ON DELETE CASCADE,
+    book_id INT REFERENCES sentences(id) ON DELETE CASCADE,
+    star BOOLEAN,
+    PRIMARY KEY(user_id, book_id)
+);

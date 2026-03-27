@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html data-url-prefix="{{ url_prefix }}">
+<head>
+  <title>View word</title>
+  <link rel="stylesheet" href="{{ url('static', 'css/view/word/view_specific_word.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/view/view.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
+  <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
+</head>
+<body>
+  <script>
+    // Redirect to login if not authenticated
+    if (!localStorage.getItem('access_token')) {
+      window.location.href = document.documentElement.getAttribute('data-login-url');
+    }
+  </script>
+  
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>View word</h2>
+    <button class="home-btn" onclick="goHome()">🏠Home</button>
+  </div>
+
+  <div class="word-detail">
+    <div class="word-header">
+      <div class="star-and-spelling">
+        <button id="wordStarToggle" type="button"
+            class="star {{ 'yellow' if word_details.star else 'white' }}"
+            aria-pressed="{{ 'true' if word_details.star else 'false' }}"
+            data-toggle-url="{{ url('toggle_star') }}"
+            data-id="{{ word_details.id | e }}"
+        >★</button>
+
+        <div class="spelling-wrap">
+          <span id="wordSpelling">{{ word_details.spelling }}</span>
+          <span id="wordMain">{{ word_details.word }}</span>
+        </div>
+      </div>
+      
+      <button id="toggleKnown" type="button"
+          class="known-btn"
+          data-id="{{ word_details.id }}"
+          data-priority="{{ word_details.priority }}"
+          data-toggle-url="{{ url('toggle_word_known') }}"
+          data-quized="{{ word_details.quized }}"
+          data-occurrence="{{ word_details.occurrence }}">
+        {% if word_details.priority and word_details.priority > 0.0 %}
+          Mark as known
+        {% else %}
+          Unmark known
+        {% endif %}
+      </button>
+      <span class="info-tooltip">
+        <span class="info-icon">?</span>
+        <span class="tooltip-text">
+          {% if word_details.priority and word_details.priority > 0.0 %}
+            Make this word no longer appear in quiz
+          {% else %}
+            Let this word appear in quiz again with your previous progress on this word. If your have progressed this word to a point where it no longer appears in normal quiz mode on its own, pressing this button does not change such behavior. Use the `Review known words` mode for it.
+          {% endif %}
+        </span>
+      </span>
+    </div>
+
+    <div class="word-body">
+      <!-- Left column -->
+      <div>
+        <p><strong>JLPT:</strong> {{ word_details.jlpt_level or '—' }}</p>
+        <p><button id="playBtn"
+          data-audio-mapping="{{ word_details.audio_mapping | e }}"
+          data-word="{{ word_details.word | e }}"
+          >▶ Play audio</button></p>
+        <p><strong>Occurrence:</strong> {{ word_details.occurrence }}</p>
+        <p><strong>Correct quiz:</strong> {{ word_details.quized }}</p>
+      </div>
+
+      <!-- Right column -->
+      <div>
+        <div class="section-title">Meanings:</div>
+        <div id="word-meaning">
+          <ol>
+            {% for m in word_details.meanings %}
+              <li>{{ m }}</li>
+            {% endfor %}
+          </ol>
+        </div>
+
+        <div class="section-title">Sentence examples:</div>
+        <div id="word-sen-ex">
+          <ul>
+            {% for s in sen_ex %}
+              <li>{{ s }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>

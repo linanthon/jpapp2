@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html data-url-prefix="{{ url_prefix }}" data-home-url="{{ url('home') }}"
+      data-login-url="{{ url('login') }}" data-logout-url="{{ url('logout') }}"
+      data-register-url="{{ url('register') }}" data-refresh-url="{{ url('refresh') }}">
+<head>
+  <title>View</title>
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
+  <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
+  <script src="{{ url('static', 'js/view/view.js') }}" defer></script>
+</head>
+<body>
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>View</h2>
+    <button class="home-btn" onclick="goHome()">🏠Home</button>
+  </div>
+  
+  <form method="GET" action="{{ url('search_word') }}">
+    <button type="submit">Search word</button>
+  </form>
+
+  <button id="btn-view-words" data-url="{{ url('view_words') }}">View words</button>
+
+  <button id="btn-view-books" data-url="{{ url('view_books') }}">View books</button>
+
+
+</body>
+</html>

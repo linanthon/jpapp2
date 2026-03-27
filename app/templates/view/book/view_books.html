@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html data-url-prefix="{{ url_prefix }}">
+<head>
+  <title>View books</title>
+  <link rel="stylesheet" href="{{ url('static', 'css/view/book/view_books.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/view/book/view_specific_book.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <script src="{{ url('static', 'js/view/view.js') }}" defer></script>
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
+  <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
+</head>
+<body>
+  <script>
+    // Redirect to login if not authenticated
+    if (!localStorage.getItem('access_token')) {
+      window.location.href = document.documentElement.getAttribute('data-login-url');
+    }
+  </script>
+  
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>View books</h2>
+    <button class="home-btn" onclick="goHome()">🏠Home</button>
+  </div>
+
+  <!-- starred checkbox (auto-submit on change) -->
+  <form id="viewBooksForm" method="GET" action="{{ url('view_books') }}">
+    <label for="star"><strong>star:</strong></label>
+    <input type="checkbox" id="star" name="star" value="1"
+           onchange="this.form.submit()"
+           {% if args.get('star') in ['1','true','True','on','yes'] %}checked{% endif %}>
+  </form>
+  
+  <div id="showBookList" style="display:block">
+    {% if book_list %}
+      <ul>
+        {% for b in book_list %}
+          <li>
+            <button id="bookStarToggle" type="button"
+              class="book-star-toggle {{ 'yellow' if b.star else 'white' }}"
+              aria-pressed="{{ 'true' if b.star else 'false' }}"
+              data-toggle-url="{{ url('toggle_star') }}"
+              data-id="{{ b.book_id }}"
+            >★</button>
+            <a href="{{ url('view_specific_book') }}{{ b.book_id }}">
+              <strong>{{ b.name }}</strong>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div style="color:gray">No books to show</div>
+    {% endif %}
+  </div>
+
+  {# Pagination bar #}
+  {% if page_count %}
+  <nav class="pagination" aria-label="pages">
+    {% set cur_star = args.get('star', None) %}
+
+    {# Prev link #}
+    {% if page > 1 %}
+      <a href="{{ url('view_books') }}?star={{ cur_star }}&page={{ page-1 }}">prev</a>
+    {% else %}
+      <span class="disabled">prev</span>
+    {% endif %}
+
+    {# Always show first page #}
+    <a class="{{ 'current' if page==1 else '' }}" href="{{ url('view_books') }}?star={{ cur_star }}&page=1">1</a>
+
+    {# Decide window #}
+    {% set total = page_count %}
+    {% if total <= 7 %}
+      {# small number of pages: show all #}
+      {% for p in range(2, total+1) %}
+        <a class="{{ 'current' if page==p else '' }}" href="{{ url('view_books') }}?star={{ cur_star }}&page={{ p }}">{{ p }}</a>
+      {% endfor %}
+    {% else %}
+      {% set window = 2 %} {# show current +/-2 -> 5 middle pages #}
+      {% set left = page - window %}
+      {% set right = page + window %}
+      {% if left < 2 %}{% set left = 2 %}{% set right = left + window*2 %}{% endif %}
+      {% if right > total-1 %}{% set right = total-1 %}{% set left = right - window*2 %}{% endif %}
+
+      {% if left > 2 %}
+        <span class="ellipsis">…</span>
+      {% endif %}
+
+      {% for p in range(left, right+1) %}
+        <a class="{{ 'current' if page==p else '' }}" href="{{ url('view_books') }}?star={{ cur_star }}&page={{ p }}">{{ p }}</a>
+      {% endfor %}
+
+      {% if right < total-1 %}
+        <span class="ellipsis">…</span>
+      {% endif %}
+
+      {# Last page #}
+      <a class="{{ 'current' if page==total else '' }}" href="{{ url('view_books') }}?star={{ cur_star }}&page={{ total }}">{{ total }}</a>
+    {% endif %}
+
+    {# Next link #}
+    {% if page < page_count %}
+      <a href="{{ url('view_books') }}?star={{ cur_star }}&page={{ page+1 }}">next</a>
+    {% else %}
+      <span class="disabled">next</span>
+    {% endif %}
+  </nav>
+  {% endif %}
+</body>

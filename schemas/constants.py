@@ -9,13 +9,17 @@ SQL_TABLE_SCRIPT = "data/sql/tables.sql"
 SQL_WORD_PRIO_SCRIPT = "data/sql/priority_view.sql"
 
 # --- Table names
-DB_NAME = "jpapp"
+DB_NAME = "jpapp2"
 TABLE_WORDS = "words"
 TABLE_BOOKS = "books"
 TABLE_SENTENCES = "sentences"
 TABLE_WORD_BOOK_REF = "word_book"
 TABLE_WORD_SENTENCE_REF = "word_sentence"
 TABLE_SENTENCE_BOOK_REF = "sentence_book"
+TABLE_USER = "users"
+TABLE_USER_WORD_PROGRESS = "user_word_progress"
+TABLE_USER_SENTENCE_PROGRESS = "user_sentence_progress"
+TABLE_USER_BOOK_STAR = "user_book_star"
 
 # --- Defaults
 DEFAULT_LIMIT: int = 10

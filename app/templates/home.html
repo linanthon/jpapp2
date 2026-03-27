@@ -1,0 +1,27 @@
+<!doctype html>
+<html data-url-prefix="{{ url_prefix }}" data-home-url="{{ url('home') }}"
+      data-login-url="{{ url('login') }}" data-logout-url="{{ url('logout') }}"
+      data-register-url="{{ url('register') }}" data-refresh-url="{{ url('refresh') }}">
+<head>
+  <title>JP-EN App</title>
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/auth/home.css') }}">
+</head>
+<body>
+  <h1>Japanese-English App</h1>
+  
+  <!-- Auth container at top right -->
+  <div class="auth-container">
+    <button id="auth-button" class="auth-button">Login</button>
+    <div id="user-info">Logged in</div>
+  </div>
+  
+  <!-- Main options-->
+  <form action="{{ url('insert') }}"><button type="submit">Insert</button></form>
+  <form action="{{ url('view') }}"><button type="submit">View Collection</button></form>
+  <form action="{{ url('quiz') }}"><button type="submit">Quiz</button></form>
+  <form action="{{ url('progress') }}"><button type="submit">Progress</button></form>
+  
+  <script src="{{ url('static', 'js/auth/auth.js') }}"></script>
+</body>
+</html>
