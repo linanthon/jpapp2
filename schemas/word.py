@@ -1,30 +1,22 @@
+from dataclasses import dataclass, field
 from typing import List
 
+@dataclass
 class Word:
-    def __init__(self, word_id=0, word="", senses="", spelling="", forms="", jlpt_level="",
-                 audio_mapping=[], star=False, occurrence=0, quized=0, priority=0.0):
-        """
-        - word (str): the Kanji version (or the version that is commonly used, can also be Higarana/Katakana)
-        - senses (str): the meaning, word type and position (verb, noun, ...)
-        - spelling (str): the Higarana spelling of the word
-        - forms (str): a joined list of the other forms of this word, i.e.: "a, b, c"
-        - jlpt_level (str): N5 -> N1, N0 for non-categorized words
-        - audio_mapping (list[str]): the list of romaji of the spelling
-        - star (bool): favorite the word
-        - occurrence (int): the times this word has appeared
-        - quized (int): the times this word has been quized
-        """
-        self.word_id = word_id
-        self.word = word
-        self.senses = senses
-        self.spelling = spelling
-        self.forms = forms
-        self.jlpt_level = jlpt_level
-        self.audio_mapping: List[str] = audio_mapping
-        self.star = star
-        self.occurrence = occurrence
-        self.quized = quized
-        self.priority = priority
+    """Transfer object for a Japanese word coming from the NLP pipeline.
 
-        # For tracking borrowed English words
-        self.eigo: bool = False
+    - word: the Kanji version (or Hiragana/Katakana if no Kanji)
+    - senses: meaning, word type and position (verb, noun, ...)
+    - spelling: the Hiragana/Katakana spelling
+    - forms: other forms of this word, joined as "a, b, c"
+    - jlpt_level: N5 -> N1, N0 for non-categorized
+    - audio_mapping: list of romaji for the spelling
+    - eigo: True if this is a borrowed English word (Gairaigo/Wasei-eigo)
+    """
+    word: str = ""
+    senses: str = ""
+    spelling: str = ""
+    forms: str = ""
+    jlpt_level: str = ""
+    audio_mapping: List[str] = field(default_factory=list)
+    eigo: bool = False

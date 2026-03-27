@@ -17,9 +17,6 @@ from utils.logger import get_logger
 from schemas.constants import DEFAULT_DISTRACTOR_COUNT
 from schemas.word import Word
 
-if TYPE_CHECKING:
-    from werkzeug.datastructures import FileStorage 
-
 log = get_logger(__file__)
 
 class ProcessData():

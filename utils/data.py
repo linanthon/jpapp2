@@ -249,7 +249,7 @@ async def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: 
         log.error("Must have at least 'jp_word' or 'en_word'")
         return None
 
-    res = QuizDistractors([], [])   # use empty params to avoid "mutable default value as argument"
+    res = QuizDistractors()   # dataclass uses field(default_factory=list)
     instances = []
     if get_distractors_from_db:
         instances = await db.get_distractors(jp_word, en_word, distractor_count)
