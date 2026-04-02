@@ -8,36 +8,36 @@ if TYPE_CHECKING:
     from utils.process_data import ProcessData
     from utils.db import DBHandling
 
-async def get_word_jp_quizes(pdata: "ProcessData" = None, db: "DBHandling" = None, user_id: int = None, limit: int = DEFAULT_LIMIT, 
-                       jlpt_level: str = None, star: bool = False, book_id: int = None, use_priority: bool = True,
+async def build_quizes(mode: str, pdata: "ProcessData", db: "DBHandling", user_id: int = None,
+                       limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star: bool = False,
+                       book_id: int = None, use_priority: bool = True,
                        is_known: bool = False, get_distractors_from_db: bool = True) -> Dict[int, Dict[str, Any]]:
-    """Get JP->EN quizes. Return a dict:
-    - key: word ID
-    - value: a dict of items:
-        - question - the JP
-        - spelling - the Katakana spelling
-        - audio_mapping - the audio mapping list for this word
-        - correct - the EN (first meaning in senses)
-        - choices - a list of all 4 choices (shuffled)
-        - quized - the number of correct times
-        - occurrence - the total appearance count of this word in DB
-        - star - the word starred or not
+    """Quiz builder. `mode` is 'jp' (JP->EN) or 'en' (EN->JP).
+
+    Returns a dict keyed by word_id, each value containing:
+    - question, spelling, audio_mapping, correct, choices, quized, occurrence, star
+    For 'jp' mode: question=JP, correct=EN, includes spelling/audio.
+    For 'en' mode: question=EN, correct=JP, spelling/audio are empty.
     """
     res = {}
     tests = await db.get_quiz(user_id=user_id, limit=limit, jlpt_filter=jlpt_level, star_only=star,
                         book_id=book_id, use_priority=use_priority, is_known=is_known)
     for test_case in tests:
-        # randomize correct answer location
-        choices = [test_case["en"]]
         distractors = await get_quiz_distractors(pdata, db, test_case["jp"], test_case["en"], get_distractors_from_db)
-        choices.extend(distractors.en)
+        if mode == "jp":
+            question, correct = test_case["jp"], test_case["en"]
+            choices = [test_case["en"]] + list(distractors.en)
+            spelling, audio = test_case["spelling"], test_case["audio_mapping"]
+        else:
+            question, correct = test_case["en"], test_case["jp"]
+            choices = [test_case["jp"]] + list(distractors.jp)
+            spelling, audio = "", []
         random.shuffle(choices)
-        # save to return
         res[test_case["word_id"]] = {
-            "question": test_case["jp"],
-            "spelling": test_case["spelling"],
-            "audio_mapping": test_case["audio_mapping"],
-            "correct": test_case["en"],
+            "question": question,
+            "spelling": spelling,
+            "audio_mapping": audio,
+            "correct": correct,
             "choices": choices,
             "quized": test_case["quized"],
             "occurrence": test_case["occurrence"],
@@ -69,38 +69,3 @@ async def reset_word_prio(db: "DBHandling", user_id: int = 0, word_id: int = 0,
         return False
     # call calculate prio
     return await db.update_quized_prio_ts(user_id=user_id, word_id=word_id, occurrence=occurrence, quized=quized)
-
-async def get_word_en_quizes(pdata: "ProcessData" = None, db: "DBHandling" = None, user_id: int = None, limit: int = DEFAULT_LIMIT,
-                       jlpt_level: str = None, star: bool = False, book_id: int = None, use_priority: bool = True,
-                       is_known: bool = False, get_distractors_from_db: bool = True) -> Dict[int, Dict[str, Any]]:
-    """Get EN->JP quizes. Return a dict:
-    - key: word ID
-    - value: a dict of items:
-        - question - the EN (first meaning of the JP word)
-        - correct - the JP word
-        - choices - a list of all 4 choices (shuffled)
-        - quized - the number of correct times
-        - occurrence - the total appearance count of this word in DB
-        - star - the word starred or not
-    """
-    res = {}
-    tests = await db.get_quiz(user_id=user_id, limit=limit, jlpt_filter=jlpt_level, star_only=star,
-                        book_id=book_id, use_priority=use_priority, is_known=is_known)
-    for test_case in tests:
-        # randomize correct answer location
-        choices = [test_case["jp"]]
-        distractors = await get_quiz_distractors(pdata, db, test_case["jp"], test_case["en"], get_distractors_from_db)
-        choices.extend(distractors.jp)
-        random.shuffle(choices)
-        # save to return
-        res[test_case["word_id"]] = {
-            "question": test_case["en"],
-            "spelling": "",
-            "audio_mapping": [],
-            "correct": test_case["jp"],
-            "choices": choices,
-            "quized": test_case["quized"],
-            "occurrence": test_case["occurrence"],
-            "star": test_case["star"]
-        }
-    return res

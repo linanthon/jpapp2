@@ -19,6 +19,18 @@ def reset_view_word_count():
     view_count_cache.clear()
 
 
+async def _paginated_query(cache_key: tuple, count_fn, list_fn,
+                           limit: int, page: int) -> Tuple[list, int]:
+    """Shared pagination: cache the total count, compute page_count, guard out-of-range pages."""
+    if cache_key not in view_count_cache:
+        view_count_cache[cache_key] = await count_fn()
+
+    page_count = int(math.ceil(view_count_cache[cache_key] / limit))
+    if page > page_count:
+        return [], page_count
+    return await list_fn(limit, limit * (page - 1)), page_count
+
+
 async def toggle_star_helper(db: DBHandling, user_id: int, obj_id: int, obj_type: str, star: int) -> bool:
     """Turn star on or off. Return true if success, false otherwise."""
     star_stt = True if star == 1 else False
@@ -79,15 +91,13 @@ async def handle_view_words(db: "DBHandling" = None, user_id: int = None, jlpt_l
         - senses: the 1st EN meaning. Still make the key as `senses` to line up
         with handle_search_word()
     """
-    # Save count to cache until insert endpoint
     key = tuple(f"word::{jlpt_level}::{star}")
-    if key not in view_count_cache:
-        view_count_cache[key] = await db.count_words(user_id, jlpt_level, star)
-
-    page_count = int(math.ceil(view_count_cache[key] / limit))
-    if page > page_count:
-        return [], page_count
-    return await db.list_words(user_id, jlpt_level, star, limit, limit*(page-1)), page_count
+    return await _paginated_query(
+        key,
+        lambda: db.count_words(user_id, jlpt_level, star),
+        lambda lim, off: db.list_words(user_id, jlpt_level, star, lim, off),
+        limit, page
+    )
 
 async def handle_view_books(db: "DBHandling" = None, user_id: int = None, star: bool = False,
                       limit: int = DEFAULT_LIMIT, page: int = 1) -> Tuple[List[dict], int]:
@@ -101,15 +111,13 @@ async def handle_view_books(db: "DBHandling" = None, user_id: int = None, star: 
         - star: star status of the book
     - int: page count
     """
-    # Save count to cache until insert endpoint
     key = tuple(f"book::{star}")
-    if key not in view_count_cache:
-        view_count_cache[key] = await db.count_books(star)
-
-    page_count = int(math.ceil(view_count_cache[key] / limit))
-    if page > page_count:
-        return [], page_count
-    return await db.list_books(user_id, star, limit, limit*(page-1)), page_count
+    return await _paginated_query(
+        key,
+        lambda: db.count_books(star),
+        lambda lim, off: db.list_books(user_id, star, lim, off),
+        limit, page
+    )
 
 async def handle_view_specific_book(db: "DBHandling", user_id: int, book_id: int) -> dict:
     """
