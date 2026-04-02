@@ -22,6 +22,8 @@ log = get_logger(__file__)
 class ProcessData():
     """Use to process incoming Japanese data, stream file, tag sentence, get word info, ..."""
     
+    _SENTENCE_DELIMITERS = "。！？：\n.!?:"
+
     def __init__(self):
         self.tagger = Tagger()
         self._local = threading.local()
@@ -32,7 +34,17 @@ class ProcessData():
         if not hasattr(self._local, 'jam'):
             self._local.jam = Jamdict()
         return self._local.jam
-    
+
+    @staticmethod
+    def _find_sentence_end(buffer: str) -> int:
+        """Find the index of the first sentence-ending delimiter in the buffer.
+        Returns index+1, or -1 if not found."""
+        positions = [buffer.find(d) for d in ProcessData._SENTENCE_DELIMITERS]
+        found = [p for p in positions if p != -1]
+        if not found:
+            return -1
+        return min(found) + 1
+
     async def process_sentence(self, sentence: str, db: "DBHandling") -> List[Word]:
         """
         Tokenize the sentence into words -> ignore non Japanese words
@@ -85,11 +97,8 @@ class ProcessData():
                     break
                 buffer += chunk
                 while True:
-                    end = max(buffer.find("。") + 1, buffer.find("！") + 1, 
-                              buffer.find("？") + 1, buffer.find("：") + 1, buffer.find("\n") + 1,
-                              buffer.find(".") + 1,  buffer.find("!") + 1,
-                              buffer.find("?") + 1,  buffer.find(":") + 1)
-                    if end == 0:
+                    end = self._find_sentence_end(buffer)
+                    if end == -1:
                         break
                     
                     sentence = buffer[:end]
@@ -110,11 +119,8 @@ class ProcessData():
         """
         buffer = content
         while True:
-            end = max(buffer.find("。") + 1, buffer.find("！") + 1, 
-                        buffer.find("？") + 1, buffer.find("：") + 1, buffer.find("\n") + 1,
-                        buffer.find(".") + 1,  buffer.find("!") + 1,
-                        buffer.find("?") + 1,  buffer.find(":") + 1)
-            if end == 0:
+            end = self._find_sentence_end(buffer)
+            if end == -1:
                 break
             sentence = buffer[:end].strip("\n").strip()
             buffer = buffer[end:]

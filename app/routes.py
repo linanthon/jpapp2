@@ -15,8 +15,8 @@ from app.handlers.view import (handle_search_word, handle_view_specific_word, ha
 from app.dependencies import (
     get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user
 )
-from app.handlers.quiz import (get_word_jp_quizes, update_word_prio_after_answering,
-                               change_word_prio_to_negative, reset_word_prio, get_word_en_quizes)
+from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
+                               change_word_prio_to_negative, reset_word_prio)
 from utils.helpers import get_filename_from_path, validate_jlpt_level, parse_bool_param, validate_star
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
@@ -450,7 +450,8 @@ async def quiz_jp(
     use_priority_bool = parse_bool_param(use_priority)
     get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
-    quizes = await get_word_jp_quizes(
+    quizes = await build_quizes(
+        "jp",
         pdata,
         db,
         user_id=current_user_id,
@@ -485,7 +486,8 @@ async def quiz_known(
     star_bool = parse_bool_param(star)
     get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
-    quizes = await get_word_jp_quizes(
+    quizes = await build_quizes(
+        "jp",
         pdata,
         db,
         user_id=current_user_id,
@@ -515,6 +517,7 @@ async def quiz_en(
     use_priority: bool | str = None,
     get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db),
+    pdata: ProcessData = Depends(get_pdata),
     current_user_id: int = Depends(get_current_user_id)
 ):
     """Get EN-to-JP quiz questions"""
@@ -523,7 +526,9 @@ async def quiz_en(
     use_priority_bool = parse_bool_param(use_priority)
     get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
-    quizes = await get_word_en_quizes(
+    quizes = await build_quizes(
+        "en",
+        pdata,
         db,
         user_id=current_user_id,
         limit=limit,
