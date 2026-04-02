@@ -1,5 +1,6 @@
 from passlib.context import CryptContext
-from jose import JWTError, jwt
+from jwt import PyJWTError
+import jwt
 from datetime import datetime, timedelta, timezone
 
 from app.config import (ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -64,5 +65,5 @@ def verify_token(token: str, token_type: str = "access") -> int | None:
             return None
         
         return int(user_id)
-    except (JWTError, ValueError):
+    except (PyJWTError, ValueError):
         return None
