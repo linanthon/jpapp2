@@ -1,0 +1,50 @@
+<!doctype html>
+<html data-url-prefix="{{ url_prefix }}" data-home-url="{{ url('home') }}"
+      data-login-url="{{ url('login') }}" data-logout-url="{{ url('logout') }}"
+      data-register-url="{{ url('register') }}" data-refresh-url="{{ url('refresh') }}">
+<head>
+  <title>Progress</title>
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/auth/home.css') }}">
+</head>
+<body>
+  <!-- Auth container at top right -->
+  <div class="auth-container">
+    <button id="auth-button" class="auth-button">Login</button>
+    <div id="user-info">Logged in</div>
+  </div>
+
+  <!-- Main options-->
+  <div class="progress-container">
+    <h2>Study Progress</h2>
+    <table class="progress-table">
+      <thead>
+        <tr>
+          <th>Level</th>
+          <th>Silver (≥ soft cap)</th>
+          <th>Gold (≥ hard cap)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set levels = ['N5', 'N4', 'N3', 'N2', 'N1', 'N0'] %}
+        {% for level in levels %}
+          {% if level in results %}
+          <tr>
+            <td>{{ level }}</td>
+            <td>{{ results[level].silver_pct }}%</td>
+            <td>{{ results[level].gold_pct }}%</td>
+          </tr>
+          {% endif %}
+        {% endfor %}
+        {% if results.total %}
+        <tr class="progress-total">
+          <td><strong>Total</strong></td>
+          <td><strong>{{ results.total.silver_pct }}%</strong></td>
+          <td><strong>{{ results.total.gold_pct }}%</strong></td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>

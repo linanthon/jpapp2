@@ -1,13 +1,10 @@
 import math
-from typing import TYPE_CHECKING, List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any
 
 from utils.data import is_japanese_word, is_english_word
 from utils.db import DBHandling
 from utils.logger import get_logger
 from schemas.constants import DEFAULT_LIMIT
-
-if TYPE_CHECKING:
-    from utils.process_data import ProcessData
 
 log = get_logger(__name__)
 

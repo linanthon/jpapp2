@@ -147,6 +147,7 @@ def get_jinja_globals():
             'quiz_sentence': f'{url_prefix}/quiz/sentence',
             'update_word_prio': f'{url_prefix}/word/prio',
             'toggle_word_known': f'{url_prefix}/word/known',
+            'progress': f'{url_prefix}/progress',
         }
         
         if endpoint == 'static':

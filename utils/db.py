@@ -223,6 +223,44 @@ class DBHandling:
         )
         return row["count"] > 0 if row else False
 
+    async def get_user_progress(self, user_id: int) -> dict:
+        """
+        Get user progress for each JLPT level. Each level has silver and gold % number
+        according to how many words reached [QUIZ_SOFT_CAP] and [QUIZ_HARD_CAP].
+
+        Output: dict keyed by jlpt_level, each value has:
+        - silver_pct: % of words with quized >= QUIZ_SOFT_CAP
+        - gold_pct:   % of words with quized >= QUIZ_HARD_CAP
+        Example: { "N5": {"silver_pct": 45.0, "gold_pct": 10.0}, ... }
+        """
+        rows = await self._fetch(
+            f"""SELECT b.jlpt_level,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE a.quized >= {QUIZ_SOFT_CAP}) AS silver_count,
+                COUNT(*) FILTER (WHERE a.quized >= {QUIZ_HARD_CAP}) AS gold_count
+            FROM {TABLE_USER_WORD_PROGRESS} AS a
+            JOIN {TABLE_WORDS} AS b ON b.id = a.word_id
+            WHERE a.user_id = $1
+            GROUP BY b.jlpt_level;""",
+            user_id
+        )
+        result = {}
+        all_pct = {"silver_count": 0, "gold_count": 0, "all": 0}
+        for row in rows:
+            total = row["total"]
+            result[row["jlpt_level"]] = {
+                "silver_pct": round(row["silver_count"] / total * 100, 1) if total else 0.0,
+                "gold_pct": round(row["gold_count"] / total * 100, 1) if total else 0.0,
+            }
+            all_pct["silver_count"] += row["silver_count"]
+            all_pct["gold_count"] += row["gold_count"]
+            all_pct["all"] += total
+        result["total"] = {
+            "silver_pct": round(all_pct["silver_count"] / all_pct["all"] * 100, 1) if all_pct["all"] else 0.0,
+            "gold_pct":  round(all_pct["gold_count"] / all_pct["all"] * 100, 1) if all_pct["all"] else 0.0,
+        }
+        return result
+
     # Book ==================================================================================
     async def insert_book(self, filename: str, content: str = "") -> int:
         """

@@ -8,6 +8,7 @@ import redis.asyncio as aioredis
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
                         FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
+from app.handlers.progress import handle_progress
 from app.handlers.insert import handle_insert_file_stream, handle_insert_str_stream
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                                handle_view_books, handle_view_specific_book,
@@ -404,10 +405,15 @@ async def delete_book(
 
 # ===== PROGRESS % ================================================================
 @router.get("/progress")
-def progress(
+async def progress(
+    db: DBHandling = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
-    return {"message": "Progress function here"}
+    results = await handle_progress(db, current_user_id)
+    return templates.TemplateResponse(
+        "progress/progress.html",
+        {"request": {}, "results": results}
+    )
 
 # =================================================================================
 

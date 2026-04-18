@@ -1,6 +1,7 @@
 """Tests for DBHandling helper/parsing methods that don't need a real DB."""
 import pytest
 import math
+from unittest.mock import AsyncMock
 from utils.db import DBHandling
 from schemas.constants import (DEFAULT_FORMULA_K, DEFAULT_MULTI_PENALTY, QUIZ_SOFT_CAP,
                                DEFAULT_DISTRACTOR_COUNT, QUIZ_HARD_CAP)
@@ -322,3 +323,84 @@ class TestBuildSortFilterPrioSql:
         assert "ORDER BY b.priority DESC" in sql
         assert "LIMIT $3" in sql
         assert params == [1, "%-%", 5]
+
+
+# ── GetUserProgress ───────────────────────────────────────────────────────────
+class TestGetUserProgress:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+
+    def _make_row(self, jlpt_level, total, silver_count, gold_count):
+        return {
+            "jlpt_level": jlpt_level,
+            "total": total,
+            "silver_count": silver_count,
+            "gold_count": gold_count,
+        }
+
+    @pytest.mark.asyncio
+    async def test_single_level(self):
+        self.db._fetch = AsyncMock(return_value=[
+            self._make_row("N5", 100, 50, 20),
+        ])
+        result = await self.db.get_user_progress(1)
+        assert "N5" in result
+        assert result["N5"]["silver_pct"] == pytest.approx(50.0)
+        assert result["N5"]["gold_pct"] == pytest.approx(20.0)
+        assert result["total"]["silver_pct"] == pytest.approx(50.0)
+        assert result["total"]["gold_pct"] == pytest.approx(20.0)
+
+    @pytest.mark.asyncio
+    async def test_multiple_levels(self):
+        self.db._fetch = AsyncMock(return_value=[
+            self._make_row("N5", 100, 60, 10),
+            self._make_row("N4", 200, 40, 20),
+        ])
+        result = await self.db.get_user_progress(1)
+        assert result["N5"]["silver_pct"] == pytest.approx(60.0)
+        assert result["N5"]["gold_pct"] == pytest.approx(10.0)
+        assert result["N4"]["silver_pct"] == pytest.approx(20.0)
+        assert result["N4"]["gold_pct"] == pytest.approx(10.0)
+        # total: (60+40)/(100+200) = 100/300 ≈ 33.3, gold: 30/300 = 10.0
+        assert result["total"]["silver_pct"] == pytest.approx(33.3, abs=0.1)
+        assert result["total"]["gold_pct"] == pytest.approx(10.0)
+
+    @pytest.mark.asyncio
+    async def test_no_rows_returns_empty_total(self):
+        self.db._fetch = AsyncMock(return_value=[])
+        result = await self.db.get_user_progress(1)
+        assert result == {"total": {"silver_pct": 0.0, "gold_pct": 0.0}}
+
+    @pytest.mark.asyncio
+    async def test_zero_silver_and_gold(self):
+        self.db._fetch = AsyncMock(return_value=[
+            self._make_row("N3", 50, 0, 0),
+        ])
+        result = await self.db.get_user_progress(1)
+        assert result["N3"]["silver_pct"] == 0.0
+        assert result["N3"]["gold_pct"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_all_words_at_hard_cap(self):
+        self.db._fetch = AsyncMock(return_value=[
+            self._make_row("N2", 80, 80, 80),
+        ])
+        result = await self.db.get_user_progress(1)
+        assert result["N2"]["silver_pct"] == pytest.approx(100.0)
+        assert result["N2"]["gold_pct"] == pytest.approx(100.0)
+
+    @pytest.mark.asyncio
+    async def test_percentages_rounded_to_one_decimal(self):
+        self.db._fetch = AsyncMock(return_value=[
+            self._make_row("N1", 3, 1, 0),  # 1/3 = 33.333...% → 33.3
+        ])
+        result = await self.db.get_user_progress(1)
+        assert result["N1"]["silver_pct"] == 33.3
+        assert result["N1"]["gold_pct"] == 0.0
+
+    @pytest.mark.asyncio
+    async def test_query_passes_user_id(self):
+        self.db._fetch = AsyncMock(return_value=[])
+        await self.db.get_user_progress(42)
+        call_args = self.db._fetch.call_args
+        assert call_args.args[1] == 42
