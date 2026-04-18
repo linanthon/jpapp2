@@ -55,7 +55,7 @@ async def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix:
     Search a JP or EN word, return max number of found result (`limit`).
     Returns empty list if word not found.
     
-    Output: {"result": [list of `Word`s]}
+    Output: {"result": [list of word dicts]}
     """
     res: List[dict] = []
 

@@ -11,3 +11,4 @@ test-insert-jp.txt
 plan.txt
 htmlcov
 .coverage
+dump.rdb

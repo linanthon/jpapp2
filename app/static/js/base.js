@@ -26,7 +26,7 @@ window.addEventListener('DOMContentLoaded', function() {
 
 function goBack() {
     sessionStorage.setItem('isNavigatingBack', 'true');
-    window.location.href = getParentPage();
+    navigateWithAuth(getParentPage());
 }
 
 // The "current_page": "return_page" mapping
