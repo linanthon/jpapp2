@@ -140,6 +140,7 @@ def get_jinja_globals():
             'view_specific_book': f'{url_prefix}/view/book/',
             'delete_book': f'{url_prefix}/del/book',
             'progress': f'{url_prefix}/progress',
+            'api_progress': f'{url_prefix}/api/progress',
             'quiz': f'{url_prefix}/quiz',
             'quiz_jp': f'{url_prefix}/quiz/jp',
             'quiz_known': f'{url_prefix}/quiz/known',
@@ -147,7 +148,6 @@ def get_jinja_globals():
             'quiz_sentence': f'{url_prefix}/quiz/sentence',
             'update_word_prio': f'{url_prefix}/word/prio',
             'toggle_word_known': f'{url_prefix}/word/known',
-            'progress': f'{url_prefix}/progress',
         }
         
         if endpoint == 'static':

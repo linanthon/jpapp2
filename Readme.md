@@ -12,7 +12,6 @@ TODO backend:
 - ~~Restructure~~
 - ~~Stop convert db Record~~
 - Redis LRU words
-- PgBouncer to scale Postgres max connections
 - API now is concurrent, insert will meet `process_data` bottle neck
 
 TODO frontend

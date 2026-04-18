@@ -6,43 +6,35 @@
   <title>Progress</title>
   <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
   <link rel="stylesheet" href="{{ url('static', 'css/auth/home.css') }}">
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
+  <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
+  <script src="{{ url('static', 'js/progress/progress.js') }}" defer></script>
 </head>
 <body>
-  <!-- Auth container at top right -->
-  <div class="auth-container">
-    <button id="auth-button" class="auth-button">Login</button>
-    <div id="user-info">Logged in</div>
+  <script>
+    if (!localStorage.getItem('access_token')) {
+      window.location.href = document.documentElement.getAttribute('data-login-url');
+    }
+  </script>
+
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>Study Progress</h2>
+    <button class="home-btn" onclick="goHome()">🏠Home</button>
   </div>
 
   <!-- Main options-->
-  <div class="progress-container">
-    <h2>Study Progress</h2>
+  <div class="progress-container" style="position:absolute;top:17%;left:50%;transform:translate(-50%,-50%)">
     <table class="progress-table">
       <thead>
         <tr>
           <th>Level</th>
-          <th>Silver (≥ soft cap)</th>
-          <th>Gold (≥ hard cap)</th>
+          <th>≥ soft cap</th>
+          <th>≥ hard cap</th>
         </tr>
       </thead>
-      <tbody>
-        {% set levels = ['N5', 'N4', 'N3', 'N2', 'N1', 'N0'] %}
-        {% for level in levels %}
-          {% if level in results %}
-          <tr>
-            <td>{{ level }}</td>
-            <td>{{ results[level].silver_pct }}%</td>
-            <td>{{ results[level].gold_pct }}%</td>
-          </tr>
-          {% endif %}
-        {% endfor %}
-        {% if results.total %}
-        <tr class="progress-total">
-          <td><strong>Total</strong></td>
-          <td><strong>{{ results.total.silver_pct }}%</strong></td>
-          <td><strong>{{ results.total.gold_pct }}%</strong></td>
-        </tr>
-        {% endif %}
+      <tbody id="progress-tbody">
+        <tr><td colspan="3">Loading...</td></tr>
       </tbody>
     </table>
   </div>

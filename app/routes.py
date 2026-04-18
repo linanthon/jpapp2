@@ -405,15 +405,17 @@ async def delete_book(
 
 # ===== PROGRESS % ================================================================
 @router.get("/progress")
-async def progress(
+def progress():
+    return templates.TemplateResponse("progress/progress.html", {"request": {}})
+
+
+@router.get("/api/progress")
+async def api_progress(
     db: DBHandling = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
     results = await handle_progress(db, current_user_id)
-    return templates.TemplateResponse(
-        "progress/progress.html",
-        {"request": {}, "results": results}
-    )
+    return JSONResponse(content=results)
 
 # =================================================================================
 

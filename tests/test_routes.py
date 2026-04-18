@@ -285,12 +285,25 @@ class TestWordKnownRoute:
 # ── Progress (stub) ───────────────────────────────────────────────────────────
 class TestProgressRoute:
     @pytest.mark.asyncio
-    async def test_progress(self, client, mock_redis, user_token):
-        mock_redis.get.return_value = None
-        resp = await client.get("/v1/progress", headers=_auth_header(user_token))
+    async def test_progress_page_no_auth_required(self, client):
+        """Page itself is public; auth is handled client-side by JS."""
+        resp = await client.get("/v1/progress")
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_progress_no_auth(self, client):
-        resp = await client.get("/v1/progress")
+    async def test_api_progress(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_progress.return_value = {
+            "N5": {"silver_pct": 50.0, "gold_pct": 10.0},
+            "total": {"silver_pct": 50.0, "gold_pct": 10.0},
+        }
+        resp = await client.get("/v1/api/progress", headers=_auth_header(user_token))
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "N5" in data
+        assert "total" in data
+
+    @pytest.mark.asyncio
+    async def test_api_progress_no_auth(self, client):
+        resp = await client.get("/v1/api/progress")
         assert resp.status_code == 401
