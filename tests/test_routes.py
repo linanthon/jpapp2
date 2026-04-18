@@ -135,28 +135,40 @@ class TestRefreshToken:
 # ── Search Word ───────────────────────────────────────────────────────────────
 class TestSearchWordRoute:
     @pytest.mark.asyncio
-    async def test_search_jp_word(self, client, mock_db):
+    async def test_search_jp_word(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
         mock_db.query_like_word.return_value = [
             {"word": "食べる", "senses": "to eat ([verb])"}
         ]
         mock_db.get_meanings.return_value = ["to eat"]
-        resp = await client.get("/v1/view/search-word", params={"word": "食べる"})
+        resp = await client.get(
+            "/v1/api/search-word", params={"word": "食べる"},
+            headers=_auth_header(user_token)
+        )
         assert resp.status_code == 200
         data = resp.json()
         assert "results" in data
 
     @pytest.mark.asyncio
-    async def test_search_en_word(self, client, mock_db):
+    async def test_search_en_word(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
         mock_db.query_word_sense.return_value = [
             {"word": "食べる", "senses": "to eat ([verb])"}
         ]
         mock_db.get_meanings.return_value = ["to eat"]
-        resp = await client.get("/v1/view/search-word", params={"word": "eat"})
+        resp = await client.get(
+            "/v1/api/search-word", params={"word": "eat"},
+            headers=_auth_header(user_token)
+        )
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
-    async def test_search_invalid_word(self, client, mock_db):
-        resp = await client.get("/v1/view/search-word", params={"word": "123!"})
+    async def test_search_invalid_word(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        resp = await client.get(
+            "/v1/api/search-word", params={"word": "123!"},
+            headers=_auth_header(user_token)
+        )
         assert resp.status_code == 400
 
 

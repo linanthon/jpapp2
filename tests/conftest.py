@@ -66,7 +66,7 @@ def mock_redis():
     redis.set = AsyncMock()
     redis.setex = AsyncMock()
     redis.delete = AsyncMock()
-    redis.incr = AsyncMock()
+    redis.incr = AsyncMock(return_value=1)  # must return int for rate_limiter comparison
     redis.expire = AsyncMock()
     redis.ping = AsyncMock()
     return redis
