@@ -16,6 +16,8 @@ TODO backend:
 - API now is concurrent, insert will meet `process_data` bottle neck
 
 TODO frontend
+- Fix goBack auth problem
+- Fix view word filter adding infinite param
 - Fix view specific book page
 - Fix go back button in view specific
 - Quiz not starting

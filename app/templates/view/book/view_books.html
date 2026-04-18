@@ -1,5 +1,7 @@
 <!DOCTYPE html>
-<html data-url-prefix="{{ url_prefix }}">
+<html data-url-prefix="{{ url_prefix }}" data-home-url="{{ url('home') }}"
+      data-login-url="{{ url('login') }}" data-logout-url="{{ url('logout') }}"
+      data-register-url="{{ url('register') }}" data-refresh-url="{{ url('refresh') }}">
 <head>
   <title>View books</title>
   <link rel="stylesheet" href="{{ url('static', 'css/view/book/view_books.css') }}">

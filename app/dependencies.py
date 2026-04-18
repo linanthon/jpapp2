@@ -80,6 +80,32 @@ async def get_current_admin_user(
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
 
+def rate_limiter(max_calls: int, period_seconds: int):
+    """
+    Factory that returns a FastAPI dependency enforcing a fixed-window rate limit per IP.
+
+    Uses Redis as the shared counter so the limit is consistent across multiple workers.
+    Key format: "rl:{route_path}:{client_ip}"
+    On first request the key is created with a TTL of `period_seconds`.
+    Raises HTTP 429 once `max_calls` is exceeded within that window.
+
+    Usage:
+        @router.post("/login", dependencies=[Depends(rate_limiter(10, 60))])
+    """
+    async def _check(request: Request, redis: aioredis.Redis = Depends(get_redis)):
+        ip = request.client.host
+        key = f"rl:{request.url.path}:{ip}"
+        count = await redis.incr(key)
+        if count == 1:
+            # First hit - set expiry to define the window
+            await redis.expire(key, period_seconds)
+        if count > max_calls:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many requests. Limit: {max_calls} per {period_seconds}s."
+            )
+    return _check
+
 
 # ===== Template Helpers =====
 def get_jinja_globals():
@@ -105,6 +131,7 @@ def get_jinja_globals():
             'upload_string': f'{url_prefix}/insert/str',
             'view': f'{url_prefix}/view',
             'search_word': f'{url_prefix}/view/search-word',
+            'api_search_word': f'{url_prefix}/api/search-word',
             'view_words': f'{url_prefix}/view/word',
             'view_specific_word': f'{url_prefix}/view/word/',
             'toggle_star': f'{url_prefix}/toggle-star',

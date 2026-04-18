@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import tempfile
@@ -13,7 +13,8 @@ from app.handlers.view import (handle_search_word, handle_view_specific_word, ha
                                handle_view_books, handle_view_specific_book,
                                toggle_star_helper, delete_book_helper, get_all_book_name_and_id)
 from app.dependencies import (
-    get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user
+    get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user,
+    rate_limiter
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                change_word_prio_to_negative, reset_word_prio)
@@ -50,13 +51,13 @@ def register_page():
     return templates.TemplateResponse("register.html", {"request": {}})
 
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=UserResponse, dependencies=[Depends(rate_limiter(5, 60))])
 async def register(
     user_data: UserCreate,
     db: DBHandling = Depends(get_db)
 ):
     """
-    Register a new user.
+    Register a new user. Raise 429 if called 5 times/minute.
     
     Body: {username, email, password, is_admin}
     Returns: {id, username, email, is_admin}
@@ -81,7 +82,7 @@ async def register(
     return user
 
 
-@router.post("/login")
+@router.post("/login", dependencies=[Depends(rate_limiter(10, 60))])
 async def login(
     credentials: UserLogin,
     db: DBHandling = Depends(get_db),
@@ -89,6 +90,7 @@ async def login(
 ):
     """
     Login user and return JWT tokens.
+    Will raise 429 if failed [FAILED_LOGIN_LIMIT] times or spam call 10 times/minute.
     
     Body: {username, password}
     Returns: {access_token, refresh_token, token_type}
@@ -148,7 +150,7 @@ async def logout(
     return {"message": "Logged out successfully"}
 
 
-@router.post("/refresh")
+@router.post("/refresh", dependencies=[Depends(rate_limiter(2, 60))])
 async def refresh_token(
     token_data: TokenRefresh,
     redis: aioredis.Redis = Depends(get_redis)
@@ -273,24 +275,24 @@ async def view_words(
 
 
 @router.get("/view/search-word")
-async def search_word(
-    request: Request,
-    word: str = "",
-    limit: int = DEFAULT_LIMIT,
-    db: DBHandling = Depends(get_db)
-):
-    """Search for a word"""
-    # If UI and not word, that means it's the first time enter this page
-    # Just render it, when provided a word, it'll call this function again
-    if not word:
-        return templates.TemplateResponse("view/word/search_word.html", {"request": {}})
+def search_word():
+    """Serve the search word page"""
+    return templates.TemplateResponse("view/word/search_word.html", {"request": {}})
 
+
+@router.get("/api/search-word", dependencies=[Depends(rate_limiter(60, 60))])
+async def api_search_word(
+    word: str,
+    limit: int = DEFAULT_LIMIT,
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
+):
+    """Search for a word, returns JSON results"""
     response_data = await handle_search_word(db, word, limit, bpv1_url_prefix)
 
-    # Check for error in response
     if "error" in response_data:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=response_data["error"])
-    return response_data
+    return JSONResponse(content=response_data)
 
 
 @router.get("/view/word/{word_id}")
