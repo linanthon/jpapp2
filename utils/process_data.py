@@ -5,8 +5,10 @@ from jamdict import Jamdict
 from jamdict.util import LookupResult
 from jamdict.jmdict import JMDEntry
 import jamorasep
+import io
 import os
 import threading
+import re
 
 from typing import List, TYPE_CHECKING
 
@@ -14,6 +16,7 @@ if TYPE_CHECKING:
     from utils.db import DBHandling
 from utils.data import JLPT_DICT, STOP_WORDS, ROMAJI_MAP, is_japanese_word
 from utils.logger import get_logger
+from utils.text_extractor import TxtExtractor, DocxExtractor, PdfExtractor
 from schemas.constants import DEFAULT_DISTRACTOR_COUNT
 from schemas.word import Word
 
@@ -22,11 +25,23 @@ log = get_logger(__file__)
 class ProcessData():
     """Use to process incoming Japanese data, stream file, tag sentence, get word info, ..."""
     
-    _SENTENCE_DELIMITERS = "。！？：\n.!?:"
+    # Regex for end of sentence: period not in decimal + other symbols
+    _SENTENCE_REGEX = re.compile(
+        r'(?<!\d)\.(?!\d)',
+        r'。！？：\n!?:'
+    )
 
     def __init__(self):
         self.tagger = Tagger()
         self._local = threading.local()
+
+        text_extractor = TxtExtractor()
+        extensions = [".txt", ".csv", ".log", ".md", ".json"]
+        self._extractors = {ext: text_extractor for ext in extensions}
+        self._extractors.update({
+            ".pdf": PdfExtractor(),
+            ".docx": DocxExtractor()
+        })
 
     @property
     def jam(self) -> Jamdict:
@@ -39,11 +54,10 @@ class ProcessData():
     def _find_sentence_end(buffer: str) -> int:
         """Find the index of the first sentence-ending delimiter in the buffer.
         Returns index+1, or -1 if not found."""
-        positions = [buffer.find(d) for d in ProcessData._SENTENCE_DELIMITERS]
-        found = [p for p in positions if p != -1]
-        if not found:
-            return -1
-        return min(found) + 1
+        match = ProcessData._SENTENCE_REGEX.search(buffer)
+        if match:
+            return match.end()  # idx+1
+        return -1
 
     async def process_sentence(self, sentence: str, db: "DBHandling") -> List[Word]:
         """
@@ -84,33 +98,44 @@ class ProcessData():
         """
         Read file splitted into chunks, return is a generator, 1 sentence at a time.
         A sentence is a not empty string of words that ends with one of [。, \\n, ！, ？, ：, ., !, ?, :].
+        
+        Input:
+        - filename: file full path
+        - chunk_size: chunk size to avoid memory limit error (only applied for .txt files)
+        - auto_strip: If True, will strip '\\n' and extra spaces at start and end of sentence got from chunk.
+        Use False if want to keep the sentence as is.
         """
         if not os.path.exists(filename):
             log.error(f"File '{filename}' not found")
             return ""
 
-        buffer = ""
-        with open(filename, mode="r", encoding="utf-8") as f:
+        buffer = io.StringIO()
+        for chunk in self._extractors.stream_text(filename, chunk_size):
+            buffer.write(chunk)
             while True:
-                chunk = f.read(chunk_size)
-                if not chunk:
+                content = buffer.getvalue()
+                end_idx = self._find_sentence_end(content)
+                if end_idx == -1:
                     break
-                buffer += chunk
-                while True:
-                    end = self._find_sentence_end(buffer)
-                    if end == -1:
-                        break
-                    
-                    sentence = buffer[:end]
-                    if auto_strip:
-                        sentence = buffer[:end].strip("\n").strip()
-                        
-                    buffer = buffer[end:]
-                    if sentence:
-                        yield sentence
+                
+                sentence = buffer[:end_idx]
+                if auto_strip:
+                    sentence = buffer[:end_idx].strip("\n").strip()
+
+                # Remove the extracted sentence = Move 'cursor' to start, wipe existing content, put remaining back in
+                remainder = content[end_idx:]
+                buffer.seek(0)      
+                buffer.truncate(0)
+                buffer.write(remainder)
+                if sentence:
+                    yield sentence
         # The left over
-        if buffer:
-            yield buffer
+        final_content = buffer.getvalue()
+        if final_content:
+            if auto_strip:
+                yield final_content.strip("\n").strip()
+            else:
+                yield final_content
 
     def stream_sentences_str(self, content: str):
         """

@@ -33,6 +33,10 @@ class TestGetFilenameFromPath:
     def test_multiple_dots(self):
         assert get_filename_from_path("archive.tar.gz") == "archive.tar"
 
+# ── get_filename_from_path ────────────────────────────────────────────────────
+class TestGetFileExtensionFromPath:
+    def test_unix_path(self):
+        assert get_filename_from_path("c:/a/path/the_file.123.txt") == ".txt"
 
 # ── str_2_byte ────────────────────────────────────────────────────────────────
 class TestStr2Byte:

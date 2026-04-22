@@ -19,7 +19,7 @@ from app.dependencies import (
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                change_word_prio_to_negative, reset_word_prio)
-from utils.helpers import get_filename_from_path, validate_jlpt_level, parse_bool_param, validate_star
+from utils.helpers import get_filename_from_path, get_file_extension_from_path, validate_jlpt_level, parse_bool_param, validate_star
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
 from utils.db import DBHandling
@@ -202,22 +202,37 @@ async def upload_file(
     pdata: ProcessData = Depends(get_pdata),
     current_admin: dict = Depends(get_current_admin_user)
 ):
-    """Handle file upload. submittedFilename form field with file. Admin only."""
-    if not submittedFilename:
+    """Handle file upload (.txt, .pdf, .docx). Admin only."""
+    if not submittedFilename or not submittedFilename.filename:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No file uploaded")
+    
+    ext = get_file_extension_from_path(submittedFilename.filename)
+    if ext not in ProcessData.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=f"Unsupported file type: .{ext}. Allowed: {', '.join(ProcessData.ALLOWED_EXTENSIONS)}"
+        )
+    
     file_name = get_filename_from_path(submittedFilename.filename)
     
-    # Save to temp file to open multiple times
-    tmp = tempfile.NamedTemporaryFile(delete=False)
+    # Save to temp file (preserving extension for PDF/DOCX readers)
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
     tmp_path = tmp.name
-    content = await submittedFilename.read()
-    tmp.write(content)
-    tmp.close()
-    
-    return StreamingResponse(
-        handle_insert_file_stream(pdata, db, file_name, tmp_path),
-        media_type="text/event-stream"
-    )
+    try:
+        content = await submittedFilename.read()
+        tmp.write(content)
+        tmp.close()
+        return StreamingResponse(
+            handle_insert_file_stream(pdata, db, file_name, tmp_path),
+            media_type="text/event-stream"
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to read file content")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
 @router.post("/insert/str")

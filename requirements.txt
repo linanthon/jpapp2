@@ -17,7 +17,9 @@ asyncpg==0.31.0
 redis==5.0.1
 aioredis==2.0.1
 
-# tokenize words and dict
+# process file, tokenize words and dict
+PyPDF2==3.0.1
+python-docx==1.2.0
 fugashi==1.5.1
 unidic-lite==1.0.8
 jamdict==0.1a11.post2
