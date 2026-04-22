@@ -36,7 +36,7 @@ def mock_db():
         "query_like_sentence", "query_random_sentences", "get_exact_sentence",
         "insert_word_book_ref", "insert_word_sentence_ref", "insert_sentence_book_ref",
         "get_quiz", "update_quized_prio_ts", "get_distractors",
-        "get_meanings_from_db",
+        "get_meanings_from_db", "get_user_progress",
     ]:
         setattr(db, attr, AsyncMock())
 
@@ -66,7 +66,7 @@ def mock_redis():
     redis.set = AsyncMock()
     redis.setex = AsyncMock()
     redis.delete = AsyncMock()
-    redis.incr = AsyncMock()
+    redis.incr = AsyncMock(return_value=1)  # must return int for rate_limiter comparison
     redis.expire = AsyncMock()
     redis.ping = AsyncMock()
     return redis

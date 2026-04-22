@@ -11,9 +11,12 @@ TODO backend:
 - ~~Fix N+1 query~~
 - ~~Restructure~~
 - ~~Stop convert db Record~~
+- ~~Add progress page~~
+- Read word, pdf files
+- Search by kana, romaji, EN
+- API now is concurrent, insert will meet `process_data` bottle neck --> move to background job
+- Can insert multiple files 
 - Redis LRU words
-- PgBouncer to scale Postgres max connections
-- API now is concurrent, insert will meet `process_data` bottle neck
 
 TODO frontend
 - Fix goBack auth problem
@@ -21,4 +24,4 @@ TODO frontend
 - Fix view specific book page
 - Fix go back button in view specific
 - Quiz not starting
-- Unauthorize insert string goes to /v1/null
+- Unauthorize request goes to /v1/null

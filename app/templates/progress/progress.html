@@ -1,0 +1,42 @@
+<!doctype html>
+<html data-url-prefix="{{ url_prefix }}" data-home-url="{{ url('home') }}"
+      data-login-url="{{ url('login') }}" data-logout-url="{{ url('logout') }}"
+      data-register-url="{{ url('register') }}" data-refresh-url="{{ url('refresh') }}">
+<head>
+  <title>Progress</title>
+  <link rel="stylesheet" href="{{ url('static', 'css/style_common.css') }}">
+  <link rel="stylesheet" href="{{ url('static', 'css/auth/home.css') }}">
+  <script src="{{ url('static', 'js/base.js') }}" defer></script>
+  <script src="{{ url('static', 'js/auth/auth.js') }}" defer></script>
+  <script src="{{ url('static', 'js/progress/progress.js') }}" defer></script>
+</head>
+<body>
+  <script>
+    if (!localStorage.getItem('access_token')) {
+      window.location.href = document.documentElement.getAttribute('data-login-url');
+    }
+  </script>
+
+  <div class="header-container">
+    <button class="back-btn" onclick="goBack()">← Back</button>
+    <h2>Study Progress</h2>
+    <button class="home-btn" onclick="goHome()">🏠Home</button>
+  </div>
+
+  <!-- Main options-->
+  <div class="progress-container" style="position:absolute;top:17%;left:50%;transform:translate(-50%,-50%)">
+    <table class="progress-table">
+      <thead>
+        <tr>
+          <th>Level</th>
+          <th>≥ soft cap</th>
+          <th>≥ hard cap</th>
+        </tr>
+      </thead>
+      <tbody id="progress-tbody">
+        <tr><td colspan="3">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
