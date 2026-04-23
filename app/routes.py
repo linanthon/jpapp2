@@ -2,9 +2,10 @@ from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPExc
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
-import tempfile
 import os
 import redis.asyncio as aioredis
+import tempfile
+import uuid
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
                         FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -19,12 +20,14 @@ from app.dependencies import (
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                change_word_prio_to_negative, reset_word_prio)
-from utils.helpers import get_filename_from_path, get_file_extension_from_path, validate_jlpt_level, parse_bool_param, validate_star
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
-from utils.db import DBHandling
-from utils.process_data import ProcessData
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
+from utils.db import DBHandling
+from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
+                           parse_bool_param, validate_star)
+from utils.process_data import ProcessData
+from utils.storage import upload_file_to_minio
 
 # Create router
 router = APIRouter()
@@ -197,33 +200,47 @@ def insert():
 @router.post("/insert/file")
 async def upload_file(
     request: Request,
-    submittedFilename: UploadFile = File(None),
+    submittedFile: UploadFile = File(None),
     db: DBHandling = Depends(get_db),
     pdata: ProcessData = Depends(get_pdata),
     current_admin: dict = Depends(get_current_admin_user)
 ):
     """Handle file upload (.txt, .pdf, .docx). Admin only."""
-    if not submittedFilename or not submittedFilename.filename:
+    if not submittedFile or not submittedFile.filename:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No file uploaded")
     
-    ext = get_file_extension_from_path(submittedFilename.filename)
+    ext = get_file_extension_from_path(submittedFile.filename)
     if ext not in ProcessData.ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail=f"Unsupported file type: .{ext}. Allowed: {', '.join(ProcessData.ALLOWED_EXTENSIONS)}"
         )
     
-    file_name = get_filename_from_path(submittedFilename.filename)
+    file_name = get_filename_from_path(submittedFile.filename)
     
+    #TODO: Remove
     # Save to temp file (preserving extension for PDF/DOCX readers)
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
-    tmp_path = tmp.name
+    # tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
+    # tmp_path = tmp.name
+    # content = await submittedFile.read()
+    # tmp.write(content)
+    # tmp.close()
     try:
-        content = await submittedFilename.read()
-        tmp.write(content)
-        tmp.close()
+        # Optimistic locking
+        book_id = db.insert_book_init(file_name)
+        if not book_id:
+            return  #TODO: properly cancel request processing and not return anything?
+
+        object_name = f"{uuid.uuid4().hex}_{file_name}"
+        object_name = upload_file_to_minio(submittedFile.file, object_name)
+        if not object_name:
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload file {file_name} to external storage."
+            )
+
         return StreamingResponse(
-            handle_insert_file_stream(pdata, db, file_name, tmp_path),
+            handle_insert_file_stream(pdata, db, book_id, submittedFile),
             media_type="text/event-stream"
         )
     except ValueError as e:

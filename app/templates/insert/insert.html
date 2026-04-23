@@ -24,13 +24,13 @@
 
   <!-- Choose file -->
   <button type="button" onclick="document.getElementById('fileInput').click()">Choose file</button>
-  <!-- Putting the form to save chosen filename to backend under "submittedFilename"
+  <!-- Putting the form to save chosen filename to backend under "submittedFile"
    and only direct to `def upload_file()` after pressing submit -->
   <form id="fileForm" method="POST" action="{{ url('upload_file') }}" enctype="multipart/form-data">
     <!-- Default not showing the box (containing filename and submit button), only show after choosing -->
     
     <!-- The type="file" allows choosing file, save to JS by `id`, save to Flask by `name`, display nothing -->
-    <input type="file" id="fileInput" name="submittedFilename" style="display:none" accept=".txt,.pdf,.docx,.csv,.json,.md,.log" onchange="showFileName()">
+    <input type="file" id="fileInput" name="submittedFile" style="display:none" accept=".txt,.pdf,.docx,.csv,.json,.md,.log" onchange="showFileName()">
     
     <!-- This is the display box, the `fileName` is got from JS, the `type="submit"` will actually send form -->
     <div id="fileInfo" style="display:none" class="file-info">

@@ -262,54 +262,46 @@ class DBHandling:
         return result
 
     # Book ==================================================================================
-    async def insert_book(self, filename: str, content: str = "") -> int:
+    async def insert_book_init(self, filename: str) -> int:
         """
-        Read the whole file and insert into table books (if not in DB yet).
-        If `content` is not empty/None, doesn't read file and use this instead.
+        Init insert filename and status = 'PENDING'
 
         Input:
-        - filename: The full path filename.
-        - content: The content of the document. Because this function is design for both
-        a real file and not. If filename is a real file, leave this empty. If filename is
-        just a name to name this document, then must have content.
+        - filename: The full path filename. the file name without path must be unique.
 
-        Output: Return the inserted book ID. 0 if already existed. -1 if DB failed.
-        -2 if file not found.
+        Output: Return the inserted book ID. -1 if insert failed.
         """
-        # If is file (not content str)
         bookname = filename
-        if not content:
-            # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
-            match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
+        # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
+        match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
+        if match:
+            bookname = match.group()
+        else:
+            match = re.search(r'[^\\/]', filename)
             if match:
                 bookname = match.group()
-            else:
-                match = re.search(r'[^\\/]', filename)
-                if match:
-                    bookname = match.group()
-
-        # Check exist
+        
         row = await self._fetchrow(
-            f"SELECT COUNT(*) FROM {TABLE_BOOKS} WHERE name = $1;", bookname
-        )
-        if row and row["count"]:
-            return 0
-
-        # Read file
-        if not content:
-            if os.path.exists(filename):
-                with open(filename, "r", encoding="utf-8") as f:
-                    content = f.read()
-            else:
-                log.error(f"File {filename} not found")
-                return -2
-
-        # Insert
-        row = await self._fetchrow(
-            f"INSERT INTO {TABLE_BOOKS} (name, content) VALUES ($1, $2) RETURNING id;",
-            bookname, content
+            f"INSERT INTO {TABLE_BOOKS} (name, status) VALUES ($1, 'PENDING') RETURNING id;",
+            bookname
         )
         return row["id"] if row else -1
+    
+    async def insert_book_finish(self, book_id: int, file_url: str = "") -> bool:
+        """
+        Update the book uploaded MinIO/S3 URL and status.
+
+        Input:
+        - book_id: The book ID.
+        - file_url: The storage URL for this file/book
+
+        Output: Return True if success, False otherwise.
+        """
+        row = await self._fetchrow(
+            f"UPDATE {TABLE_BOOKS} SET file_url=$1, status='FINISHED' WHERE id = $2;",
+            file_url, book_id
+        )
+        return row[0] == True   #TODO: check?
 
     async def update_book(self, book_id: int = 0, name: str = "", append_content: str = "") -> bool:
         """

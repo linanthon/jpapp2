@@ -14,8 +14,9 @@ CREATE TABLE IF NOT EXISTS words (
 CREATE TABLE IF NOT EXISTS books (
     id SERIAL PRIMARY KEY NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
-    name TEXT UNIQUE NOT NULL,
-    content TEXT    -- the entire book content, the limit is 1GB which no books achieve
+    name TEXT UNIQUE NOT NULL,  -- optimistic locking
+    file_url TEXT,
+    status TEXT NOT NULL
 );
 
 -- Store the reference of a word and the books contain it

@@ -104,6 +104,8 @@ class ProcessData():
         - chunk_size: chunk size to avoid memory limit error (only applied for .txt files)
         - auto_strip: If True, will strip '\\n' and extra spaces at start and end of sentence got from chunk.
         Use False if want to keep the sentence as is.
+
+        Output: yield a sentence 1 by 1
         """
         if not os.path.exists(filename):
             log.error(f"File '{filename}' not found")

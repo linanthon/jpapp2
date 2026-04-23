@@ -22,5 +22,11 @@ FAILED_LOGIN_BLOCK_MINUTES = int(os.getenv("FAILED_LOGIN_BLOCK_MINUTES", 5))
 # Redis
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0") # 'localhost' is for dev at local only
 
+# MinIO Storage
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_BUCKET = os.getenv("MINIO_BUCKET", "jpapp-books")
+
 # Blueprint prefix
 bpv1_url_prefix = "/v1"

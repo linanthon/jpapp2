@@ -27,8 +27,8 @@ class DocxExtractor(BaseTextExtractor):
     
 class PdfExtractor(BaseTextExtractor):
     def stream_text(self, filename, chunk_size=0):
-        from PyPDF2 import PdfReader
-        reader = PdfReader(filename)
+        import fitz
+        reader = fitz.open(filename)
         for page in reader.pages:
             text = page.extract_text()
             if text:

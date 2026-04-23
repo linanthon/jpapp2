@@ -36,7 +36,7 @@ document.getElementById("fileForm").addEventListener("submit", async function(e)
   const formData = new FormData(this);
 
   if (input.files.length === 0 && lastSelectedFile) {
-    formData.set('submittedFilename', lastSelectedFile, lastSelectedFile.name);
+    formData.set('submittedFile', lastSelectedFile, lastSelectedFile.name);
   }
   handleFormSubmit(this, "fileNotice", "fileProgressLine", formData);
 });
