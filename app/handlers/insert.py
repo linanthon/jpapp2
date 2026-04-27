@@ -10,6 +10,7 @@ from utils.logger import get_logger
 if TYPE_CHECKING:
     from fastapi import UploadFile
     from utils.process_data import ProcessData
+    import redis.asyncio as aioredis
 
 log = get_logger(__name__)
 
@@ -37,7 +38,7 @@ async def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandlin
             await db.insert_sentence_book_ref(sentence_id, book_id)
 
 
-async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", book_id: int, submittedFile: "UploadFile"):
+async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", redis: "aioredis.Redis", book_id: int, submittedFile: "UploadFile"):
     """
     Handle input-ing a file, check file exist, insert as book (the book name is the file name),
     sentences, words to DB and link word-book, word-sentence, sentence-book IDs.
@@ -58,9 +59,9 @@ async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", book
         await do_insert_word_sentence_book_2_db(pdata, db, sentence.strip("\n").strip(), book_id)
         progress += len(sentence)
         # use "data: " to mark the progress display for JS
-        yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
+        await redis.set(f"book_progress:{book_id}", f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
     
-    yield str_2_byte(f"Processed and inserted {submittedFile.filename}")
+    await redis.set(f"book_progress:{book_id}", f"Processed and inserted {submittedFile.filename}")
 
 async def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name: str, data: str):
     """

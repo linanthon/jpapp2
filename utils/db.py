@@ -314,6 +314,21 @@ class DBHandling:
         )
         return status is not None
 
+    async def insert_book_finished(self, book_id: int) -> bool:
+        """
+        Update the inserting book process is finished.
+
+        Input:
+        - book_id: The book ID.
+
+        Output: Return True if success, False otherwise.
+        """
+        status = await self._execute(
+            f"UPDATE {TABLE_BOOKS} SET status='FINISHED' WHERE id = $1;",
+            book_id
+        )
+        return status is not None
+
     async def update_book(self, book_id: int = 0, name: str = "", append_content: str = "") -> bool:
         """
         Append data to an existing record's `content` column.

@@ -202,6 +202,7 @@ async def upload_file(
     submittedFile: UploadFile = File(None),
     db: DBHandling = Depends(get_db),
     pdata: ProcessData = Depends(get_pdata),
+    redis: aioredis.Redis = Depends(get_redis),
     current_admin: dict = Depends(get_current_admin_user)
 ):
     """Handle file upload (.txt, .pdf, .docx). Admin only."""
@@ -225,10 +226,8 @@ async def upload_file(
     # tmp.write(content)
     # tmp.close()
     try:
-        idem_key = request.headers.get("Idempotency-Key", "")
-        
-
         # Idempotent init: first request wins, stop duplicate request
+        idem_key = request.headers.get("Idempotency-Key", "")
         book_id, created = await db.insert_book_init(current_admin["id"], file_name, idem_key)
         if book_id <= 0:
             raise HTTPException(
@@ -254,11 +253,15 @@ async def upload_file(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 detail="Failed to finalize uploaded file metadata"
             )
+        
+        handle_insert_file_stream(pdata, db, redis, book_id, submittedFile)
 
-        return StreamingResponse(
-            handle_insert_file_stream(pdata, db, book_id, submittedFile),
-            media_type="text/event-stream"
-        )
+        if not await db.insert_book_finished(book_id, object_name):
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize processing the uploaded file"
+            )
+
     except ValueError as e:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
     except Exception:
