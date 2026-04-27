@@ -58,3 +58,11 @@ def get_file_from_minio_as_stream(object_name):
     file_stream.write(response["Body"].read())
     file_stream.seek(0)
     return file_stream
+
+def get_file_download_link(object_name):
+    """Return download link for frontend to do the download.
+    Backend won't have to store the file in memory"""
+    #TODO
+    # http://minio.../bucket/file_abc123.pdf?X-Amz-Algorithm=...&X-Amz-Signature=xyz&Expires=360
+    # X-Amz-Signature = generated using your secret key
+    return ""

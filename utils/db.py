@@ -262,14 +262,16 @@ class DBHandling:
         return result
 
     # Book ==================================================================================
-    async def insert_book_init(self, filename: str) -> int:
+    async def insert_book_init(self, user_id: int, filename: str, idempotency_key: str) -> Tuple[int, bool]:
         """
         Init insert filename and status = 'PENDING'
 
         Input:
+        - user_id: The user who requested inserting this book
         - filename: The full path filename. the file name without path must be unique.
+        - idempotency_key: The request ID for inserting this book
 
-        Output: Return the inserted book ID. -1 if insert failed.
+        Output: Return (inserted book ID, True) if success. (-1, False) if failed.
         """
         bookname = filename
         # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
@@ -281,15 +283,24 @@ class DBHandling:
             if match:
                 bookname = match.group()
         
+        # Explain:
+        # - If the idempotency_key exists, `name = EXCLUDED.name`
+        #    is a "no-op" update just to trigger the RETURNING clause
+        # - xmax = 0 is a trick to see if it was a fresh insert
         row = await self._fetchrow(
-            f"INSERT INTO {TABLE_BOOKS} (name, status) VALUES ($1, 'PENDING') RETURNING id;",
-            bookname
+            f"""INSERT INTO {TABLE_BOOKS} (user_id, name, idempotency_key, status)
+            VALUES ($1, $2, $3, 'PENDING')
+            ON CONFLICT (idempotency_key) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id, (xmax = 0) AS is_new;""",
+            user_id, bookname, idempotency_key
         )
-        return row["id"] if row else -1
-    
-    async def insert_book_finish(self, book_id: int, file_url: str = "") -> bool:
+        if row:
+            return row['id'], row['is_new']
+        return -1, False
+
+    async def insert_book_uploaded(self, book_id: int, file_url: str = "") -> bool:
         """
-        Update the book uploaded MinIO/S3 URL and status.
+        Update the inserting book file url and status after uploaded to MinIO/S3.
 
         Input:
         - book_id: The book ID.
@@ -297,11 +308,11 @@ class DBHandling:
 
         Output: Return True if success, False otherwise.
         """
-        row = await self._fetchrow(
-            f"UPDATE {TABLE_BOOKS} SET file_url=$1, status='FINISHED' WHERE id = $2;",
+        status = await self._execute(
+            f"UPDATE {TABLE_BOOKS} SET file_url=$1, status='UPLOADED' WHERE id = $2;",
             file_url, book_id
         )
-        return row[0] == True   #TODO: check?
+        return status is not None
 
     async def update_book(self, book_id: int = 0, name: str = "", append_content: str = "") -> bool:
         """

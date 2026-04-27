@@ -4,7 +4,6 @@ from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import os
 import redis.asyncio as aioredis
-import tempfile
 import uuid
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
@@ -226,10 +225,21 @@ async def upload_file(
     # tmp.write(content)
     # tmp.close()
     try:
-        # Optimistic locking
-        book_id = db.insert_book_init(file_name)
-        if not book_id:
-            return  #TODO: properly cancel request processing and not return anything?
+        idem_key = request.headers.get("Idempotency-Key", "")
+        
+
+        # Idempotent init: first request wins, stop duplicate request
+        book_id, created = await db.insert_book_init(current_admin["id"], file_name, idem_key)
+        if book_id <= 0:
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=f"Failed to initialize book '{file_name}'"
+            )
+        if not created:
+            return JSONResponse(
+                status_code=HTTPStatus.OK,
+                content={"book_id": book_id, "message": "Duplicate request ignored"}
+            )
 
         object_name = f"{uuid.uuid4().hex}_{file_name}"
         object_name = upload_file_to_minio(submittedFile.file, object_name)
@@ -237,6 +247,12 @@ async def upload_file(
             raise HTTPException(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 detail=f"Failed to upload file {file_name} to external storage."
+            )
+
+        if not await db.insert_book_uploaded(book_id, object_name):
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize uploaded file metadata"
             )
 
         return StreamingResponse(
@@ -247,9 +263,6 @@ async def upload_file(
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
     except Exception:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to read file content")
-    finally:
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
 
 
 @router.post("/insert/str")

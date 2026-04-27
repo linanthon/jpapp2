@@ -1,5 +1,4 @@
 from typing import TYPE_CHECKING, Tuple
-from fastapi import UploadFile
 import os
 from http import HTTPStatus
 
@@ -9,6 +8,7 @@ from utils.db import DBHandling
 from utils.logger import get_logger
 
 if TYPE_CHECKING:
+    from fastapi import UploadFile
     from utils.process_data import ProcessData
 
 log = get_logger(__name__)
@@ -37,7 +37,7 @@ async def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandlin
             await db.insert_sentence_book_ref(sentence_id, book_id)
 
 
-async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", book_id: int, submittedFile: UploadFile):
+async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", book_id: int, submittedFile: "UploadFile"):
     """
     Handle input-ing a file, check file exist, insert as book (the book name is the file name),
     sentences, words to DB and link word-book, word-sentence, sentence-book IDs.
@@ -51,18 +51,16 @@ async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", book
     Output: bytes of response data or error dict
     """    
     reset_view_word_count()
-    content_len = submittedFile
+    content_len = submittedFile.size or 1
     
     progress = 0
-    for sentence in pdata.stream_sentences_file(saved_tmp_path, auto_strip=True):
+    for sentence in pdata.stream_sentences_file(submittedFile, auto_strip=True):
         await do_insert_word_sentence_book_2_db(pdata, db, sentence.strip("\n").strip(), book_id)
         progress += len(sentence)
         # use "data: " to mark the progress display for JS
         yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
     
-    # Remove tmp file
-    os.remove(saved_tmp_path)
-    yield str_2_byte(f"Processed and inserted {filename}")
+    yield str_2_byte(f"Processed and inserted {submittedFile.filename}")
 
 async def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name: str, data: str):
     """
@@ -84,7 +82,7 @@ async def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name:
     reset_view_word_count()
 
     content_len = len(data)
-    book_id, resp, _ = await do_insert_book(db, name, data)
+    book_id, resp, _ = await do_insert_book(db, name, data) #TODO: fix later
     if resp:
         yield str_2_byte(str(resp))
         return

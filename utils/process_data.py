@@ -13,6 +13,7 @@ import re
 from typing import List, TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from fastapi import UploadFile
     from utils.db import DBHandling
 from utils.data import JLPT_DICT, STOP_WORDS, ROMAJI_MAP, is_japanese_word
 from utils.logger import get_logger
@@ -24,12 +25,10 @@ log = get_logger(__file__)
 
 class ProcessData():
     """Use to process incoming Japanese data, stream file, tag sentence, get word info, ..."""
+    ALLOWED_EXTENSIONS = set((".txt", ".csv", ".log", ".md", ".json", ".pdf", ".docx"))
     
     # Regex for end of sentence: period not in decimal + other symbols
-    _SENTENCE_REGEX = re.compile(
-        r'(?<!\d)\.(?!\d)',
-        r'。！？：\n!?:'
-    )
+    _SENTENCE_REGEX = re.compile(r"(?<!\d)\.(?!\d)|[。！？：\n!?:]")
 
     def __init__(self):
         self.tagger = Tagger()
@@ -94,25 +93,31 @@ class ProcessData():
                 words.append(row)
         return words
 
-    def stream_sentences_file(self, filename: str, chunk_size: int = 30, auto_strip: bool = True):
+    def stream_sentences_file(self, submitted_file: "UploadFile", chunk_size: int = 30, auto_strip: bool = True):
         """
         Read file splitted into chunks, return is a generator, 1 sentence at a time.
         A sentence is a not empty string of words that ends with one of [。, \\n, ！, ？, ：, ., !, ?, :].
         
         Input:
-        - filename: file full path
+        - submitted_file: FastAPI UploadFile
         - chunk_size: chunk size to avoid memory limit error (only applied for .txt files)
         - auto_strip: If True, will strip '\\n' and extra spaces at start and end of sentence got from chunk.
         Use False if want to keep the sentence as is.
 
         Output: yield a sentence 1 by 1
         """
-        if not os.path.exists(filename):
-            log.error(f"File '{filename}' not found")
-            return ""
+        if not submitted_file or not submitted_file.filename:
+            log.error("User submitted file not found")
+            return
+
+        _, ext = os.path.splitext(submitted_file.filename.lower())
+        extractor = self._extractors.get(ext)
+        if extractor is None:
+            log.error(f"Unsupported file extension '{ext}'")
+            return
 
         buffer = io.StringIO()
-        for chunk in self._extractors.stream_text(filename, chunk_size):
+        for chunk in extractor.stream_text(submitted_file.file, chunk_size):
             buffer.write(chunk)
             while True:
                 content = buffer.getvalue()
@@ -120,9 +125,9 @@ class ProcessData():
                 if end_idx == -1:
                     break
                 
-                sentence = buffer[:end_idx]
+                sentence = content[:end_idx]
                 if auto_strip:
-                    sentence = buffer[:end_idx].strip("\n").strip()
+                    sentence = sentence.strip("\n").strip()
 
                 # Remove the extracted sentence = Move 'cursor' to start, wipe existing content, put remaining back in
                 remainder = content[end_idx:]
@@ -135,7 +140,9 @@ class ProcessData():
         final_content = buffer.getvalue()
         if final_content:
             if auto_strip:
-                yield final_content.strip("\n").strip()
+                stripped = final_content.strip("\n").strip()
+                if stripped:
+                    yield stripped
             else:
                 yield final_content
 
