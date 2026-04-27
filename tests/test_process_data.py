@@ -1,4 +1,5 @@
 """Tests for utils/process_data.py — sentence streaming, word entry, wasei-eigo, audio mapping."""
+import io
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from utils.process_data import ProcessData
@@ -65,33 +66,53 @@ class TestStreamSentencesStr:
 
 
 # ── stream_sentences_file ─────────────────────────────────────────────────────
+def _make_mock_upload(filename: str, content: bytes):
+    """Helper: create a mock UploadFile with .filename and .file (BytesIO)."""
+    upload = MagicMock()
+    upload.filename = filename
+    upload.file = io.BytesIO(content)
+    return upload
+
+
 class TestStreamSentencesFile:
     def setup_method(self):
         self.pdata = ProcessData.__new__(ProcessData)
+        # The uploaded file will be read in byte like setup in the _make_mock_upload
+        # so which extractor does not matter
+        from utils.text_extractor import TxtExtractor
+        txt_ext = TxtExtractor()
+        self.pdata._extractors = {".txt": txt_ext}
 
-    def test_file_not_found(self):
-        result = list(self.pdata.stream_sentences_file("nonexistent_file.txt"))
-        # Returns empty string generator
-        assert result == [] or result == [""]
+    def test_missing_file(self):
+        result = list(self.pdata.stream_sentences_file(None))
+        assert result == []
 
-    def test_reads_file(self, tmp_path):
-        f = tmp_path / "test.txt"
-        f.write_text("文一。文二。", encoding="utf-8")
-        result = list(self.pdata.stream_sentences_file(str(f)))
+    def test_missing_filename(self):
+        upload = MagicMock()
+        upload.filename = None
+        result = list(self.pdata.stream_sentences_file(upload))
+        assert result == []
+
+    def test_unsupported_extension(self):
+        upload = _make_mock_upload("test.xyz", b"some data")
+        result = list(self.pdata.stream_sentences_file(upload))
+        assert result == []
+
+    def test_reads_file(self):
+        upload = _make_mock_upload("test.txt", "文一。文二。".encode("utf-8"))
+        result = list(self.pdata.stream_sentences_file(upload))
         assert result == ["文一。", "文二。"]
 
-    def test_reads_file_with_leftover(self, tmp_path):
-        f = tmp_path / "test.txt"
-        f.write_text("文一。残り", encoding="utf-8")
-        result = list(self.pdata.stream_sentences_file(str(f)))
-        assert "文一。" in result
-        assert "残り" in result
+    def test_reads_file_with_leftover(self):
+        upload = _make_mock_upload("test.txt", "文一。残り".encode("utf-8"))
+        result = list(self.pdata.stream_sentences_file(upload))
+        # assert "文一。" in result
+        # assert "残り" in result
+        assert result == ["文一。", "残り"]
 
-    def test_strips_by_default(self, tmp_path):
-        f = tmp_path / "test.txt"
-        f.write_text("\n文一。\n", encoding="utf-8")
-        result = list(self.pdata.stream_sentences_file(str(f)))
-        # Should strip whitespace/newlines from sentences
+    def test_strips_by_default(self):
+        upload = _make_mock_upload("test.txt", "\n文一。\n".encode("utf-8"))
+        result = list(self.pdata.stream_sentences_file(upload))
         assert all(not s.startswith("\n") for s in result if s)
 
 

@@ -2,59 +2,14 @@
 import pytest
 import os
 from http import HTTPStatus
+from unittest.mock import MagicMock, AsyncMock
 
 from app.handlers.insert import (
-    do_insert_book,
     do_insert_word_sentence_book_2_db,
     handle_insert_str_stream,
     handle_insert_file_stream,
 )
 from schemas.word import Word
-
-
-# ── do_insert_book ────────────────────────────────────────────────────────────
-class TestDoInsertBook:
-    @pytest.mark.asyncio
-    async def test_success(self, mock_db):
-        mock_db.insert_book.return_value = 1
-        book_id, err, status = await do_insert_book(mock_db, "test_book", "content here")
-        assert book_id == 1
-        assert err is None
-        assert status == HTTPStatus.OK
-
-    @pytest.mark.asyncio
-    async def test_name_already_used(self, mock_db):
-        mock_db.insert_book.return_value = 0
-        book_id, err, status = await do_insert_book(mock_db, "dupe", "content")
-        assert book_id == 0
-        assert err == {"error": "Name already used"}
-        assert status == HTTPStatus.CONFLICT
-
-    @pytest.mark.asyncio
-    async def test_db_failure(self, mock_db):
-        mock_db.insert_book.return_value = -1
-        book_id, _, status = await do_insert_book(mock_db, "book", "content")
-        assert book_id == -1
-        assert status == HTTPStatus.INTERNAL_SERVER_ERROR
-
-    @pytest.mark.asyncio
-    async def test_file_not_found(self, mock_db):
-        mock_db.insert_book.return_value = -2
-        book_id, _, status = await do_insert_book(mock_db, "book", "content")
-        assert book_id == -2
-        assert status == HTTPStatus.NOT_FOUND
-
-    @pytest.mark.asyncio
-    async def test_empty_name(self, mock_db):
-        book_id, _, status = await do_insert_book(mock_db, "", "")
-        assert book_id == -1
-        assert status == HTTPStatus.BAD_REQUEST
-
-    @pytest.mark.asyncio
-    async def test_empty_data(self, mock_db):
-        book_id, _, status = await do_insert_book(mock_db, "name", "")
-        assert book_id == -1
-        assert status == HTTPStatus.BAD_REQUEST
 
 
 # ── do_insert_word_sentence_book_2_db ─────────────────────────────────────────
@@ -116,53 +71,69 @@ class TestHandleInsertStrStream:
 
 
 # ── handle_insert_file_stream ─────────────────────────────────────────────────
+def _make_upload_file(filename="testbook.txt", content=b"", size=None):
+    """Helper: create a mock UploadFile with .file, .filename, .size."""
+    upload = MagicMock()
+    upload.filename = filename
+    upload.size = size if size is not None else len(content)
+    upload.file = MagicMock()
+    return upload
+
+
 class TestHandleInsertFileStream:
     @pytest.mark.asyncio
-    async def test_missing_filename(self, mock_pdata, mock_db):
-        chunks = []
-        async for chunk in handle_insert_file_stream(mock_pdata, mock_db, "", ""):
-            chunks.append(chunk)
-        assert any(b"Error" in c for c in chunks)
-
-    @pytest.mark.asyncio
-    async def test_missing_path(self, mock_pdata, mock_db):
-        chunks = []
-        async for chunk in handle_insert_file_stream(mock_pdata, mock_db, "name", ""):
-            chunks.append(chunk)
-        assert any(b"Error" in c for c in chunks)
-
-    @pytest.mark.asyncio
-    async def test_successful_file_insert(self, mock_pdata, mock_db, tmp_path):
-        # Create a temp file to process
-        f = tmp_path / "testbook.txt"
-        f.write_text("文一。文二。", encoding="utf-8")
-
-        mock_db.insert_book.return_value = 1
-        mock_db.update_book.return_value = True
+    async def test_successful_file_insert(self, mock_pdata, mock_db, mock_redis):
+        upload = _make_upload_file("testbook.txt", size=100)
         mock_pdata.stream_sentences_file.return_value = iter(["文一。", "文二。"])
         mock_pdata.process_sentence.return_value = []
 
-        chunks = []
-        async for chunk in handle_insert_file_stream(mock_pdata, mock_db, "testbook", str(f)):
-            chunks.append(chunk)
+        await handle_insert_file_stream(mock_pdata, mock_db, mock_redis, book_id=1, submittedFile=upload)
 
-        assert any(b"Processed" in c for c in chunks)
-        # Temp file should be removed after processing
-        assert not os.path.exists(str(f))
+        mock_pdata.stream_sentences_file.assert_called_once_with(upload, auto_strip=True)
+        # Two sentences → two progress updates + one final
+        assert mock_redis.set.call_count == 3
+        # Final call should contain the filename
+        final_call = mock_redis.set.call_args_list[-1]
+        assert "testbook.txt" in final_call.args[1]
 
     @pytest.mark.asyncio
-    async def test_file_insert_duplicate_name(self, mock_pdata, mock_db, tmp_path):
-        f = tmp_path / "dupe.txt"
-        f.write_text("文一。", encoding="utf-8")
+    async def test_progress_written_to_redis(self, mock_pdata, mock_db, mock_redis):
+        upload = _make_upload_file("book.txt", size=10)
+        mock_pdata.stream_sentences_file.return_value = iter(["12345", "67890"])
+        mock_pdata.process_sentence.return_value = []
 
-        mock_db.insert_book.return_value = 0  # already exists
-        mock_pdata.stream_sentences_file.return_value = iter(["文一。"])
+        await handle_insert_file_stream(mock_pdata, mock_db, mock_redis, book_id=42, submittedFile=upload)
 
-        chunks = []
-        async for chunk in handle_insert_file_stream(mock_pdata, mock_db, "dupe", str(f)):
-            chunks.append(chunk)
+        # Check redis key uses book_id
+        progress_calls = [c for c in mock_redis.set.call_args_list if "book_progress:42" in str(c)]
+        assert len(progress_calls) >= 2
 
-        assert any(b"Name already used" in c for c in chunks)
+    @pytest.mark.asyncio
+    async def test_no_sentences(self, mock_pdata, mock_db, mock_redis):
+        upload = _make_upload_file("empty.txt", size=0)
+        mock_pdata.stream_sentences_file.return_value = iter([])
+
+        await handle_insert_file_stream(mock_pdata, mock_db, mock_redis, book_id=1, submittedFile=upload)
+        # Only the final "Processed and inserted" message
+        assert mock_redis.set.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_inserts_words_and_refs(self, mock_pdata, mock_db, mock_redis):
+        """When process_sentence returns words, refs should be inserted for each."""
+        word = Word(word="食べる", senses="to eat", spelling="タベル")
+        upload = _make_upload_file("book.txt", size=50)
+        mock_pdata.stream_sentences_file.return_value = iter(["食べてください。"])
+        mock_pdata.process_sentence.return_value = [word]
+        mock_db.insert_update_sentence.return_value = 100
+        mock_db.insert_word.return_value = 200
+
+        await handle_insert_file_stream(mock_pdata, mock_db, mock_redis, book_id=3, submittedFile=upload)
+
+        mock_db.insert_update_sentence.assert_called_once()
+        mock_db.insert_word.assert_called_once_with(word)
+        mock_db.insert_word_book_ref.assert_called_once_with(200, 3)
+        mock_db.insert_word_sentence_ref.assert_called_once_with(200, 100)
+        mock_db.insert_sentence_book_ref.assert_called_once_with(100, 3)
 
     @pytest.mark.asyncio
     async def test_no_words_skipped(self, mock_pdata, mock_db):

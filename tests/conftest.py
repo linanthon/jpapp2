@@ -27,6 +27,7 @@ def mock_db():
         "user_exists", "user_exists_by_email",
         "insert_book", "update_book", "get_exact_book", "list_books",
         "count_books", "update_book_star", "delete_book",
+        "insert_book_init", "insert_book_uploaded", "insert_book_finished",
         "insert_word", "update_word_occurrence", "update_word_jlpt",
         "update_words_known", "update_word_star",
         "query_like_word", "get_exact_word", "query_word_sense",

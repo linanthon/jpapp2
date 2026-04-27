@@ -404,3 +404,74 @@ class TestGetUserProgress:
         await self.db.get_user_progress(42)
         call_args = self.db._fetch.call_args
         assert call_args.args[1] == 42
+
+
+# ── InsertBookInit ────────────────────────────────────────────────────────────
+class TestInsertBookInit:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+
+    @pytest.mark.asyncio
+    async def test_new_insert_success(self):
+        self.db._fetchrow = AsyncMock(return_value={"id": 5, "is_new": True})
+        book_id, is_new = await self.db.insert_book_init(1, "mybook.txt", "key-123")
+        assert book_id == 5
+        assert is_new is True
+
+    @pytest.mark.asyncio
+    async def test_duplicate_insert(self):
+        self.db._fetchrow = AsyncMock(return_value={"id": 5, "is_new": False})
+        book_id, is_new = await self.db.insert_book_init(1, "mybook.txt", "key-123")
+        assert book_id == 5
+        assert is_new is False
+
+    @pytest.mark.asyncio
+    async def test_failure_returns_negative(self):
+        self.db._fetchrow = AsyncMock(return_value=None)
+        book_id, is_new = await self.db.insert_book_init(1, "mybook.txt", "key-123")
+        assert book_id == -1
+        assert is_new is False
+
+    @pytest.mark.asyncio
+    async def test_extracts_bookname_from_path(self):
+        self.db._fetchrow = AsyncMock(return_value={"id": 1, "is_new": True})
+        await self.db.insert_book_init(1, "/some/path/mybook.txt", "key-456")
+        call_args = self.db._fetchrow.call_args
+        # Second positional arg after the SQL is user_id, third is bookname
+        assert call_args.args[2] == "mybook"
+
+
+# ── InsertBookUploaded ────────────────────────────────────────────────────────
+class TestInsertBookUploaded:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+
+    @pytest.mark.asyncio
+    async def test_success(self):
+        self.db._execute = AsyncMock(return_value="UPDATE 1")
+        result = await self.db.insert_book_uploaded(5, "minio/path/file.txt")
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_failure(self):
+        self.db._execute = AsyncMock(return_value=None)
+        result = await self.db.insert_book_uploaded(5, "minio/path/file.txt")
+        assert result is False
+
+
+# ── InsertBookFinished ────────────────────────────────────────────────────────
+class TestInsertBookFinished:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+
+    @pytest.mark.asyncio
+    async def test_success(self):
+        self.db._execute = AsyncMock(return_value="UPDATE 1")
+        result = await self.db.insert_book_finished(5)
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_failure(self):
+        self.db._execute = AsyncMock(return_value=None)
+        result = await self.db.insert_book_finished(5)
+        assert result is False
