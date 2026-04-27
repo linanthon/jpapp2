@@ -26,7 +26,7 @@ from utils.db import DBHandling
 from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
                            parse_bool_param, validate_star)
 from utils.process_data import ProcessData
-from utils.storage import upload_file_to_minio
+from utils.storage import upload_file_to_minio, upload_string_to_minio
 
 # Create router
 router = APIRouter()
@@ -265,7 +265,7 @@ async def upload_file(
     except ValueError as e:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
     except Exception:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to read file content")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to process file content")
 
 
 @router.post("/insert/str")
@@ -275,16 +275,59 @@ async def upload_string(
     stringBody: str = Form(None),
     db: DBHandling = Depends(get_db),
     pdata: ProcessData = Depends(get_pdata),
+    redis: aioredis.Redis = Depends(get_redis),
     current_admin: dict = Depends(get_current_admin_user)
 ):
     """
     Handle upload JP text directly. Admin only.
     Book name = "stringName" and book content = "stringBody" in form
     """
-    return StreamingResponse(
-        handle_insert_str_stream(pdata, db, stringName, stringBody),
-        media_type="text/event-stream"
-    )
+    if not stringName or not stringBody:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=f"Missing book name or content"
+        )
+
+    try:
+        idem_key = request.headers.get("Idempotency-Key", "")
+        book_id, created = await db.insert_book_init(current_admin["id"], stringName, idem_key)
+        if book_id <= 0:
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=f"Failed to initialize book '{stringName}'"
+            )
+        if not created:
+            return JSONResponse(
+                status_code=HTTPStatus.OK,
+                content={"book_id": book_id, "message": "Duplicate request ignored"}
+            )
+
+        object_name = f"{uuid.uuid4().hex}_{stringName}"
+        object_name = upload_string_to_minio(stringBody, object_name)
+        if not object_name:
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload file {stringName} to external storage."
+            )
+
+        if not await db.insert_book_uploaded(book_id, object_name):
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize uploaded file metadata"
+            )
+        
+        handle_insert_str_stream(pdata, db, redis, book_id, stringBody)
+
+        if not await db.insert_book_finished(book_id, object_name):
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize processing the uploaded file"
+            )
+    
+    except ValueError as e:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to process input string")
 
 # =================================================================================
 

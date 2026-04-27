@@ -1,8 +1,6 @@
 """Tests for app/handlers/insert.py — insert logic with mocked DB/pdata."""
 import pytest
-import os
-from http import HTTPStatus
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
 from app.handlers.insert import (
     do_insert_word_sentence_book_2_db,
@@ -36,38 +34,52 @@ class TestDoInsertWordSentenceBook2DB:
 # ── handle_insert_str_stream ──────────────────────────────────────────────────
 class TestHandleInsertStrStream:
     @pytest.mark.asyncio
-    async def test_missing_name(self, mock_pdata, mock_db):
-        chunks = []
-        async for chunk in handle_insert_str_stream(mock_pdata, mock_db, "", "data"):
-            chunks.append(chunk)
-        assert any(b"Error" in c for c in chunks)
-
-    @pytest.mark.asyncio
-    async def test_missing_data(self, mock_pdata, mock_db):
-        chunks = []
-        async for chunk in handle_insert_str_stream(mock_pdata, mock_db, "name", ""):
-            chunks.append(chunk)
-        assert any(b"Error" in c for c in chunks)
-
-    @pytest.mark.asyncio
-    async def test_successful_insert(self, mock_pdata, mock_db):
-        mock_db.insert_book.return_value = 1
+    async def test_successful_insert(self, mock_pdata, mock_db, mock_redis):
         mock_pdata.stream_sentences_str.return_value = iter(["sentence1", "sentence2"])
         mock_pdata.process_sentence.return_value = []
 
-        chunks = []
-        async for chunk in handle_insert_str_stream(mock_pdata, mock_db, "Book Name", "sentence1sentence2"):
-            chunks.append(chunk)
+        await handle_insert_str_stream(mock_pdata, mock_db, mock_redis, book_id=1, data="sentence1sentence2")
 
-        assert any(b"Processed" in c for c in chunks)
+        mock_pdata.stream_sentences_str.assert_called_once_with("sentence1sentence2")
+        # Two sentences → two progress updates + one final
+        assert mock_redis.set.call_count == 3
+        final_call = mock_redis.set.call_args_list[-1]
+        assert "Processed and inserted text" in final_call.args[1]
 
     @pytest.mark.asyncio
-    async def test_duplicate_name_error(self, mock_pdata, mock_db):
-        mock_db.insert_book.return_value = 0  # already exists
-        chunks = []
-        async for chunk in handle_insert_str_stream(mock_pdata, mock_db, "Dupe", "content"):
-            chunks.append(chunk)
-        assert any(b"Name already used" in c for c in chunks)
+    async def test_progress_written_to_redis(self, mock_pdata, mock_db, mock_redis):
+        mock_pdata.stream_sentences_str.return_value = iter(["12345", "67890"])
+        mock_pdata.process_sentence.return_value = []
+
+        await handle_insert_str_stream(mock_pdata, mock_db, mock_redis, book_id=7, data="1234567890")
+
+        progress_calls = [c for c in mock_redis.set.call_args_list if "book_progress:7" in str(c)]
+        assert len(progress_calls) >= 2
+
+    @pytest.mark.asyncio
+    async def test_no_sentences(self, mock_pdata, mock_db, mock_redis):
+        mock_pdata.stream_sentences_str.return_value = iter([])
+
+        await handle_insert_str_stream(mock_pdata, mock_db, mock_redis, book_id=1, data="")
+
+        # Only the final "Processed and inserted" message
+        assert mock_redis.set.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_inserts_words_and_refs(self, mock_pdata, mock_db, mock_redis):
+        """When process_sentence returns words, refs should be inserted."""
+        word = Word(word="走る", senses="to run", spelling="ハシル")
+        mock_pdata.stream_sentences_str.return_value = iter(["走る。"])
+        mock_pdata.process_sentence.return_value = [word]
+        mock_db.insert_update_sentence.return_value = 10
+        mock_db.insert_word.return_value = 20
+
+        await handle_insert_str_stream(mock_pdata, mock_db, mock_redis, book_id=5, data="走る。")
+
+        mock_db.insert_word.assert_called_once_with(word)
+        mock_db.insert_word_book_ref.assert_called_once_with(20, 5)
+        mock_db.insert_word_sentence_ref.assert_called_once_with(20, 10)
+        mock_db.insert_sentence_book_ref.assert_called_once_with(10, 5)
 
 
 # ── handle_insert_file_stream ─────────────────────────────────────────────────

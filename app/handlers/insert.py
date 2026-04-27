@@ -38,6 +38,19 @@ async def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandlin
             await db.insert_sentence_book_ref(sentence_id, book_id)
 
 
+async def _process_sentences(pdata: "ProcessData", db: "DBHandling", redis: "aioredis.Redis",
+                             book_id: int, sentences, content_len: int, done_msg: str):
+    """Shared logic: iterate sentences, insert words/refs, report progress via Redis."""
+    reset_view_word_count()
+    progress = 0
+    for sentence in sentences:
+        await do_insert_word_sentence_book_2_db(pdata, db, sentence.strip("\n").strip(), book_id)
+        progress += len(sentence)
+        await redis.set(f"book_progress:{book_id}", f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
+
+    await redis.set(f"book_progress:{book_id}", done_msg)
+
+
 async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", redis: "aioredis.Redis", book_id: int, submittedFile: "UploadFile"):
     """
     Handle input-ing a file, check file exist, insert as book (the book name is the file name),
@@ -47,23 +60,18 @@ async def handle_insert_file_stream(pdata: "ProcessData", db: "DBHandling", redi
     - pdata: ProcessData instance
     - db: DBHandling instance
     - book_id: the book ID
-    - filename: the filename to be use as book's name, only the name, no path.
+    - submittedFile: the file user submitted in frontend
 
     Output: bytes of response data or error dict
-    """    
-    reset_view_word_count()
-    content_len = submittedFile.size or 1
-    
-    progress = 0
-    for sentence in pdata.stream_sentences_file(submittedFile, auto_strip=True):
-        await do_insert_word_sentence_book_2_db(pdata, db, sentence.strip("\n").strip(), book_id)
-        progress += len(sentence)
-        # use "data: " to mark the progress display for JS
-        await redis.set(f"book_progress:{book_id}", f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
-    
-    await redis.set(f"book_progress:{book_id}", f"Processed and inserted {submittedFile.filename}")
+    """
+    await _process_sentences(
+        pdata, db, redis, book_id,
+        sentences=pdata.stream_sentences_file(submittedFile, auto_strip=True),
+        content_len=submittedFile.size or 1,
+        done_msg=f"Processed and inserted {submittedFile.filename}",
+    )
 
-async def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name: str, data: str):
+async def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", redis: "aioredis.Redis", book_id: int, data: str):
     """
     Handle input-ing a string, insert as book, sentences, words to DB
     and link word-book, word-sentence, sentence-book IDs.
@@ -71,28 +79,15 @@ async def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", name:
     Input:
     - pdata: ProcessData instance
     - db: DBHandling instance
-    - name: the name to be use as book's name
+    - redis: Redis
+    - book_id: the inserted book ID
     - data: the JP text to be processed and inserted
 
     Output: bytes of response data or error dict
     """
-    if not name or not data:
-        yield str_2_byte("Error: Missing name or text")
-        return
-
-    reset_view_word_count()
-
-    content_len = len(data)
-    book_id, resp, _ = await do_insert_book(db, name, data) #TODO: fix later
-    if resp:
-        yield str_2_byte(str(resp))
-        return
-    
-    progress = 0
-    for sentence in pdata.stream_sentences_str(data):
-        await do_insert_word_sentence_book_2_db(pdata, db, sentence, book_id)
-        progress += len(sentence)
-        # use "data: " to mark the progress display for JS
-        yield str_2_byte(f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
-    
-    yield str_2_byte(f"Processed and inserted text")
+    await _process_sentences(
+        pdata, db, redis, book_id,
+        sentences=pdata.stream_sentences_str(data),
+        content_len=len(data) or 1,
+        done_msg="Processed and inserted text",
+    )
