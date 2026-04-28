@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS books (
     file_url TEXT,
     status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
-    modified_at TIMESTAMP NOT NULL DEFAULT now(),
+    modified_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
 -- Store the reference of a word and the books contain it

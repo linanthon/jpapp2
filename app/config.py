@@ -24,8 +24,8 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0") # 'localhost' is 
 
 # MinIO Storage
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "miniouser")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "miniopass")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "jpapp-books")
 
 # Blueprint prefix

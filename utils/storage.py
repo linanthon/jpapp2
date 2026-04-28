@@ -67,7 +67,8 @@ def _upload_to_minio(file_object: Any, object_name: str) -> str:
     
 def upload_file_to_minio(file_object: Any, object_name: str) -> str:
     """Upload a file to MinIO/S3, in this project, it is the
-    submittedFile.file by user from frontend
+    submittedFile.file by user from frontend. Becareful of this will read
+    the file and the file will be closed.
 
     Input:
     - file_object: the file

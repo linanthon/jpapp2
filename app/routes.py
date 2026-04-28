@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import os
+import io
 import redis.asyncio as aioredis
 import uuid
 
@@ -82,7 +83,13 @@ async def register(
         raise HTTPException(status_code=500, detail="Failed to create user")
     
     user = await db.get_user_by_id(user_id)
-    return user
+    if not user:
+        raise HTTPException(status_code=500, detail="Created user but failed to fetch user record")
+
+    return JSONResponse(
+            status_code=HTTPStatus.CREATED,
+            content={"id": user["id"],"username": user["username"],"email": user["email"],"is_admin": user["is_admin"]}
+        )
 
 
 @router.post("/login", dependencies=[Depends(rate_limiter(10, 60))])
@@ -240,8 +247,11 @@ async def upload_file(
                 content={"book_id": book_id, "message": "Duplicate request ignored"}
             )
 
+        # Read once from request stream and fan out to independent buffers.
+        content_bytes = await submittedFile.read()
+
         object_name = f"{uuid.uuid4().hex}_{file_name}"
-        object_name = upload_file_to_minio(submittedFile.file, object_name)
+        object_name = upload_file_to_minio(io.BytesIO(content_bytes), object_name)
         if not object_name:
             raise HTTPException(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
@@ -254,7 +264,9 @@ async def upload_file(
                 detail="Failed to finalize uploaded file metadata"
             )
         
-        handle_insert_file_stream(pdata, db, redis, book_id, submittedFile)
+        # Ensure downstream parser reads from an in-memory stream that won't be closed unexpectedly.
+        submittedFile.file = io.BytesIO(content_bytes)
+        await handle_insert_file_stream(pdata, db, redis, book_id, submittedFile)
 
         if not await db.insert_book_finished(book_id, object_name):
             raise HTTPException(

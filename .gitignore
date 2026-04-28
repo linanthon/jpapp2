@@ -12,6 +12,6 @@ plan.txt
 htmlcov
 .coverage
 dump.rdb
-zzz.py
+z-test-local/
 minio/
 Beginning Japanese for Professionals_ Book 1.pdf

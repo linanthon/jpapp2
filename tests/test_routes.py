@@ -3,8 +3,9 @@
 Tests the actual HTTP endpoints with mocked DB/Redis/ProcessData.
 Focuses on auth routes (no template rendering needed) and JSON API endpoints.
 """
+from http import HTTPStatus
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from tests.conftest import ADMIN_USER, NORMAL_USER, _auth_header
 from utils.auth import hash_password, create_refresh_token
@@ -23,7 +24,7 @@ class TestRegister:
         resp = await client.post("/v1/register", json={
             "username": "newuser", "email": "new@test.com", "password": "pass123"
         })
-        assert resp.status_code == 200
+        assert resp.status_code == HTTPStatus.CREATED
         data = resp.json()
         assert data["username"] == "newuser"
         assert data["id"] == 1
@@ -145,7 +146,7 @@ class TestInsertFileRoute:
         mock_db.insert_book_finished.return_value = True
 
         with patch("app.routes.upload_file_to_minio", return_value="obj_abc") as upload_mock, \
-             patch("app.routes.handle_insert_file_stream", new=MagicMock()) as stream_mock:
+            patch("app.routes.handle_insert_file_stream", new=AsyncMock()) as stream_mock:
             resp = await client.post(
                 "/v1/insert/file",
                 headers={
@@ -157,7 +158,7 @@ class TestInsertFileRoute:
 
         assert resp.status_code == 200
         upload_mock.assert_called_once()
-        stream_mock.assert_called_once()
+        stream_mock.assert_awaited_once()
         mock_db.insert_book_uploaded.assert_awaited_once_with(book_id, "obj_abc")
 
     @pytest.mark.asyncio
