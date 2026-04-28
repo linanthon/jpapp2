@@ -3,6 +3,7 @@ import io
 import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from utils.process_data import ProcessData
+from utils.text_extractor import TxtExtractor
 
 
 # ── _find_sentence_end ────────────────────────────────────────────────────────
@@ -79,7 +80,6 @@ class TestStreamSentencesFile:
         self.pdata = ProcessData.__new__(ProcessData)
         # The uploaded file will be read in byte like setup in the _make_mock_upload
         # so which extractor does not matter
-        from utils.text_extractor import TxtExtractor
         txt_ext = TxtExtractor()
         self.pdata._extractors = {".txt": txt_ext}
 
@@ -319,6 +319,7 @@ class TestStreamThenProcess:
     def setup_method(self):
         self.pdata = ProcessData.__new__(ProcessData)
         self.pdata._local = MagicMock()
+        self.pdata._extractors = {".txt": TxtExtractor()}
         self.mock_db = AsyncMock()
         # By default, word not yet in DB
         self.mock_db.update_word_occurrence = AsyncMock(return_value=False)
@@ -511,18 +512,17 @@ class TestStreamThenProcess:
     @patch("utils.process_data.is_japanese_word", return_value=True)
     @patch("utils.process_data.STOP_WORDS", [])
     @patch("utils.process_data.JLPT_DICT", {"食べる": "N5"})
-    async def test_file_stream_to_process(self, mock_is_jp, mock_jamorasep, tmp_path):
+    async def test_file_stream_to_process(self, mock_is_jp, mock_jamorasep):
         """Full pipeline: read file → stream sentences → process each."""
         mock_jamorasep.parse.return_value = ["た", "べ", "る"]
-        f = tmp_path / "input.txt"
-        f.write_text("食べる。飲む。", encoding="utf-8")
+        upload = _make_mock_upload("input.txt", "食べる。飲む。".encode("utf-8"))
 
         entry_taberu = _make_jamdict_entry(kanji_text="食べる", kana_text="たべる")
         entry_nomu = _make_jamdict_entry(kanji_text="飲む", kana_text="のむ",
                                          senses=[MagicMock(to_dict=MagicMock(return_value={
                                              "pos": ["Verb"], "SenseGloss": [{"lang": "eng", "text": "to drink"}]}))])
 
-        sentences = list(self.pdata.stream_sentences_file(str(f)))
+        sentences = list(self.pdata.stream_sentences_file(upload))
         assert len(sentences) == 2
 
         all_words = []

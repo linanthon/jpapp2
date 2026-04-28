@@ -4,6 +4,7 @@ Tests the actual HTTP endpoints with mocked DB/Redis/ProcessData.
 Focuses on auth routes (no template rendering needed) and JSON API endpoints.
 """
 import pytest
+from unittest.mock import MagicMock, patch
 
 from tests.conftest import ADMIN_USER, NORMAL_USER, _auth_header
 from utils.auth import hash_password, create_refresh_token
@@ -130,6 +131,80 @@ class TestRefreshToken:
         mock_redis.get.return_value = None
         resp = await client.post("/v1/refresh", json={"refresh_token": "bad.token.here"})
         assert resp.status_code == 401
+
+
+# ── Insert File ──────────────────────────────────────────────────────────────
+class TestInsertFileRoute:
+    @pytest.mark.asyncio
+    async def test_insert_file_success(self, client, mock_db, mock_redis, admin_token):
+        book_id = 101
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.insert_book_init.return_value = (book_id, True)
+        mock_db.insert_book_uploaded.return_value = True
+        mock_db.insert_book_finished.return_value = True
+
+        with patch("app.routes.upload_file_to_minio", return_value="obj_abc") as upload_mock, \
+             patch("app.routes.handle_insert_file_stream", new=MagicMock()) as stream_mock:
+            resp = await client.post(
+                "/v1/insert/file",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-1",
+                },
+                files={"submittedFile": ("book.txt", b"\xe6\x96\x87\xe4\xb8\x80\xe3\x80\x82", "text/plain")},
+            )
+
+        assert resp.status_code == 200
+        upload_mock.assert_called_once()
+        stream_mock.assert_called_once()
+        mock_db.insert_book_uploaded.assert_awaited_once_with(book_id, "obj_abc")
+
+    @pytest.mark.asyncio
+    async def test_insert_file_duplicate_idempotency(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.insert_book_init.return_value = (55, False)
+
+        with patch("app.routes.upload_file_to_minio", return_value="obj_abc") as upload_mock:
+            resp = await client.post(
+                "/v1/insert/file",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-dup",
+                },
+                files={"submittedFile": ("book.txt", b"content", "text/plain")},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["book_id"] == 55
+        assert resp.json()["message"] == "Duplicate request ignored"
+        upload_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_insert_file_unsupported_extension(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+
+        resp = await client.post(
+            "/v1/insert/file",
+            headers=_auth_header(admin_token),
+            files={"submittedFile": ("book.exe", b"binary", "application/octet-stream")},
+        )
+        assert resp.status_code == 400
+        assert "Unsupported file type" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_insert_file_requires_admin(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = NORMAL_USER
+
+        resp = await client.post(
+            "/v1/insert/file",
+            headers=_auth_header(user_token),
+            files={"submittedFile": ("book.txt", b"content", "text/plain")},
+        )
+        assert resp.status_code == 403
 
 
 # ── Search Word ───────────────────────────────────────────────────────────────

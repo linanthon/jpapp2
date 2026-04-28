@@ -1,5 +1,5 @@
-from fastapi import Request, Depends, HTTPException
 import asyncpg
+from fastapi import Request, Depends, HTTPException
 import redis.asyncio as aioredis
 
 from utils.db import DBHandling

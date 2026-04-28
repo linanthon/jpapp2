@@ -2,6 +2,7 @@
 import pytest
 from utils.helpers import (
     get_filename_from_path,
+    get_file_extension_from_path,
     str_2_byte,
     validate_jlpt_level,
     validate_star,
@@ -36,7 +37,7 @@ class TestGetFilenameFromPath:
 # ── get_filename_from_path ────────────────────────────────────────────────────
 class TestGetFileExtensionFromPath:
     def test_unix_path(self):
-        assert get_filename_from_path("c:/a/path/the_file.123.txt") == ".txt"
+        assert get_file_extension_from_path("c:/a/path/the_file.123.txt") == ".txt"
 
 # ── str_2_byte ────────────────────────────────────────────────────────────────
 class TestStr2Byte:

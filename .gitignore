@@ -13,5 +13,5 @@ htmlcov
 .coverage
 dump.rdb
 zzz.py
-minio.exe
+minio/
 Beginning Japanese for Professionals_ Book 1.pdf
