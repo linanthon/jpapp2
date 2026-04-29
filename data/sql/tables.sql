@@ -1,6 +1,6 @@
 -- Store a word
 CREATE TABLE IF NOT EXISTS words (
-    id SERIAL PRIMARY KEY NOT NULL,
+    id SERIAL PRIMARY KEY,
     word TEXT UNIQUE NOT NULL,
     senses TEXT NOT NULL,
     spelling TEXT NOT NULL,
@@ -10,12 +10,17 @@ CREATE TABLE IF NOT EXISTS words (
     audio_mapping TEXT[]
 );
 
--- Store a book
+
+-- User (admin role) uploads a book
 CREATE TABLE IF NOT EXISTS books (
-    id SERIAL PRIMARY KEY NOT NULL,
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    name TEXT NOT NULL,
+    idempotency_key UUID UNIQUE,
+    object_name TEXT,
+    status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
-    name TEXT UNIQUE NOT NULL,
-    content TEXT    -- the entire book content, the limit is 1GB which no books achieve
+    modified_at TIMESTAMP NOT NULL DEFAULT now()
 );
 
 -- Store the reference of a word and the books contain it

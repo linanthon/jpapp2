@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException
+from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
-import tempfile
 import os
+import io
 import redis.asyncio as aioredis
+import uuid
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
                         FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
@@ -19,12 +20,14 @@ from app.dependencies import (
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                change_word_prio_to_negative, reset_word_prio)
-from utils.helpers import get_filename_from_path, validate_jlpt_level, parse_bool_param, validate_star
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
-from utils.db import DBHandling
-from utils.process_data import ProcessData
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
+from utils.db import DBHandling
+from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
+                           parse_bool_param, validate_star)
+from utils.process_data import ProcessData
+from utils.storage import upload_file_to_minio, upload_string_to_minio
 
 # Create router
 router = APIRouter()
@@ -80,7 +83,13 @@ async def register(
         raise HTTPException(status_code=500, detail="Failed to create user")
     
     user = await db.get_user_by_id(user_id)
-    return user
+    if not user:
+        raise HTTPException(status_code=500, detail="Created user but failed to fetch user record")
+
+    return JSONResponse(
+            status_code=HTTPStatus.CREATED,
+            content={"id": user["id"],"username": user["username"],"email": user["email"],"is_admin": user["is_admin"]}
+        )
 
 
 @router.post("/login", dependencies=[Depends(rate_limiter(10, 60))])
@@ -197,27 +206,71 @@ def insert():
 @router.post("/insert/file")
 async def upload_file(
     request: Request,
-    submittedFilename: UploadFile = File(None),
+    submittedFile: UploadFile = File(None),
     db: DBHandling = Depends(get_db),
     pdata: ProcessData = Depends(get_pdata),
+    redis: aioredis.Redis = Depends(get_redis),
     current_admin: dict = Depends(get_current_admin_user)
 ):
-    """Handle file upload. submittedFilename form field with file. Admin only."""
-    if not submittedFilename:
+    """Handle file upload (.txt, .pdf, .docx). Admin only."""
+    if not submittedFile or not submittedFile.filename:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No file uploaded")
-    file_name = get_filename_from_path(submittedFilename.filename)
     
-    # Save to temp file to open multiple times
-    tmp = tempfile.NamedTemporaryFile(delete=False)
-    tmp_path = tmp.name
-    content = await submittedFilename.read()
-    tmp.write(content)
-    tmp.close()
+    ext = get_file_extension_from_path(submittedFile.filename)
+    if ext not in ProcessData.ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=f"Unsupported file type: .{ext}. Allowed: {', '.join(ProcessData.ALLOWED_EXTENSIONS)}"
+        )
     
-    return StreamingResponse(
-        handle_insert_file_stream(pdata, db, file_name, tmp_path),
-        media_type="text/event-stream"
-    )
+    file_name = get_filename_from_path(submittedFile.filename)
+
+    try:
+        # Idempotent init: first request wins, stop duplicate request
+        idem_key = request.headers.get("Idempotency-Key", "")
+        book_id, created = await db.insert_book_init(current_admin["id"], file_name, idem_key)
+        if book_id <= 0:
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=f"Failed to initialize book '{file_name}'"
+            )
+        if not created:
+            return JSONResponse(
+                status_code=HTTPStatus.OK,
+                content={"book_id": book_id, "message": "Duplicate request ignored"}
+            )
+
+        # Read once from request stream and fan out to independent buffers.
+        content_bytes = await submittedFile.read()
+
+        object_name = f"{uuid.uuid4().hex}_{file_name}"
+        object_name = upload_file_to_minio(io.BytesIO(content_bytes), object_name)
+        if not object_name:
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload file {file_name} to external storage."
+            )
+
+        if not await db.insert_book_uploaded(book_id, object_name):
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize uploaded file metadata"
+            )
+        
+        # Ensure downstream parser reads from an in-memory stream that won't be closed unexpectedly.
+        submittedFile.file = io.BytesIO(content_bytes)
+        await handle_insert_file_stream(pdata, db, redis, book_id, submittedFile)
+
+        if not await db.insert_book_finished(book_id):
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize processing the uploaded file"
+            )
+
+    except ValueError as e:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to process file content")
 
 
 @router.post("/insert/str")
@@ -227,16 +280,59 @@ async def upload_string(
     stringBody: str = Form(None),
     db: DBHandling = Depends(get_db),
     pdata: ProcessData = Depends(get_pdata),
+    redis: aioredis.Redis = Depends(get_redis),
     current_admin: dict = Depends(get_current_admin_user)
 ):
     """
     Handle upload JP text directly. Admin only.
     Book name = "stringName" and book content = "stringBody" in form
     """
-    return StreamingResponse(
-        handle_insert_str_stream(pdata, db, stringName, stringBody),
-        media_type="text/event-stream"
-    )
+    if not stringName or not stringBody:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=f"Missing book name or content"
+        )
+
+    try:
+        idem_key = request.headers.get("Idempotency-Key", "")
+        book_id, created = await db.insert_book_init(current_admin["id"], stringName, idem_key)
+        if book_id <= 0:
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=f"Failed to initialize book '{stringName}'"
+            )
+        if not created:
+            return JSONResponse(
+                status_code=HTTPStatus.OK,
+                content={"book_id": book_id, "message": "Duplicate request ignored"}
+            )
+
+        object_name = f"{uuid.uuid4().hex}_{stringName}"
+        object_name = upload_string_to_minio(stringBody, object_name)
+        if not object_name:
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail=f"Failed to upload file {stringName} to external storage."
+            )
+
+        if not await db.insert_book_uploaded(book_id, object_name):
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize uploaded file metadata"
+            )
+        
+        handle_insert_str_stream(pdata, db, redis, book_id, stringBody)
+
+        if not await db.insert_book_finished(book_id):
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to finalize processing the uploaded file"
+            )
+    
+    except ValueError as e:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to process input string")
 
 # =================================================================================
 
@@ -281,7 +377,7 @@ def search_word():
     return templates.TemplateResponse("view/word/search_word.html", {"request": {}})
 
 
-@router.get("/api/search-word", dependencies=[Depends(rate_limiter(60, 60))])
+@router.get("/api/view/search-word", dependencies=[Depends(rate_limiter(60, 60))])
 async def api_search_word(
     word: str,
     limit: int = DEFAULT_LIMIT,
@@ -347,6 +443,10 @@ def serve_audio(filename: str):
 
 
 @router.get("/view/book")
+async def view_books():
+    return templates.TemplateResponse("view/book/view_books.html", {"request": {}})
+
+@router.get("/api/view/book")
 async def view_books(
     star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
@@ -364,10 +464,9 @@ async def view_books(
     """
     star_bool = parse_bool_param(star)
     result, page_count = await handle_view_books(db, current_user, star_bool, limit, page)
-    return templates.TemplateResponse(
-        "view/book/view_books.html",
-        {"request": {}, "book_list": result, "page_count": page_count, "page": page,
-         "args": {"star": star}}
+    return JSONResponse(
+        status_code=HTTPStatus.OK,
+        content={"book_list": result, "page_count": page_count, "page": page, "args": {"star": star}}
     )
 
 
@@ -383,7 +482,7 @@ async def view_specific_book(
         {"request": {}, "book_details": await handle_view_specific_book(db, current_user, book_id)}
     )
 
-
+#TODO: change to DELETE /book/{id} some day
 @router.post("/del/book")
 async def delete_book(
     request: Request,
@@ -396,9 +495,16 @@ async def delete_book(
         obj_id = int(data.get("id", ""))
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing book `id`")
-    
-    deleted = await delete_book_helper(db, obj_id)
-    return {"success": deleted}
+
+    book = await db.get_exact_book(user_id=current_admin_user["id"], book_id=obj_id)
+    if not book:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Book not found")
+
+    deleted = await delete_book_helper(db, obj_id, book.get("object_name", ""))
+    if not deleted:
+        raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Failed to delete book")
+
+    return Response(status_code=HTTPStatus.NO_CONTENT)
 
 
 # =================================================================================

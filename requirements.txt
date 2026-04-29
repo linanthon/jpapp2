@@ -17,7 +17,12 @@ asyncpg==0.31.0
 redis==5.0.1
 aioredis==2.0.1
 
-# tokenize words and dict
+# Upload, extract text from file
+boto3==1.42.94      # standard for S3, can swap to minio==7.2.20 for minio native only
+pymupdf==1.27.2.2
+python-docx==1.2.0
+
+# Tokenize words and dict
 fugashi==1.5.1
 unidic-lite==1.0.8
 jamdict==0.1a11.post2

@@ -1,3 +1,5 @@
+import os
+
 def get_filename_from_path(fullpath: str):
     """Get filename from full path, i.e.: c:/a/path/the_file.123.txt -> the_file.123"""
     if not fullpath:
@@ -11,6 +13,10 @@ def get_filename_from_path(fullpath: str):
     temp = temp.split(".")
 
     return ".".join(temp[:-1])
+
+def get_file_extension_from_path(fullpath: str):
+    """Get file extension from full path, i.e.: c:/a/path/the_file.123.txt -> .txt"""
+    return os.path.splitext(fullpath)[-1].lower()
 
 def str_2_byte(input_str: str):
     return input_str.encode("utf-8")

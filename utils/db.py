@@ -262,54 +262,72 @@ class DBHandling:
         return result
 
     # Book ==================================================================================
-    async def insert_book(self, filename: str, content: str = "") -> int:
+    async def insert_book_init(self, user_id: int, filename: str, idempotency_key: str) -> Tuple[int, bool]:
         """
-        Read the whole file and insert into table books (if not in DB yet).
-        If `content` is not empty/None, doesn't read file and use this instead.
+        Init insert filename and status = 'PENDING'
 
         Input:
-        - filename: The full path filename.
-        - content: The content of the document. Because this function is design for both
-        a real file and not. If filename is a real file, leave this empty. If filename is
-        just a name to name this document, then must have content.
+        - user_id: The user who requested inserting this book
+        - filename: The full path filename. the file name without path must be unique.
+        - idempotency_key: The request ID for inserting this book
 
-        Output: Return the inserted book ID. 0 if already existed. -1 if DB failed.
-        -2 if file not found.
+        Output: Return (inserted book ID, True) if success. (-1, False) if failed.
         """
-        # If is file (not content str)
         bookname = filename
-        if not content:
-            # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
-            match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
+        # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
+        match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
+        if match:
+            bookname = match.group()
+        else:
+            match = re.search(r'[^\\/]', filename)
             if match:
                 bookname = match.group()
-            else:
-                match = re.search(r'[^\\/]', filename)
-                if match:
-                    bookname = match.group()
-
-        # Check exist
+        
+        # Explain:
+        # - If the idempotency_key exists, `name = EXCLUDED.name`
+        #    is a "no-op" update just to trigger the RETURNING clause
+        # - xmax = 0 is a trick to see if it was a fresh insert
         row = await self._fetchrow(
-            f"SELECT COUNT(*) FROM {TABLE_BOOKS} WHERE name = $1;", bookname
+            f"""INSERT INTO {TABLE_BOOKS} (user_id, name, idempotency_key, status)
+            VALUES ($1, $2, $3, 'PENDING')
+            ON CONFLICT (idempotency_key) DO UPDATE SET name = EXCLUDED.name
+            RETURNING id, (xmax = 0) AS is_new;""",
+            user_id, bookname, idempotency_key
         )
-        if row and row["count"]:
-            return 0
+        if row:
+            return row['id'], row['is_new']
+        return -1, False
 
-        # Read file
-        if not content:
-            if os.path.exists(filename):
-                with open(filename, "r", encoding="utf-8") as f:
-                    content = f.read()
-            else:
-                log.error(f"File {filename} not found")
-                return -2
+    async def insert_book_uploaded(self, book_id: int, object_name: str = "") -> bool:
+        """
+        Update the inserting book file url and status after uploaded to MinIO/S3.
 
-        # Insert
-        row = await self._fetchrow(
-            f"INSERT INTO {TABLE_BOOKS} (name, content) VALUES ($1, $2) RETURNING id;",
-            bookname, content
+        Input:
+        - book_id: The book ID.
+        - object_name: The storage URL for this file/book
+
+        Output: Return True if success, False otherwise.
+        """
+        status = await self._execute(
+            f"UPDATE {TABLE_BOOKS} SET object_name=$1, status='UPLOADED' WHERE id = $2;",
+            object_name, book_id
         )
-        return row["id"] if row else -1
+        return status is not None
+
+    async def insert_book_finished(self, book_id: int) -> bool:
+        """
+        Update the inserting book process is finished.
+
+        Input:
+        - book_id: The book ID.
+
+        Output: Return True if success, False otherwise.
+        """
+        status = await self._execute(
+            f"UPDATE {TABLE_BOOKS} SET status='FINISHED' WHERE id = $1;",
+            book_id
+        )
+        return status is not None
 
     async def update_book(self, book_id: int = 0, name: str = "", append_content: str = "") -> bool:
         """
@@ -357,7 +375,7 @@ class DBHandling:
 
         # get the book
         row = await self._fetchrow(
-            f"SELECT id, created_at, name, content FROM {TABLE_BOOKS} WHERE id = $1;",
+            f"SELECT id, created_at, name, object_name FROM {TABLE_BOOKS} WHERE id = $1;",
             book_id
         )
         if row:
@@ -384,7 +402,7 @@ class DBHandling:
                 return []
 
             star_rows = await self._fetch(
-                f"SELECT book_id FROM {TABLE_USER_BOOK_STAR} WHERE user_id = $1 AND star = true;",
+                f"SELECT book_id FROM {TABLE_USER_BOOK_STAR} WHERE status != 'PENDING' AND user_id = $1 AND star = true;",
                 user_id
             )
             for instance in star_rows:
@@ -1280,6 +1298,7 @@ class DBHandling:
             "name": book["name"],
             "star": star,
             "content": book["content"] if "content" in book else "",
+            "object_name": book["object_name"] if "object_name" in book else "",
         }
 
     def _parse_quiz(self, record) -> dict:

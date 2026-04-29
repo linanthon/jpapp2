@@ -1,5 +1,6 @@
 """Tests for app/handlers/view.py — view logic with mocked DB."""
 import pytest
+from unittest.mock import patch
 from app.handlers.view import (
     toggle_star_helper,
     delete_book_helper,
@@ -48,8 +49,26 @@ class TestDeleteBookHelper:
     @pytest.mark.asyncio
     async def test_delete_success(self, mock_db):
         mock_db.delete_book.return_value = True
-        result = await delete_book_helper(mock_db, book_id=1)
+        with patch("app.handlers.view.delete_storage_file", return_value=True) as delete_storage_file_mock:
+            result = await delete_book_helper(mock_db, book_id=1, object_name="obj.pdf")
         assert result is True
+        delete_storage_file_mock.assert_called_once_with("obj.pdf")
+
+    @pytest.mark.asyncio
+    async def test_delete_success_without_object_name(self, mock_db):
+        mock_db.delete_book.return_value = True
+        with patch("app.handlers.view.delete_storage_file") as delete_storage_file_mock:
+            result = await delete_book_helper(mock_db, book_id=1)
+        assert result is True
+        delete_storage_file_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_db_fail(self, mock_db):
+        mock_db.delete_book.return_value = False
+        with patch("app.handlers.view.delete_storage_file") as delete_storage_file_mock:
+            result = await delete_book_helper(mock_db, book_id=1, object_name="obj.pdf")
+        assert result is False
+        delete_storage_file_mock.assert_not_called()
 
 
 # ── get_all_book_name_and_id ──────────────────────────────────────────────────
@@ -157,9 +176,33 @@ class TestHandleViewBooks:
 class TestHandleViewSpecificBook:
     @pytest.mark.asyncio
     async def test_returns_book(self, mock_db):
-        mock_db.get_exact_book.return_value = {"book_id": 1, "name": "Test Book"}
-        result = await handle_view_specific_book(mock_db, user_id=1, book_id=1)
+        mock_db.get_exact_book.return_value = {
+            "book_id": 1,
+            "name": "Test Book",
+            "object_name": "abc.pdf",
+        }
+        with patch("app.handlers.view.get_file_download_link", return_value="https://signed") as link_mock:
+            result = await handle_view_specific_book(mock_db, user_id=1, book_id=1)
         assert result["name"] == "Test Book"
+        assert result["download_url"] == "https://signed"
+        link_mock.assert_called_once_with("abc.pdf")
+
+    @pytest.mark.asyncio
+    async def test_returns_book_without_object_name(self, mock_db):
+        mock_db.get_exact_book.return_value = {"book_id": 1, "name": "Test Book"}
+        with patch("app.handlers.view.get_file_download_link") as link_mock:
+            result = await handle_view_specific_book(mock_db, user_id=1, book_id=1)
+        assert result["name"] == "Test Book"
+        assert result["download_url"] == ""
+        link_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_book_missing(self, mock_db):
+        mock_db.get_exact_book.return_value = None
+        with patch("app.handlers.view.get_file_download_link") as link_mock:
+            result = await handle_view_specific_book(mock_db, user_id=1, book_id=999)
+        assert result == {}
+        link_mock.assert_not_called()
 
 
 # ── reset_view_word_count ─────────────────────────────────────────────────────

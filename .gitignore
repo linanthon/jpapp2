@@ -12,3 +12,5 @@ plan.txt
 htmlcov
 .coverage
 dump.rdb
+z-test-local/
+minio/
