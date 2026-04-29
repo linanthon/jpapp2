@@ -218,7 +218,7 @@ class TestSearchWordRoute:
         ]
         mock_db.get_meanings.return_value = ["to eat"]
         resp = await client.get(
-            "/v1/api/search-word", params={"word": "食べる"},
+            "/v1/api/view/search-word", params={"word": "食べる"},
             headers=_auth_header(user_token)
         )
         assert resp.status_code == 200
@@ -233,7 +233,7 @@ class TestSearchWordRoute:
         ]
         mock_db.get_meanings.return_value = ["to eat"]
         resp = await client.get(
-            "/v1/api/search-word", params={"word": "eat"},
+            "/v1/api/view/search-word", params={"word": "eat"},
             headers=_auth_header(user_token)
         )
         assert resp.status_code == 200
@@ -242,7 +242,7 @@ class TestSearchWordRoute:
     async def test_search_invalid_word(self, client, mock_db, mock_redis, user_token):
         mock_redis.get.return_value = None
         resp = await client.get(
-            "/v1/api/search-word", params={"word": "123!"},
+            "/v1/api/view/search-word", params={"word": "123!"},
             headers=_auth_header(user_token)
         )
         assert resp.status_code == 400

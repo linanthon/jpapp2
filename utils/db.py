@@ -375,7 +375,7 @@ class DBHandling:
 
         # get the book
         row = await self._fetchrow(
-            f"SELECT id, created_at, name, content FROM {TABLE_BOOKS} WHERE id = $1;",
+            f"SELECT id, created_at, name, object_name FROM {TABLE_BOOKS} WHERE id = $1;",
             book_id
         )
         if row:
@@ -1298,6 +1298,7 @@ class DBHandling:
             "name": book["name"],
             "star": star,
             "content": book["content"] if "content" in book else "",
+            "object_name": book["object_name"] if "object_name" in book else "",
         }
 
     def _parse_quiz(self, record) -> dict:

@@ -1,4 +1,5 @@
 import boto3
+from botocore.config import Config
 from botocore.exceptions import NoCredentialsError, ClientError
 import io
 from functools import wraps
@@ -16,7 +17,8 @@ s3_client = boto3.client(
     endpoint_url=MINIO_ENDPOINT,
     aws_access_key_id=MINIO_ACCESS_KEY,
     aws_secret_access_key=MINIO_SECRET_KEY,
-    region_name="us-east-1" # MinIO usually requires a dummy region
+    region_name="us-east-1",  # MinIO usually requires a dummy region
+    config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
 )
 
 PRESIGNED_URL_EXPIRY = 3600  # 1 hour

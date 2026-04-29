@@ -4,6 +4,7 @@ from typing import List, Tuple, Dict, Any
 from utils.data import is_japanese_word, is_english_word
 from utils.db import DBHandling
 from utils.logger import get_logger
+from utils.storage import get_file_download_link
 from schemas.constants import DEFAULT_LIMIT
 
 log = get_logger(__name__)
@@ -118,6 +119,16 @@ async def handle_view_books(db: "DBHandling" = None, user_id: int = None, star: 
 
 async def handle_view_specific_book(db: "DBHandling", user_id: int, book_id: int) -> dict:
     """
-    Handle viewing a JP word with `sentence_limit` amount of sentence examples.
+    Handle viewing a specific book and attach a short-lived download link if available.
     """
-    return await db.get_exact_book(user_id=user_id, book_id=book_id)
+    book = await db.get_exact_book(user_id=user_id, book_id=book_id)
+    if not book:
+        return {}
+
+    object_name = book.get("object_name", "")
+    if object_name:
+        book["download_url"] = get_file_download_link(object_name)
+    else:
+        book["download_url"] = ""
+
+    return book

@@ -46,6 +46,12 @@
 
     <p><strong>Created:</strong> {{ book_details.created_at }}</p>
 
+    {% if book_details.download_url %}
+    <p>
+      <a href="{{ book_details.download_url }}" target="_blank" rel="noopener noreferrer">Download original file</a>
+    </p>
+    {% endif %}
+
     <div class="book-body">
       <p>{{ book_details.content }}</p>
     </div>

@@ -1,5 +1,6 @@
 """Tests for app/handlers/view.py — view logic with mocked DB."""
 import pytest
+from unittest.mock import patch
 from app.handlers.view import (
     toggle_star_helper,
     delete_book_helper,
@@ -157,9 +158,33 @@ class TestHandleViewBooks:
 class TestHandleViewSpecificBook:
     @pytest.mark.asyncio
     async def test_returns_book(self, mock_db):
-        mock_db.get_exact_book.return_value = {"book_id": 1, "name": "Test Book"}
-        result = await handle_view_specific_book(mock_db, user_id=1, book_id=1)
+        mock_db.get_exact_book.return_value = {
+            "book_id": 1,
+            "name": "Test Book",
+            "object_name": "abc.pdf",
+        }
+        with patch("app.handlers.view.get_file_download_link", return_value="https://signed") as link_mock:
+            result = await handle_view_specific_book(mock_db, user_id=1, book_id=1)
         assert result["name"] == "Test Book"
+        assert result["download_url"] == "https://signed"
+        link_mock.assert_called_once_with("abc.pdf")
+
+    @pytest.mark.asyncio
+    async def test_returns_book_without_object_name(self, mock_db):
+        mock_db.get_exact_book.return_value = {"book_id": 1, "name": "Test Book"}
+        with patch("app.handlers.view.get_file_download_link") as link_mock:
+            result = await handle_view_specific_book(mock_db, user_id=1, book_id=1)
+        assert result["name"] == "Test Book"
+        assert result["download_url"] == ""
+        link_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_book_missing(self, mock_db):
+        mock_db.get_exact_book.return_value = None
+        with patch("app.handlers.view.get_file_download_link") as link_mock:
+            result = await handle_view_specific_book(mock_db, user_id=1, book_id=999)
+        assert result == {}
+        link_mock.assert_not_called()
 
 
 # ── reset_view_word_count ─────────────────────────────────────────────────────
