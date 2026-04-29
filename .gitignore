@@ -5,6 +5,7 @@ app/cli/__pycache__/
 schemas/__pycache__/
 utils/__pycache__/
 tests/__pycache__/
+app/tasks/__pycache__/
 .env
 pyenv
 test-insert-jp.txt

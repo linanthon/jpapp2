@@ -143,12 +143,11 @@ class TestInsertFileRoute:
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.insert_book_init.return_value = (book_id, True)
         mock_db.insert_book_uploaded.return_value = True
-        mock_db.insert_book_finished.return_value = True
-
+        mock_db.create_job_book = AsyncMock(return_value="11111111-1111-1111-1111-111111111111")
         with patch("app.routes.upload_file_to_minio", return_value="obj_abc") as upload_mock, \
-            patch("app.routes.handle_insert_file_stream", new=AsyncMock()) as stream_mock:
+            patch("app.routes.process_insert_file_job.kiq", new=AsyncMock()) as kiq_mock:
             resp = await client.post(
-                "/v1/insert/file",
+                "/v1/insert/file/bg",
                 headers={
                     **_auth_header(admin_token),
                     "Idempotency-Key": "idem-1",
@@ -156,9 +155,9 @@ class TestInsertFileRoute:
                 files={"submittedFile": ("book.txt", b"\xe6\x96\x87\xe4\xb8\x80\xe3\x80\x82", "text/plain")},
             )
 
-        assert resp.status_code == 200
+        assert resp.status_code == 202
         upload_mock.assert_called_once()
-        stream_mock.assert_awaited_once()
+        kiq_mock.assert_awaited_once()
         mock_db.insert_book_uploaded.assert_awaited_once_with(book_id, "obj_abc")
 
     @pytest.mark.asyncio
@@ -169,7 +168,7 @@ class TestInsertFileRoute:
 
         with patch("app.routes.upload_file_to_minio", return_value="obj_abc") as upload_mock:
             resp = await client.post(
-                "/v1/insert/file",
+                "/v1/insert/file/bg",
                 headers={
                     **_auth_header(admin_token),
                     "Idempotency-Key": "idem-dup",
@@ -188,7 +187,7 @@ class TestInsertFileRoute:
         mock_db.get_user_by_id.return_value = ADMIN_USER
 
         resp = await client.post(
-            "/v1/insert/file",
+            "/v1/insert/file/bg",
             headers=_auth_header(admin_token),
             files={"submittedFile": ("book.exe", b"binary", "application/octet-stream")},
         )
@@ -201,7 +200,7 @@ class TestInsertFileRoute:
         mock_db.get_user_by_id.return_value = NORMAL_USER
 
         resp = await client.post(
-            "/v1/insert/file",
+            "/v1/insert/file/bg",
             headers=_auth_header(user_token),
             files={"submittedFile": ("book.txt", b"content", "text/plain")},
         )
