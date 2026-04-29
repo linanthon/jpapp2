@@ -402,7 +402,7 @@ class DBHandling:
                 return []
 
             star_rows = await self._fetch(
-                f"SELECT book_id FROM {TABLE_USER_BOOK_STAR} WHERE user_id = $1 AND star = true;",
+                f"SELECT book_id FROM {TABLE_USER_BOOK_STAR} WHERE status != 'PENDING' AND user_id = $1 AND star = true;",
                 user_id
             )
             for instance in star_rows:

@@ -224,14 +224,7 @@ async def upload_file(
         )
     
     file_name = get_filename_from_path(submittedFile.filename)
-    
-    #TODO: Remove
-    # Save to temp file (preserving extension for PDF/DOCX readers)
-    # tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
-    # tmp_path = tmp.name
-    # content = await submittedFile.read()
-    # tmp.write(content)
-    # tmp.close()
+
     try:
         # Idempotent init: first request wins, stop duplicate request
         idem_key = request.headers.get("Idempotency-Key", "")
@@ -384,7 +377,7 @@ def search_word():
     return templates.TemplateResponse("view/word/search_word.html", {"request": {}})
 
 
-@router.get("/api/search-word", dependencies=[Depends(rate_limiter(60, 60))])
+@router.get("/api/view/search-word", dependencies=[Depends(rate_limiter(60, 60))])
 async def api_search_word(
     word: str,
     limit: int = DEFAULT_LIMIT,
@@ -450,6 +443,10 @@ def serve_audio(filename: str):
 
 
 @router.get("/view/book")
+async def view_books():
+    return templates.TemplateResponse("view/book/view_books.html", {"request": {}})
+
+@router.get("/api/view/book")
 async def view_books(
     star: bool | str = None,
     limit: int = DEFAULT_LIMIT,
@@ -467,10 +464,9 @@ async def view_books(
     """
     star_bool = parse_bool_param(star)
     result, page_count = await handle_view_books(db, current_user, star_bool, limit, page)
-    return templates.TemplateResponse(
-        "view/book/view_books.html",
-        {"request": {}, "book_list": result, "page_count": page_count, "page": page,
-         "args": {"star": star}}
+    return JSONResponse(
+        status_code=HTTPStatus.OK,
+        content={"book_list": result, "page_count": page_count, "page": page, "args": {"star": star}}
     )
 
 
