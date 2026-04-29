@@ -12,8 +12,8 @@ TODO backend:
 - ~~Restructure~~
 - ~~Stop convert db Record~~
 - ~~Add progress page~~
-- Read word, vector/digital pdf files
-- Move inserted file into storage
+- ~~Accept word, vector/digital pdf files~~
+- ~~Move inserted file into storage (MinIO)~~
 - Update sentence example when view word, avoid short/no meaning sentences
 - Search by kana, romaji, EN
 - API now is concurrent, insert will meet `process_data` bottle neck --> move to background job
