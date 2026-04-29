@@ -4,7 +4,7 @@ from typing import List, Tuple, Dict, Any
 from utils.data import is_japanese_word, is_english_word
 from utils.db import DBHandling
 from utils.logger import get_logger
-from utils.storage import get_file_download_link
+from utils.storage import get_file_download_link, delete_storage_file
 from schemas.constants import DEFAULT_LIMIT
 
 log = get_logger(__name__)
@@ -39,9 +39,24 @@ async def toggle_star_helper(db: DBHandling, user_id: int, obj_id: int, obj_type
     else:
         return False
 
-async def delete_book_helper(db: DBHandling, book_id: int) -> bool:
+async def delete_book_helper(db: DBHandling, book_id: int, object_name: str = "") -> bool:
+    """Delete DB record, if success then delete storage file.
+    Return True if all success, False otherwise."""
     async with db.transaction():
-        return await db.delete_book(book_id=book_id)
+        deleted = await db.delete_book(book_id=book_id)
+
+    if not deleted:
+        return False
+
+    # Best effort: DB is source of truth; storage cleanup failures are logged.
+    if object_name:
+        try:
+            if not delete_storage_file(object_name):
+                log.warning(f"Deleted book_id={book_id} in DB but failed to delete object '{object_name}'")
+        except Exception as e:
+            log.warning(f"Deleted book_id={book_id} in DB but storage cleanup raised error: {e}")
+
+    return True
 
 async def get_all_book_name_and_id(db: DBHandling):
     """call db.list_books with no star, 0 offset, query all"""

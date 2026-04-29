@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException
+from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Response
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
@@ -482,7 +482,7 @@ async def view_specific_book(
         {"request": {}, "book_details": await handle_view_specific_book(db, current_user, book_id)}
     )
 
-
+#TODO: change to DELETE /book/{id} some day
 @router.post("/del/book")
 async def delete_book(
     request: Request,
@@ -495,9 +495,16 @@ async def delete_book(
         obj_id = int(data.get("id", ""))
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing book `id`")
-    
-    deleted = await delete_book_helper(db, obj_id)
-    return {"success": deleted}
+
+    book = await db.get_exact_book(user_id=current_admin_user["id"], book_id=obj_id)
+    if not book:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Book not found")
+
+    deleted = await delete_book_helper(db, obj_id, book.get("object_name", ""))
+    if not deleted:
+        raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Failed to delete book")
+
+    return Response(status_code=HTTPStatus.NO_CONTENT)
 
 
 # =================================================================================

@@ -129,3 +129,17 @@ def get_file_download_link(object_name: str, expiry: int = PRESIGNED_URL_EXPIRY)
     except ClientError as e:
         log.error(f"Failed to generate presigned URL: {e}")
         return ""
+
+@_retry()
+def delete_storage_file(object_name) -> bool:
+    """Delete an object from MinIO/S3 bucket by object name."""
+    if not object_name:
+        return False
+
+    try:
+        s3_client.delete_object(Bucket=MINIO_BUCKET, Key=object_name)
+        return True
+    except NoCredentialsError as e:
+        log.error(f"Failed to delete from MinIO: {e}")
+        return False
+

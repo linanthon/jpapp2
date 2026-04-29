@@ -294,16 +294,30 @@ class TestDeleteBook:
 
     @pytest.mark.asyncio
     async def test_delete_by_admin(self, client, mock_db, mock_redis, admin_token):
-        """Admin user should get 200."""
+        """Admin user should get 204."""
         mock_redis.get.return_value = None
         mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.get_exact_book.return_value = {"book_id": 1, "object_name": "obj.pdf"}
         mock_db.delete_book.return_value = True
+        with patch("app.handlers.view.delete_storage_file", return_value=True):
+            resp = await client.post(
+                "/v1/del/book",
+                json={"id": 1},
+                headers=_auth_header(admin_token),
+            )
+        assert resp.status_code == 204
+
+    @pytest.mark.asyncio
+    async def test_delete_not_found(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.get_exact_book.return_value = None
         resp = await client.post(
             "/v1/del/book",
-            json={"id": 1},
+            json={"id": 999},
             headers=_auth_header(admin_token),
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_delete_no_auth(self, client):

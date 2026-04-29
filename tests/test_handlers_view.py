@@ -49,8 +49,26 @@ class TestDeleteBookHelper:
     @pytest.mark.asyncio
     async def test_delete_success(self, mock_db):
         mock_db.delete_book.return_value = True
-        result = await delete_book_helper(mock_db, book_id=1)
+        with patch("app.handlers.view.delete_storage_file", return_value=True) as delete_storage_file_mock:
+            result = await delete_book_helper(mock_db, book_id=1, object_name="obj.pdf")
         assert result is True
+        delete_storage_file_mock.assert_called_once_with("obj.pdf")
+
+    @pytest.mark.asyncio
+    async def test_delete_success_without_object_name(self, mock_db):
+        mock_db.delete_book.return_value = True
+        with patch("app.handlers.view.delete_storage_file") as delete_storage_file_mock:
+            result = await delete_book_helper(mock_db, book_id=1)
+        assert result is True
+        delete_storage_file_mock.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_delete_db_fail(self, mock_db):
+        mock_db.delete_book.return_value = False
+        with patch("app.handlers.view.delete_storage_file") as delete_storage_file_mock:
+            result = await delete_book_helper(mock_db, book_id=1, object_name="obj.pdf")
+        assert result is False
+        delete_storage_file_mock.assert_not_called()
 
 
 # ── get_all_book_name_and_id ──────────────────────────────────────────────────

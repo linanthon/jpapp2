@@ -22,6 +22,7 @@ from utils.storage import (
     upload_file_from_path_to_minio,
     get_file_from_minio_as_stream,
     get_file_download_link,
+    delete_storage_file,
     _retry,
     PRESIGNED_URL_EXPIRY,
 )
@@ -199,3 +200,21 @@ class TestGetFileDownloadLink:
         )
         result = get_file_download_link("obj")
         assert result == ""
+
+
+# ── delete_storage_file ──────────────────────────────────────────────────────────────
+class TestDeleteFile:
+    def test_delete_success(self, mock_s3):
+        result = delete_storage_file("obj")
+        assert result is True
+        mock_s3.delete_object.assert_called_once_with(Bucket="jpapp-books", Key="obj")
+
+    def test_delete_empty_name(self, mock_s3):
+        result = delete_storage_file("")
+        assert result is False
+        mock_s3.delete_object.assert_not_called()
+
+    def test_delete_no_credentials(self, mock_s3):
+        mock_s3.delete_object.side_effect = NoCredentialsError()
+        result = delete_storage_file("obj")
+        assert result is False
