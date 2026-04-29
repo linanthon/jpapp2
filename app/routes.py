@@ -268,7 +268,7 @@ async def upload_file(
         submittedFile.file = io.BytesIO(content_bytes)
         await handle_insert_file_stream(pdata, db, redis, book_id, submittedFile)
 
-        if not await db.insert_book_finished(book_id, object_name):
+        if not await db.insert_book_finished(book_id):
             raise HTTPException(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 detail="Failed to finalize processing the uploaded file"
@@ -330,7 +330,7 @@ async def upload_string(
         
         handle_insert_str_stream(pdata, db, redis, book_id, stringBody)
 
-        if not await db.insert_book_finished(book_id, object_name):
+        if not await db.insert_book_finished(book_id):
             raise HTTPException(
                 status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
                 detail="Failed to finalize processing the uploaded file"

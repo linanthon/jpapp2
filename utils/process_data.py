@@ -1,6 +1,6 @@
 from fugashi import Tagger
 from fugashi.fugashi import UnidicNode
-from itertools import combinations
+from itertools import combinations, chain
 from jamdict import Jamdict
 from jamdict.util import LookupResult
 from jamdict.jmdict import JMDEntry
@@ -168,8 +168,9 @@ class ProcessData():
         """
         Get Fugashi tokenized word's lemma (dictionary base form).
         However, lemma might not be useful as it's not commonly used.
-        Use Jamdict to precise lookup lemma for all possible base forms (all in 1 instance)
-        usually the commonly used form will be at index 0, ignore the rest.
+        Use Jamdict to precise lookup lemma for all possible base forms (all in 1 instance),
+        prioritize returning the form that matches the `tagged_word` exactly,
+        if not found return index 0 entry, it's usually the most commonly used form.
 
         Input:
         - tagged_word: fugashi tagged (tokenized) word or a string
@@ -178,7 +179,9 @@ class ProcessData():
         """
         if type(tagged_word) is str:
             lemma = tagged_word
+            surface = tagged_word   # surface = origin tagged_word text
         else:
+            surface = tagged_word.surface
             lemma = tagged_word.feature.lemma
             # No lemma if is number or common symbols but Japanese symbols will still bypass this
             if lemma is None:
@@ -192,6 +195,16 @@ class ProcessData():
         # No entries if the tagged word is symbol (【, ！,、, ♫, ...)
         if len(entries) == 0:
             return None
+
+        # Jamdict lookup can include near matches; prefer exact form match first.
+        targets = {lemma}
+        if surface:
+            targets.add(surface)
+
+        for entry in entries:
+            if any(form.text in targets for form in chain(entry.kanji_forms, entry.kana_forms)):
+                return entry
+
         return entries[0]
 
     def _get_waseieigo_combs(self, eigo: dict) -> list:
@@ -326,9 +339,12 @@ class ProcessData():
                 #TODO: if update prolonged .wav, need pop prev, new = prev + prev[-1] (i.e.: "chii" instead of "chi" "i")
 
             # If is Sokuon (small tsu) 
-            elif i > 0 and kana in ["っ", "ッ"] and i < len(kana_list):
+            elif i > 0 and kana in ["っ", "ッ"]:
                 # Use the word after small tsu to determine what kind it is, among k, s, t, p
-                new_romaji = ROMAJI_MAP.get(kana + kana_list[i+1][0])
+                if i < len(kana_list)-1:
+                    new_romaji = ROMAJI_MAP.get(kana + kana_list[i+1][0])
+                else:
+                    new_romaji = ROMAJI_MAP.get(kana + "た")    # if ends with sokuon, stitch any silent with it
 
                 # Approach #2: for more natural, requires more audio files
                 # i.e.: word = "学校" -> "ガ" "っ" "こ" -> "ga" "っ"... -> "ga" "k"... -> "gak" ...

@@ -1,6 +1,7 @@
 """Tests for utils/process_data.py — sentence streaming, word entry, wasei-eigo, audio mapping."""
 import io
 import pytest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
 from utils.process_data import ProcessData
 from utils.text_extractor import TxtExtractor
@@ -192,6 +193,7 @@ class TestGetWordEntry:
     def test_tagged_word_with_dash_lemma(self):
         """Loanwords have lemma like 'トーク-talk', should split on dash."""
         tagged = MagicMock()
+        tagged.surface = "トーク"
         tagged.feature.lemma = "トーク-talk"
         mock_entry = MagicMock()
         mock_result = MagicMock()
@@ -204,6 +206,55 @@ class TestGetWordEntry:
         result = self.pdata.get_word_entry(tagged)
         assert result is mock_entry
         mock_jam.lookup.assert_called_once_with("トーク")
+
+    def test_prefers_exact_form_match_over_first_entry(self):
+        tagged = MagicMock()
+        tagged.surface = "あ"
+        tagged.feature.lemma = "あ"
+
+        # First entry is a near match (e.g. あっ), second is exact (あ).
+        near_entry = SimpleNamespace(
+            kanji_forms=[],
+            kana_forms=[SimpleNamespace(text="あっ")],
+        )
+        exact_entry = SimpleNamespace(
+            kanji_forms=[],
+            kana_forms=[SimpleNamespace(text="あ")],
+        )
+
+        mock_result = MagicMock()
+        mock_result.entries = [near_entry, exact_entry]
+        mock_jam = MagicMock()
+        mock_jam.lookup.return_value = mock_result
+        self.pdata._local = MagicMock()
+        self.pdata._local.jam = mock_jam
+
+        result = self.pdata.get_word_entry(tagged)
+        assert result is exact_entry
+
+    def test_falls_back_to_first_entry_when_no_exact_match(self):
+        tagged = MagicMock()
+        tagged.surface = "あ"
+        tagged.feature.lemma = "あ"
+
+        first_entry = SimpleNamespace(
+            kanji_forms=[],
+            kana_forms=[SimpleNamespace(text="ぁ")],
+        )
+        second_entry = SimpleNamespace(
+            kanji_forms=[SimpleNamespace(text="阿")],
+            kana_forms=[SimpleNamespace(text="ア")],
+        )
+
+        mock_result = MagicMock()
+        mock_result.entries = [first_entry, second_entry]
+        mock_jam = MagicMock()
+        mock_jam.lookup.return_value = mock_result
+        self.pdata._local = MagicMock()
+        self.pdata._local.jam = mock_jam
+
+        result = self.pdata.get_word_entry(tagged)
+        assert result is first_entry
 
 
 # ── _sep_mora_get_audio_mapping ───────────────────────────────────────────────

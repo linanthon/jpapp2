@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS books (
     user_id BIGINT NOT NULL,
     name TEXT NOT NULL,
     idempotency_key UUID UNIQUE,
-    file_url TEXT,
+    object_name TEXT,
     status TEXT NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT now(),
     modified_at TIMESTAMP NOT NULL DEFAULT now()

@@ -298,19 +298,19 @@ class DBHandling:
             return row['id'], row['is_new']
         return -1, False
 
-    async def insert_book_uploaded(self, book_id: int, file_url: str = "") -> bool:
+    async def insert_book_uploaded(self, book_id: int, object_name: str = "") -> bool:
         """
         Update the inserting book file url and status after uploaded to MinIO/S3.
 
         Input:
         - book_id: The book ID.
-        - file_url: The storage URL for this file/book
+        - object_name: The storage URL for this file/book
 
         Output: Return True if success, False otherwise.
         """
         status = await self._execute(
-            f"UPDATE {TABLE_BOOKS} SET file_url=$1, status='UPLOADED' WHERE id = $2;",
-            file_url, book_id
+            f"UPDATE {TABLE_BOOKS} SET object_name=$1, status='UPLOADED' WHERE id = $2;",
+            object_name, book_id
         )
         return status is not None
 
