@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 import contextvars
+import json
 import math
 import os
 import re
@@ -10,7 +11,7 @@ from typing import List, Tuple, Dict, Any, TYPE_CHECKING
 if TYPE_CHECKING:
     from schemas.word import Word
 
-from app.config import DB_HOST, DB_PORT
+from app.config import DB_HOST, DB_PORT, TASKIQ_MAX_ATTEMPTS
 from utils.logger import get_logger
 from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,
                               TABLE_WORD_SENTENCE_REF, TABLE_SENTENCE_BOOK_REF, DB_NAME,
@@ -333,14 +334,15 @@ class DBHandling:
 
     async def create_job_book(self, user_id: int, book_id: int, action: str,
                               payload: Dict[str, Any] | None = None,
-                              max_attempts: int = 3) -> str:
+                              max_attempts: int = TASKIQ_MAX_ATTEMPTS) -> str:
         """Create a background job row and return the job UUID string."""
         job_id = str(uuid.uuid4())
+        payload_json = json.dumps(payload or {}, ensure_ascii=True)
         row = await self._fetchrow(
             f"""INSERT INTO {TABLE_JOB_BOOKS} (id, user_id, book_id, action, status, payload, max_attempts)
             VALUES ($1::uuid, $2, $3, $4, 'QUEUED', $5::jsonb, $6)
             RETURNING id;""",
-            job_id, user_id, book_id, action, payload or {}, max_attempts
+            job_id, user_id, book_id, action, payload_json, max_attempts
         )
         return str(row["id"]) if row else ""
 
