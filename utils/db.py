@@ -356,7 +356,26 @@ class DBHandling:
                         modified_at = NOW()
                     WHERE id = $4::uuid;"""
         result = await self._execute(query, status, error, attempts_inc, job_id)
-        return result is not None
+        return bool(result) and self._get_rowcount(result) > 0
+
+    async def claim_job_book_for_processing(self, job_id: str) -> bool:
+        """Atomically claim a queued job for processing
+        (idempotent check for background job).
+
+        Returns True only for the first worker that transitions:
+        QUEUED -> PROCESSING and increments attempts by 1.
+        """
+        result = await self._execute(
+            f"""UPDATE {TABLE_JOB_BOOKS}
+                SET status = 'PROCESSING',
+                    attempts = attempts + 1,
+                    modified_at = NOW()
+                WHERE id = $1::uuid
+                  AND status = 'QUEUED'
+                  AND attempts < max_attempts;""",
+            job_id,
+        )
+        return bool(result) and self._get_rowcount(result) == 1
 
     async def get_job_book(self, job_id: str) -> dict | None:
         """Get background job-book row by UUID."""

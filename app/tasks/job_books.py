@@ -95,7 +95,8 @@ async def process_insert_str_job(job_id: str, book_id: int, data: str) -> None:
 
 	try:
 		db, redis, pdata = await _bootstrap_runtime()
-		await db.update_job_book_status(job_id, "PROCESSING", attempts_inc=1)
+		if not await db.claim_job_book_for_processing(job_id):
+			return
 
 		await handle_insert_str_stream(pdata, db, redis, book_id, data)
 		await db.insert_book_finished(book_id)
@@ -132,7 +133,8 @@ async def process_insert_file_job(job_id: str, book_id: int, object_name: str,
 
 	try:
 		db, redis, pdata = await _bootstrap_runtime()
-		await db.update_job_book_status(job_id, "PROCESSING", attempts_inc=1)
+		if not await db.claim_job_book_for_processing(job_id):
+			return
 
 		file_stream = get_file_from_minio_as_stream(object_name)
 		upload = UploadFile(file=file_stream, filename=filename, size=file_size)
@@ -175,7 +177,8 @@ async def process_delete_job_book(job_id: str, book_id: int, object_name: str = 
 
 	try:
 		db, redis, _ = await _bootstrap_runtime()
-		await db.update_job_book_status(job_id, "PROCESSING", attempts_inc=1)
+		if not await db.claim_job_book_for_processing(job_id):
+			return
 
 		deleted = await delete_book_helper(db, book_id, object_name)
 		if not deleted:

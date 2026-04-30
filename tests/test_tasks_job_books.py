@@ -12,6 +12,7 @@ from app.tasks.job_books import (
 
 def _make_runtime():
     db = MagicMock()
+    db.claim_job_book_for_processing = AsyncMock(return_value=True)
     db.update_job_book_status = AsyncMock(return_value=True)
     db.insert_book_finished = AsyncMock(return_value=True)
     db.get_exact_book = AsyncMock(return_value={"object_name": "obj_1"})
@@ -43,7 +44,7 @@ class TestJobBookTasks:
 
         insert_mock.assert_awaited_once_with(pdata, db, redis, 10, "abc")
         db.insert_book_finished.assert_awaited_once_with(10)
-        db.update_job_book_status.assert_any_await("job-1", "PROCESSING", attempts_inc=1)
+        db.claim_job_book_for_processing.assert_awaited_once_with("job-1")
         db.update_job_book_status.assert_any_await("job-1", "FINISHED")
         cleanup_mock.assert_awaited_once()
 
@@ -77,7 +78,7 @@ class TestJobBookTasks:
 
         stream_mock.assert_called_once_with("obj_file")
         insert_mock.assert_awaited_once()
-        db.update_job_book_status.assert_any_await("job-3", "PROCESSING", attempts_inc=1)
+        db.claim_job_book_for_processing.assert_awaited_once_with("job-3")
         db.update_job_book_status.assert_any_await("job-3", "FINISHED")
         cleanup_mock.assert_awaited_once()
 
@@ -118,4 +119,20 @@ class TestJobBookTasks:
                 )
 
         redis.xadd.assert_awaited_once()
+        cleanup_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_insert_str_duplicate_delivery_is_noop_when_claim_fails(self):
+        db, redis, pdata = _make_runtime()
+        db.claim_job_book_for_processing = AsyncMock(return_value=False)
+
+        with patch("app.tasks.job_books._bootstrap_runtime", new=AsyncMock(return_value=(db, redis, pdata))), \
+            patch("app.tasks.job_books._cleanup_runtime", new=AsyncMock()) as cleanup_mock, \
+            patch("app.tasks.job_books.handle_insert_str_stream", new=AsyncMock()) as insert_mock:
+            await process_insert_str_job.original_func("job-dup", 10, "abc")
+
+        db.claim_job_book_for_processing.assert_awaited_once_with("job-dup")
+        insert_mock.assert_not_awaited()
+        db.insert_book_finished.assert_not_awaited()
+        db.update_job_book_status.assert_not_awaited()
         cleanup_mock.assert_awaited_once()
