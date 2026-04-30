@@ -15,6 +15,16 @@ def _make_runtime():
     db.update_job_book_status = AsyncMock(return_value=True)
     db.insert_book_finished = AsyncMock(return_value=True)
     db.get_exact_book = AsyncMock(return_value={"object_name": "obj_1"})
+    db.get_job_book = AsyncMock(
+        return_value={
+            "id": "job-x",
+            "book_id": 1,
+            "action": "INSERT_STR",
+            "status": "FAILED",
+            "attempts": 1,
+            "max_attempts": 3,
+        }
+    )
 
     redis = AsyncMock()
     pdata = MagicMock()
@@ -82,4 +92,30 @@ class TestJobBookTasks:
                 await process_delete_job_book.original_func("job-4", 13, "obj")
 
         db.update_job_book_status.assert_any_await("job-4", "FAILED", error="Failed to delete book")
+        cleanup_mock.assert_awaited_once()
+        redis.xadd.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_insert_file_failed_rollback_publishes_dlq_when_attempts_exhausted(self):
+        db, redis, pdata = _make_runtime()
+        db.get_job_book.return_value = {
+            "id": "job-5",
+            "book_id": 12,
+            "action": "INSERT_FILE",
+            "status": "FAILED_ROLLBACK",
+            "attempts": 3,
+            "max_attempts": 3,
+        }
+
+        with patch("app.tasks.job_books._bootstrap_runtime", new=AsyncMock(return_value=(db, redis, pdata))), \
+            patch("app.tasks.job_books._cleanup_runtime", new=AsyncMock()) as cleanup_mock, \
+            patch("app.tasks.job_books.get_file_from_minio_as_stream", return_value=io.BytesIO(b"x")), \
+            patch("app.tasks.job_books.handle_insert_file_stream", new=AsyncMock(side_effect=RuntimeError("boom"))), \
+            patch("app.tasks.job_books.delete_book_helper", new=AsyncMock(return_value=False)):
+            with pytest.raises(RuntimeError, match="boom"):
+                await process_insert_file_job.original_func(
+                    "job-5", 12, "obj_file", "book.txt", 1
+                )
+
+        redis.xadd.assert_awaited_once()
         cleanup_mock.assert_awaited_once()
