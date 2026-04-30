@@ -10,7 +10,6 @@ import uuid
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
                         FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
 from app.handlers.progress import handle_progress
-from app.handlers.insert import handle_insert_file_stream, handle_insert_str_stream
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                                handle_view_books, handle_view_specific_book,
                                toggle_star_helper, delete_book_helper, get_all_book_name_and_id)
@@ -20,6 +19,7 @@ from app.dependencies import (
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                change_word_prio_to_negative, reset_word_prio)
+from app.tasks.job_books import process_insert_file_job, process_insert_str_job, process_delete_job_book
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
@@ -203,136 +203,204 @@ def insert():
     return templates.TemplateResponse("insert/insert.html", {"request": {}})
 
 
-@router.post("/insert/file")
-async def upload_file(
+@router.post("/insert/file/bg")
+async def upload_file_bg(
     request: Request,
     submittedFile: UploadFile = File(None),
     db: DBHandling = Depends(get_db),
-    pdata: ProcessData = Depends(get_pdata),
-    redis: aioredis.Redis = Depends(get_redis),
     current_admin: dict = Depends(get_current_admin_user)
 ):
-    """Handle file upload (.txt, .pdf, .docx). Admin only."""
+    """Handle file upload (.txt, .pdf, .docx). Admin only. After upload to storage,
+    queue file processing as a background task and return a job ID."""
     if not submittedFile or not submittedFile.filename:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No file uploaded")
-    
+
     ext = get_file_extension_from_path(submittedFile.filename)
     if ext not in ProcessData.ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail=f"Unsupported file type: .{ext}. Allowed: {', '.join(ProcessData.ALLOWED_EXTENSIONS)}"
         )
-    
+
     file_name = get_filename_from_path(submittedFile.filename)
+    idem_key = request.headers.get("Idempotency-Key", "")
+    book_id, created = await db.insert_book_init(current_admin["id"], file_name, idem_key)
+    if book_id <= 0:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initialize book '{file_name}'"
+        )
+    if not created:
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content={"book_id": book_id, "message": "Duplicate request ignored"}
+        )
+
+    content_bytes = await submittedFile.read()
+    object_name = f"{uuid.uuid4().hex}_{file_name}"
+    object_name = upload_file_to_minio(io.BytesIO(content_bytes), object_name)
+    if not object_name:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload file {file_name} to external storage."
+        )
+    if not await db.insert_book_uploaded(book_id, object_name):
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to finalize uploaded file metadata"
+        )
+
+    job_id = await db.create_job_book(
+        user_id=current_admin["id"],
+        book_id=book_id,
+        action="INSERT_FILE",
+        payload={"name": file_name, "object_name": object_name, "file_size": len(content_bytes)},
+    )
+    if not job_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to create background job"
+        )
 
     try:
-        # Idempotent init: first request wins, stop duplicate request
-        idem_key = request.headers.get("Idempotency-Key", "")
-        book_id, created = await db.insert_book_init(current_admin["id"], file_name, idem_key)
-        if book_id <= 0:
-            raise HTTPException(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail=f"Failed to initialize book '{file_name}'"
-            )
-        if not created:
-            return JSONResponse(
-                status_code=HTTPStatus.OK,
-                content={"book_id": book_id, "message": "Duplicate request ignored"}
-            )
+        await process_insert_file_job.kiq(
+            job_id=job_id,
+            book_id=book_id,
+            object_name=object_name,
+            filename=submittedFile.filename,
+            file_size=len(content_bytes),
+        )
+    except Exception as e:
+        await db.update_job_book_status(job_id, "FAILED", error=str(e))
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to enqueue background task"
+        )
 
-        # Read once from request stream and fan out to independent buffers.
-        content_bytes = await submittedFile.read()
-
-        object_name = f"{uuid.uuid4().hex}_{file_name}"
-        object_name = upload_file_to_minio(io.BytesIO(content_bytes), object_name)
-        if not object_name:
-            raise HTTPException(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail=f"Failed to upload file {file_name} to external storage."
-            )
-
-        if not await db.insert_book_uploaded(book_id, object_name):
-            raise HTTPException(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail="Failed to finalize uploaded file metadata"
-            )
-        
-        # Ensure downstream parser reads from an in-memory stream that won't be closed unexpectedly.
-        submittedFile.file = io.BytesIO(content_bytes)
-        await handle_insert_file_stream(pdata, db, redis, book_id, submittedFile)
-
-        if not await db.insert_book_finished(book_id):
-            raise HTTPException(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail="Failed to finalize processing the uploaded file"
-            )
-
-    except ValueError as e:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to process file content")
+    return JSONResponse(
+        status_code=HTTPStatus.ACCEPTED,
+        content={
+            "job_id": job_id,
+            "book_id": book_id,
+            "status": "QUEUED",
+            "message": "Background file insert queued"
+        }
+    )
 
 
-@router.post("/insert/str")
-async def upload_string(
+@router.post("/insert/str/bg")
+async def upload_string_bg(
     request: Request,
     stringName: str = Form(None),
     stringBody: str = Form(None),
     db: DBHandling = Depends(get_db),
-    pdata: ProcessData = Depends(get_pdata),
-    redis: aioredis.Redis = Depends(get_redis),
     current_admin: dict = Depends(get_current_admin_user)
 ):
-    """
-    Handle upload JP text directly. Admin only.
-    Book name = "stringName" and book content = "stringBody" in form
-    """
+    """Handle upload JP text directly. Admin only. Upload to storage then
+    queue the string processing as a background task and return a job ID."""
     if not stringName or not stringBody:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
-            detail=f"Missing book name or content"
+            detail="Missing book name or content"
+        )
+
+    idem_key = request.headers.get("Idempotency-Key", "")
+    book_id, created = await db.insert_book_init(current_admin["id"], stringName, idem_key)
+    if book_id <= 0:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initialize book '{stringName}'"
+        )
+    if not created:
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content={"book_id": book_id, "message": "Duplicate request ignored"}
+        )
+
+    object_name = f"{uuid.uuid4().hex}_{stringName}"
+    object_name = upload_string_to_minio(stringBody, object_name)
+    if not object_name:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload file {stringName} to external storage."
+        )
+    if not await db.insert_book_uploaded(book_id, object_name):
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to finalize uploaded file metadata"
+        )
+
+    job_id = await db.create_job_book(
+        user_id=current_admin["id"],
+        book_id=book_id,
+        action="INSERT_STR",
+        payload={"name": stringName, "object_name": object_name},
+    )
+    if not job_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to create background job"
         )
 
     try:
-        idem_key = request.headers.get("Idempotency-Key", "")
-        book_id, created = await db.insert_book_init(current_admin["id"], stringName, idem_key)
-        if book_id <= 0:
-            raise HTTPException(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail=f"Failed to initialize book '{stringName}'"
-            )
-        if not created:
-            return JSONResponse(
-                status_code=HTTPStatus.OK,
-                content={"book_id": book_id, "message": "Duplicate request ignored"}
-            )
+        await process_insert_str_job.kiq(job_id=job_id, book_id=book_id, data=stringBody)
+    except Exception as e:
+        await db.update_job_book_status(job_id, "FAILED", error=str(e))
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to enqueue background task"
+        )
 
-        object_name = f"{uuid.uuid4().hex}_{stringName}"
-        object_name = upload_string_to_minio(stringBody, object_name)
-        if not object_name:
-            raise HTTPException(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail=f"Failed to upload file {stringName} to external storage."
-            )
+    return JSONResponse(
+        status_code=HTTPStatus.ACCEPTED,
+        content={
+            "job_id": job_id,
+            "book_id": book_id,
+            "status": "QUEUED",
+            "message": "Background insert queued"
+        }
+    )
 
-        if not await db.insert_book_uploaded(book_id, object_name):
-            raise HTTPException(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail="Failed to finalize uploaded file metadata"
-            )
-        
-        handle_insert_str_stream(pdata, db, redis, book_id, stringBody)
 
-        if not await db.insert_book_finished(book_id):
-            raise HTTPException(
-                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-                detail="Failed to finalize processing the uploaded file"
-            )
-    
-    except ValueError as e:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Failed to process input string")
+
+
+@router.get("/job")
+async def get_job_list_page(request: Request):
+    return templates.TemplateResponse("job/job_list.html", {"request": request})
+
+@router.get("/api/job")
+async def get_job_list(
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
+):
+    job_list = await db.get_job_book_list(current_user_id)
+    return JSONResponse(
+        status_code=HTTPStatus.OK,
+        content={"job_list": job_list}
+    )
+
+
+@router.get("/job/{job_id}")
+async def get_specific_job_page(request: Request, job_id: str):
+    return templates.TemplateResponse("job/specific_job.html", {"request": request, "job_id": job_id})
+
+@router.get("/api/job/{job_id}")
+async def get_specific_job(
+    job_id: str,
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
+):
+    """Get status/details for a background job book."""
+    job = await db.get_job_book(job_id)
+    if not job:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Job not found")
+    if job["user_id"] != current_user_id:
+        raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Not allowed to view this job")
+
+    return JSONResponse(
+        status_code=HTTPStatus.OK,
+        content=job
+    )
 
 # =================================================================================
 
@@ -505,6 +573,59 @@ async def delete_book(
         raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Failed to delete book")
 
     return Response(status_code=HTTPStatus.NO_CONTENT)
+
+
+@router.post("/del/book/bg")
+async def delete_book_bg(
+    request: Request,
+    db: DBHandling = Depends(get_db),
+    current_admin_user: dict = Depends(get_current_admin_user)
+):
+    """Queue book deletion in background and return a job ID."""
+    data = await request.json()
+    try:
+        obj_id = int(data.get("id", ""))
+    except:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing book `id`")
+
+    book = await db.get_exact_book(user_id=current_admin_user["id"], book_id=obj_id)
+    if not book:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Book not found")
+
+    job_id = await db.create_job_book(
+        user_id=current_admin_user["id"],
+        book_id=obj_id,
+        action="DELETE_BOOK",
+        payload={"object_name": book.get("object_name", "")},
+    )
+    if not job_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to create background job"
+        )
+
+    try:
+        await process_delete_job_book.kiq(
+            job_id=job_id,
+            book_id=obj_id,
+            object_name=book.get("object_name", ""),
+        )
+    except Exception as e:
+        await db.update_job_book_status(job_id, "FAILED", error=str(e))
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to enqueue background task"
+        )
+
+    return JSONResponse(
+        status_code=HTTPStatus.ACCEPTED,
+        content={
+            "job_id": job_id,
+            "book_id": obj_id,
+            "status": "QUEUED",
+            "message": "Background delete queued"
+        }
+    )
 
 
 # =================================================================================

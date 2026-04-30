@@ -13,9 +13,11 @@ requests==2.32.4
 # DB
 asyncpg==0.31.0
 
-# Redis
+# Redis, Taskiq
 redis==5.0.1
 aioredis==2.0.1
+taskiq==0.12.2
+taskiq-redis==1.2.2
 
 # Upload, extract text from file
 boto3==1.42.94      # standard for S3, can swap to minio==7.2.20 for minio native only

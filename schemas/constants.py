@@ -20,6 +20,7 @@ TABLE_USER = "users"
 TABLE_USER_WORD_PROGRESS = "user_word_progress"
 TABLE_USER_SENTENCE_PROGRESS = "user_sentence_progress"
 TABLE_USER_BOOK_STAR = "user_book_star"
+TABLE_JOB_BOOKS = "job_books"
 
 # --- Defaults
 DEFAULT_LIMIT: int = 10

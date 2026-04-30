@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS words (
 -- User (admin role) uploads a book
 CREATE TABLE IF NOT EXISTS books (
     id SERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL,
+    user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     idempotency_key UUID UNIQUE,
     object_name TEXT,
@@ -91,4 +91,19 @@ CREATE TABLE IF NOT EXISTS user_book_star (
     book_id INT REFERENCES sentences(id) ON DELETE CASCADE,
     star BOOLEAN,
     PRIMARY KEY(user_id, book_id)
+);
+
+-- Background jobs for insert/delete workflows
+CREATE TABLE IF NOT EXISTS job_books (
+    id UUID PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE SET NULL,
+    book_id INT REFERENCES books(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,   -- QUEUED / PROCESSING / FINISHED / FAILED / ROLLING_BACK / ROLLED_BACK
+    payload JSONB,
+    error TEXT,
+    attempts INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 3,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    modified_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

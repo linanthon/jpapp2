@@ -1,22 +1,25 @@
 from contextlib import asynccontextmanager
 import contextvars
+import json
 import math
 import os
 import re
+import uuid
 import asyncpg
-from typing import List, Tuple, Dict, TYPE_CHECKING
+from typing import List, Tuple, Dict, Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from schemas.word import Word
 
-from app.config import DB_HOST, DB_PORT
+from app.config import DB_HOST, DB_PORT, TASKIQ_MAX_ATTEMPTS
 from utils.logger import get_logger
 from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,
                               TABLE_WORD_SENTENCE_REF, TABLE_SENTENCE_BOOK_REF, DB_NAME,
                               SQL_TABLE_SCRIPT, DEFAULT_LIMIT, SQL_WORD_PRIO_SCRIPT, TABLE_USER,
                               DEFAULT_FORMULA_K, DEFAULT_TIME_EXPODECAY, QUIZ_WORD_SORT_COLUMNS,
                               WORD_SENSES_REGEX, QUIZ_SOFT_CAP, QUIZ_HARD_CAP, DEFAULT_MULTI_PENALTY,
-                              DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS, TABLE_USER_BOOK_STAR)
+                              DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS, TABLE_USER_BOOK_STAR,
+                              TABLE_JOB_BOOKS)
 
 log = get_logger(__file__)
 
@@ -328,6 +331,72 @@ class DBHandling:
             book_id
         )
         return status is not None
+
+    async def create_job_book(self, user_id: int, book_id: int, action: str,
+                              payload: Dict[str, Any] | None = None,
+                              max_attempts: int = TASKIQ_MAX_ATTEMPTS) -> str:
+        """Create a background job row and return the job UUID string."""
+        job_id = str(uuid.uuid4())
+        payload_json = json.dumps(payload or {}, ensure_ascii=True)
+        row = await self._fetchrow(
+            f"""INSERT INTO {TABLE_JOB_BOOKS} (id, user_id, book_id, action, status, payload, max_attempts)
+            VALUES ($1::uuid, $2, $3, $4, 'QUEUED', $5::jsonb, $6)
+            RETURNING id;""",
+            job_id, user_id, book_id, action, payload_json, max_attempts
+        )
+        return str(row["id"]) if row else ""
+
+    async def update_job_book_status(self, job_id: str, status: str,
+                                     error: str = "", attempts_inc: int = 0) -> bool:
+        """Update job status/error and bump attempts when requested."""
+        query = f"""UPDATE {TABLE_JOB_BOOKS}
+                    SET status = $1,
+                        error = CASE WHEN $2 = '' THEN error ELSE $2 END,
+                        attempts = attempts + $3,
+                        modified_at = NOW()
+                    WHERE id = $4::uuid;"""
+        result = await self._execute(query, status, error, attempts_inc, job_id)
+        return bool(result) and self._get_rowcount(result) > 0
+
+    async def claim_job_book_for_processing(self, job_id: str) -> bool:
+        """Atomically claim a queued job for processing
+        (idempotent check for background job).
+
+        Returns True only for the first worker that transitions:
+        QUEUED -> PROCESSING and increments attempts by 1.
+        """
+        result = await self._execute(
+            f"""UPDATE {TABLE_JOB_BOOKS}
+                SET status = 'PROCESSING',
+                    attempts = attempts + 1,
+                    modified_at = NOW()
+                WHERE id = $1::uuid
+                  AND status = 'QUEUED'
+                  AND attempts < max_attempts;""",
+            job_id,
+        )
+        return bool(result) and self._get_rowcount(result) == 1
+
+    async def get_job_book(self, job_id: str) -> dict | None:
+        """Get background job-book row by UUID."""
+        row = await self._fetchrow(
+            f"SELECT * FROM {TABLE_JOB_BOOKS} WHERE id = $1::uuid;",
+            job_id
+        )
+        return self._parse_job(row) if row else None
+
+    async def get_job_book_list(self, user_id: int, limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
+        """List background job-book rows for a specific user, newest first."""
+        if limit < 1:
+            limit = DEFAULT_LIMIT
+        rows = await self._fetch(
+            f"""SELECT * FROM {TABLE_JOB_BOOKS}
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            OFFSET $2 LIMIT $3;""",
+            user_id, offset, limit
+        )
+        return self._parse_job_list(rows)
 
     async def update_book(self, book_id: int = 0, name: str = "", append_content: str = "") -> bool:
         """
@@ -1314,6 +1383,25 @@ class DBHandling:
             "quized": record["quized"],
             "star": record["star"],
         }
+
+    def _parse_job(self, job) -> dict:
+        """Build a job-book dict from a DB record."""
+        return {
+            "id": str(job["id"]),
+            "user_id": job["user_id"],
+            "book_id": job["book_id"],
+            "action": job["action"],
+            "status": job["status"],
+            "attempts": job["attempts"],
+            "max_attempts": job["max_attempts"],
+            "error": job["error"] or "",
+            "created_at": str(job["created_at"]),
+            "modified_at": str(job["modified_at"]),
+        }
+
+    def _parse_job_list(self, rows) -> List[dict]:
+        """Parse a list of job-book records into JSON-safe dicts."""
+        return [self._parse_job(row) for row in rows]
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================
