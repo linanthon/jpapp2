@@ -17,6 +17,33 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  taskiq-worker:
+    build: .
+    command: >
+      taskiq worker app.taskiq_broker:broker app.tasks.job_books
+      --workers ${TASKIQ_MAX_WORKERS:-4}
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+      - TASKIQ_BROKER_URL=redis://redis:6379/0
+      - TASKIQ_RESULT_URL=redis://redis:6379/0
+      - TASKIQ_QUEUE_NAME=${TASKIQ_QUEUE_NAME:-taskiq}
+      - TASKIQ_CONSUMER_GROUP=${TASKIQ_CONSUMER_GROUP:-taskiq}
+      - TASKIQ_DLQ_STREAM=${TASKIQ_DLQ_STREAM:-taskiq_dlq}
+      - TASKIQ_MAX_ATTEMPTS=${TASKIQ_MAX_ATTEMPTS:-3}
+      - TASKIQ_MAX_WORKERS=${TASKIQ_MAX_WORKERS:-4}
+      - TASKIQ_STREAM_MAXLEN_MAIN=${TASKIQ_STREAM_MAXLEN_MAIN:-10000}
+      - TASKIQ_STREAM_MAXLEN_DLQ=${TASKIQ_STREAM_MAXLEN_DLQ:-10000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
   postgres:
     image: postgres:15
     environment:

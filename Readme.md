@@ -27,3 +27,9 @@ TODO frontend
 - Fix go back button in view specific
 - Quiz not starting
 - Unauthorize request goes to /v1/null
+
+Run each in separate command prompt:
+* minio server minio-data/
+* memurai
+* taskiq worker app.taskiq_broker:broker app.tasks.job_books --workers 4
+* python -m app.main
