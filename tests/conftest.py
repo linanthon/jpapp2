@@ -28,6 +28,8 @@ def mock_db():
         "insert_book", "update_book", "get_exact_book", "list_books",
         "count_books", "update_book_star", "delete_book",
         "insert_book_init", "insert_book_uploaded", "insert_book_finished",
+        "rollback_insert_book", "create_job_book", "update_job_book_status",
+        "get_job_book", "get_job_book_list",
         "insert_word", "update_word_occurrence", "update_word_jlpt",
         "update_words_known", "update_word_star",
         "query_like_word", "get_exact_word", "query_word_sense",

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Response
-from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import os
@@ -9,6 +9,7 @@ import uuid
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
                         FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
+from app.handlers.insert import compensate_insert_saga
 from app.handlers.progress import handle_progress
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                                handle_view_books, handle_view_specific_book,
@@ -26,11 +27,13 @@ from utils.auth import hash_password, create_access_token, create_refresh_token,
 from utils.db import DBHandling
 from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
                            parse_bool_param, validate_star)
+from utils.logger import get_logger
 from utils.process_data import ProcessData
 from utils.storage import upload_file_to_minio, upload_string_to_minio
 
 # Create router
 router = APIRouter()
+log = get_logger(__name__)
 
 # Setup templates (html files)
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
@@ -236,33 +239,30 @@ async def upload_file_bg(
             content={"book_id": book_id, "message": "Duplicate request ignored"}
         )
 
-    content_bytes = await submittedFile.read()
-    object_name = f"{uuid.uuid4().hex}_{file_name}"
-    object_name = upload_file_to_minio(io.BytesIO(content_bytes), object_name)
-    if not object_name:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload file {file_name} to external storage."
-        )
-    if not await db.insert_book_uploaded(book_id, object_name):
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="Failed to finalize uploaded file metadata"
-        )
-
-    job_id = await db.create_job_book(
-        user_id=current_admin["id"],
-        book_id=book_id,
-        action="INSERT_FILE",
-        payload={"name": file_name, "object_name": object_name, "file_size": len(content_bytes)},
-    )
-    if not job_id:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="Failed to create background job"
-        )
-
+    object_name = ""
+    error_detail = ""
     try:
+        content_bytes = await submittedFile.read()
+        object_name = f"{uuid.uuid4().hex}_{file_name}"
+        object_name = upload_file_to_minio(io.BytesIO(content_bytes), object_name)
+        if not object_name:
+            error_detail = f"Failed to upload file {file_name} to external storage."
+            raise RuntimeError(error_detail)
+
+        if not await db.insert_book_uploaded(book_id, object_name):
+            error_detail = "Failed to finalize uploaded file metadata"
+            raise RuntimeError(error_detail)
+
+        job_id = await db.create_job_book(
+            user_id=current_admin["id"],
+            book_id=book_id,
+            action="INSERT_FILE",
+            payload={"name": file_name, "object_name": object_name, "file_size": len(content_bytes)},
+        )
+        if not job_id:
+            error_detail = "Failed to create background job"
+            raise RuntimeError(error_detail)
+
         await process_insert_file_job.kiq(
             job_id=job_id,
             book_id=book_id,
@@ -271,11 +271,13 @@ async def upload_file_bg(
             file_size=len(content_bytes),
         )
     except Exception as e:
-        await db.update_job_book_status(job_id, "FAILED", error=str(e))
+        await compensate_insert_saga(db, book_id, object_name)
+        if not error_detail:
+            error_detail = "Failed to enqueue background task"
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="Failed to enqueue background task"
-        )
+            detail=error_detail
+        ) from e
 
     return JSONResponse(
         status_code=HTTPStatus.ACCEPTED,
@@ -317,39 +319,38 @@ async def upload_string_bg(
             content={"book_id": book_id, "message": "Duplicate request ignored"}
         )
 
-    object_name = f"{uuid.uuid4().hex}_{stringName}"
-    object_name = upload_string_to_minio(stringBody, object_name)
-    if not object_name:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload file {stringName} to external storage."
-        )
-    if not await db.insert_book_uploaded(book_id, object_name):
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="Failed to finalize uploaded file metadata"
-        )
-
-    job_id = await db.create_job_book(
-        user_id=current_admin["id"],
-        book_id=book_id,
-        action="INSERT_STR",
-        payload={"name": stringName, "object_name": object_name},
-    )
-    if not job_id:
-        raise HTTPException(
-            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="Failed to create background job"
-        )
-
+    object_name = ""
+    error_detail = ""
     try:
+        object_name = f"{uuid.uuid4().hex}_{stringName}"
+        object_name = upload_string_to_minio(stringBody, object_name)
+        if not object_name:
+            error_detail = f"Failed to upload file {stringName} to external storage."
+            raise RuntimeError(error_detail)
+
+        if not await db.insert_book_uploaded(book_id, object_name):
+            error_detail = "Failed to finalize uploaded file metadata"
+            raise RuntimeError(error_detail)
+
+        job_id = await db.create_job_book(
+            user_id=current_admin["id"],
+            book_id=book_id,
+            action="INSERT_STR",
+            payload={"name": stringName, "object_name": object_name},
+        )
+        if not job_id:
+            error_detail = "Failed to create background job"
+            raise RuntimeError(error_detail)
+
         await process_insert_str_job.kiq(job_id=job_id, book_id=book_id, data=stringBody)
     except Exception as e:
-        await db.update_job_book_status(job_id, "FAILED", error=str(e))
+        await compensate_insert_saga(db, book_id, object_name)
+        if not error_detail:
+            error_detail = "Failed to enqueue background task"
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="Failed to enqueue background task"
-        )
+            detail=error_detail
+        ) from e
 
     return JSONResponse(
         status_code=HTTPStatus.ACCEPTED,

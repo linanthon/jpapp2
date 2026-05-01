@@ -206,6 +206,94 @@ class TestInsertFileRoute:
         )
         assert resp.status_code == 403
 
+    @pytest.mark.asyncio
+    async def test_insert_file_upload_failure_rolls_back_init(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.insert_book_init.return_value = (101, True)
+        mock_db.rollback_insert_book.return_value = True
+
+        with patch("app.routes.upload_file_to_minio", return_value="") as upload_mock:
+            resp = await client.post(
+                "/v1/insert/file/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-fail-upload",
+                },
+                files={"submittedFile": ("book.txt", b"content", "text/plain")},
+            )
+
+        assert resp.status_code == 500
+        upload_mock.assert_called_once()
+        mock_db.rollback_insert_book.assert_awaited_once_with(101)
+
+    @pytest.mark.asyncio
+    async def test_insert_file_enqueue_failure_rolls_back_storage_and_db(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.insert_book_init.return_value = (102, True)
+        mock_db.insert_book_uploaded.return_value = True
+        mock_db.create_job_book.return_value = "job-fail-enqueue"
+
+        with patch("app.routes.upload_file_to_minio", return_value="obj_abc"), \
+             patch("app.routes.process_insert_file_job.kiq", new=AsyncMock(side_effect=RuntimeError("q down"))), \
+             patch("app.routes.compensate_insert_saga", new=AsyncMock()) as compensate_mock:
+            resp = await client.post(
+                "/v1/insert/file/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-fail-enqueue",
+                },
+                files={"submittedFile": ("book.txt", b"content", "text/plain")},
+            )
+
+        assert resp.status_code == 500
+        compensate_mock.assert_awaited_once_with(mock_db, 102, "obj_abc")
+
+
+class TestInsertStringRoute:
+    @pytest.mark.asyncio
+    async def test_insert_str_success(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.insert_book_init.return_value = (201, True)
+        mock_db.insert_book_uploaded.return_value = True
+        mock_db.create_job_book.return_value = "22222222-2222-2222-2222-222222222222"
+
+        with patch("app.routes.upload_string_to_minio", return_value="obj_str"), \
+            patch("app.routes.process_insert_str_job.kiq", new=AsyncMock()) as kiq_mock:
+            resp = await client.post(
+                "/v1/insert/str/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-str-1",
+                },
+                data={"stringName": "my-book", "stringBody": "text body"},
+            )
+
+        assert resp.status_code == 202
+        kiq_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_insert_str_upload_failure_rolls_back_init(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.insert_book_init.return_value = (202, True)
+        mock_db.rollback_insert_book.return_value = True
+
+        with patch("app.routes.upload_string_to_minio", return_value=""):
+            resp = await client.post(
+                "/v1/insert/str/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-str-fail-upload",
+                },
+                data={"stringName": "my-book", "stringBody": "text body"},
+            )
+
+        assert resp.status_code == 500
+        mock_db.rollback_insert_book.assert_awaited_once_with(202)
+
 
 # ── Search Word ───────────────────────────────────────────────────────────────
 class TestSearchWordRoute:

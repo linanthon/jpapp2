@@ -332,6 +332,18 @@ class DBHandling:
         )
         return status is not None
 
+    async def rollback_insert_book(self, book_id: int) -> bool:
+        """Compensate a failed insert saga before processing begins.
+
+        Deletes the initialized/uploaded book row so idempotency init leftovers
+        do not remain in PENDING/UPLOADED states.
+        """
+        status = await self._execute(
+            f"DELETE FROM {TABLE_BOOKS} WHERE id = $1 AND status IN ('PENDING', 'UPLOADED');",
+            book_id,
+        )
+        return bool(status) and self._get_rowcount(status) > 0
+
     async def create_job_book(self, user_id: int, book_id: int, action: str,
                               payload: Dict[str, Any] | None = None,
                               max_attempts: int = TASKIQ_MAX_ATTEMPTS) -> str:
