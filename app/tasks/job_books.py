@@ -87,6 +87,40 @@ async def _maybe_publish_dlq(
 		await _publish_dlq_message(redis, job, task_name, error, payload)
 
 
+async def _rollback_process_book_data_job(
+	db: DBHandling,
+	redis: aioredis.Redis | None,
+	job_id: str,
+	book_id: int,
+	task_name: str,
+	error: str,
+	payload: dict,
+) -> None:
+	"""Compensating action for insert task failures.
+
+	Saga step order on failure:
+	1) mark job ROLLING_BACK
+	2) compensate book + storage via delete_book_helper
+	3) mark ROLLED_BACK or FAILED_ROLLBACK (+DLQ on terminal failure)
+	"""
+	await db.update_job_book_status(job_id, "ROLLING_BACK", error=error)
+	book = await db.get_exact_book(book_id=book_id)
+	rolled_back = await delete_book_helper(db, book_id, (book or {}).get("object_name", ""))
+	if rolled_back:
+		await db.update_job_book_status(job_id, "ROLLED_BACK", error=error)
+		return
+
+	await db.update_job_book_status(job_id, "FAILED_ROLLBACK", error=error)
+	await _maybe_publish_dlq(
+		db,
+		redis,
+		job_id,
+		task_name,
+		error,
+		payload,
+	)
+
+
 @broker.task(task_name="jobbook.process_insert_str")
 async def process_insert_str_job(job_id: str, book_id: int, data: str) -> None:
 	"""Process string insert in worker and persist workflow state for retries/rollback."""
@@ -104,21 +138,15 @@ async def process_insert_str_job(job_id: str, book_id: int, data: str) -> None:
 
 	except Exception as e:
 		if db is not None:
-			await db.update_job_book_status(job_id, "ROLLING_BACK", error=str(e))
-			book = await db.get_exact_book(book_id=book_id)
-			rolled_back = await delete_book_helper(db, book_id, (book or {}).get("object_name", ""))
-			if rolled_back:
-				await db.update_job_book_status(job_id, "ROLLED_BACK", error=str(e))
-			else:
-				await db.update_job_book_status(job_id, "FAILED_ROLLBACK", error=str(e))
-				await _maybe_publish_dlq(
-					db,
-					redis,
-					job_id,
-					"jobbook.process_insert_str",
-					str(e),
-					{"book_id": book_id, "data": data},
-				)
+			await _rollback_process_book_data_job(
+				db,
+				redis,
+				job_id,
+				book_id,
+				task_name="jobbook.process_insert_str",
+				error=str(e),
+				payload={"book_id": book_id, "data": data},
+			)
 		raise
 	finally:
 		await _cleanup_runtime(db, redis)
@@ -144,26 +172,20 @@ async def process_insert_file_job(job_id: str, book_id: int, object_name: str,
 
 	except Exception as e:
 		if db is not None:
-			await db.update_job_book_status(job_id, "ROLLING_BACK", error=str(e))
-			book = await db.get_exact_book(book_id=book_id)
-			rolled_back = await delete_book_helper(db, book_id, (book or {}).get("object_name", ""))
-			if rolled_back:
-				await db.update_job_book_status(job_id, "ROLLED_BACK", error=str(e))
-			else:
-				await db.update_job_book_status(job_id, "FAILED_ROLLBACK", error=str(e))
-				await _maybe_publish_dlq(
-					db,
-					redis,
-					job_id,
-					"jobbook.process_insert_file",
-					str(e),
-					{
-						"book_id": book_id,
-						"object_name": object_name,
-						"filename": filename,
-						"file_size": file_size,
-					},
-				)
+			await _rollback_process_book_data_job(
+				db,
+				redis,
+				job_id,
+				book_id,
+				task_name="jobbook.process_insert_file",
+				error=str(e),
+				payload={
+					"book_id": book_id,
+					"object_name": object_name,
+					"filename": filename,
+					"file_size": file_size,
+				},
+			)
 		raise
 	finally:
 		await _cleanup_runtime(db, redis)

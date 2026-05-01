@@ -1,11 +1,9 @@
-from typing import TYPE_CHECKING, Tuple
-import os
-from http import HTTPStatus
+from typing import TYPE_CHECKING
 
 from app.handlers.view import reset_view_word_count
-from utils.helpers import str_2_byte
 from utils.db import DBHandling
 from utils.logger import get_logger
+from utils.storage import delete_storage_file
 
 if TYPE_CHECKING:
     from fastapi import UploadFile
@@ -91,3 +89,23 @@ async def handle_insert_str_stream(pdata: "ProcessData", db: "DBHandling", redis
         content_len=len(data) or 1,
         done_msg="Processed and inserted text",
     )
+
+async def compensate_insert_saga(db: DBHandling, book_id: int, object_name: str = "") -> None:
+    """Compensating transaction for failed insert workflow.
+
+    Reverse side effects in reverse order:
+    1) best-effort storage object delete
+    2) delete initialized/uploaded book row
+    """
+    if object_name:
+        try:
+            if not delete_storage_file(object_name):
+                log.warning(f"Insert compensation: failed deleting storage object '{object_name}' or it does not exist.")
+        except Exception as e:
+            log.warning(f"Insert compensation: storage delete raised error for '{object_name}': {e}")
+
+    try:
+        if not await db.rollback_insert_book(book_id):
+            log.warning(f"Insert compensation: failed deleting rollbackable book_id={book_id}")
+    except Exception as e:
+        log.warning(f"Insert compensation: rollback_insert_book raised error for book_id={book_id}: {e}")
