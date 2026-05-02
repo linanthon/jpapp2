@@ -363,7 +363,7 @@ class TestSearchWordRoute:
         )
 
         assert resp.status_code == 200
-        mock_redis.get.assert_any_await("search_word:2:食べる")
+        mock_redis.get.assert_any_await("search_word:食べる")
         mock_redis.setex.assert_awaited_once()
         _, _, cached_payload = mock_redis.setex.await_args.args
         assert json.loads(cached_payload)["results"][0]["word"] == "食べる"

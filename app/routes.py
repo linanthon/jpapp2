@@ -456,7 +456,7 @@ async def api_search_word(
     current_user_id: int = Depends(get_current_user_id)
 ):
     """Search for a word, returns JSON results"""
-    cache_key = f"search_word:{current_user_id}:{word}"
+    cache_key = f"search_word:{word}"
     value = await redis.get(cache_key)
     if value:
         try:
