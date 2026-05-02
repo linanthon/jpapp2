@@ -708,28 +708,6 @@ class DBHandling:
         )
         return status is not None
 
-    async def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
-        """
-        Query word in DB, will return a list of all words that are `LIKE '%word%'`
-
-        Input:
-        - word: the word to be query %word%
-        - limit: the amount of return records, if <= 0, use default value of 10.
-
-        Output: a list of word dicts
-        """
-        if limit < 1:
-            limit = DEFAULT_LIMIT
-        res = []
-        rows = await self._fetch(
-            f"SELECT * FROM {TABLE_WORDS} WHERE word LIKE $1 LIMIT $2;",
-            f"%{word}%", limit
-        )
-        for instance in rows:
-            # Search word doesn't care about user' specifics, use empty {}
-            res.append(self._parse_word(instance, {}))
-        return res
-
     async def get_exact_word(self, user_id: int = None, word_id: int = None) -> dict | None:
         """
         Query a word by word ID and user ID (to get star) in DB.
@@ -756,32 +734,6 @@ class DBHandling:
         if row:
             return self._parse_word(row, user_progress)
         return None
-
-    async def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
-        """
-        Query words table using sense (in English), aka. search by EN word(s).
-        Will sort result based on sense matching position.
-
-        Input:
-        - sense: the English meaning of the JP word
-        - limit: the amount of return records, if <= 0, use default value of 10.
-
-        Output: Returns a list of word dicts
-        """
-        if limit < 1:
-            limit = DEFAULT_LIMIT
-        res: list = []
-        sense_q = f"%{sense.lower()}%"
-        rows = await self._fetch(
-            f"""SELECT *, POSITION($1 IN LOWER(senses)) AS match_pos
-                FROM {TABLE_WORDS} WHERE LOWER(senses) LIKE $2
-                ORDER BY match_pos LIMIT $3;""",
-            sense_q, sense_q, limit
-        )
-        for instance in rows:
-            # Search word doesn't care about user' specifics, use empty {}
-            res.append(self._parse_word(instance, {}))
-        return res
 
     async def get_word_occurence(self, word_id: int = None, word: str = "") -> Tuple[int, int]:
         """

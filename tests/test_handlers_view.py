@@ -85,7 +85,7 @@ class TestGetAllBookNameAndId:
 class TestHandleSearchWord:
     @pytest.mark.asyncio
     async def test_japanese_word(self, mock_db):
-        mock_db.query_like_word.return_value = [
+        mock_db.query_search_word.return_value = [
             {"word": "食べる", "senses": "to eat ([verb])"}
         ]
         mock_db.get_meanings.return_value = ["to eat"]
@@ -95,7 +95,7 @@ class TestHandleSearchWord:
 
     @pytest.mark.asyncio
     async def test_english_word(self, mock_db):
-        mock_db.query_word_sense.return_value = [
+        mock_db.query_search_word.return_value = [
             {"word": "食べる", "senses": "to eat ([verb])"}
         ]
         mock_db.get_meanings.return_value = ["to eat"]
@@ -103,9 +103,20 @@ class TestHandleSearchWord:
         assert "results" in result
 
     @pytest.mark.asyncio
+    async def test_mixed_word(self, mock_db):
+        mock_db.query_search_word.return_value = [
+            {"word": "食べる", "senses": "to eat ([verb])"}
+        ]
+        mock_db.get_meanings.return_value = ["to eat"]
+        result = await handle_search_word(mock_db, "tabeる", 10, "/v1")
+        assert "results" in result
+    
+    @pytest.mark.asyncio
     async def test_invalid_word(self, mock_db):
+        mock_db.query_search_word.return_value = []
+        mock_db.get_meanings.return_value = ["to eat"]
         result = await handle_search_word(mock_db, "123!", 10, "/v1")
-        assert "error" in result
+        assert "results" in result
 
 
 # ── handle_view_specific_word ─────────────────────────────────────────────────

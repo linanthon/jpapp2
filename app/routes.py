@@ -4,11 +4,12 @@ from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import os
 import io
+import json
 import redis.asyncio as aioredis
 import uuid
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
-                        FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES)
+                        FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES, SEARCH_WORD_EXPIRE_MINUTES)
 from app.handlers.insert import compensate_insert_saga
 from app.handlers.progress import handle_progress
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
@@ -451,13 +452,24 @@ async def api_search_word(
     word: str,
     limit: int = DEFAULT_LIMIT,
     db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     current_user_id: int = Depends(get_current_user_id)
 ):
     """Search for a word, returns JSON results"""
-    response_data = await handle_search_word(db, word, limit, bpv1_url_prefix)
+    cache_key = f"search_word:{current_user_id}:{word}"
+    value = await redis.get(cache_key)
+    if value:
+        try:
+            return JSONResponse(content=json.loads(value))
+        except (TypeError, json.JSONDecodeError):
+            log.warning("Invalid cached search payload for key=%s", cache_key)
 
+    response_data = await handle_search_word(db, word, limit, bpv1_url_prefix)
     if "error" in response_data:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=response_data["error"])
+    
+    expire_secs = SEARCH_WORD_EXPIRE_MINUTES*60
+    await redis.setex(cache_key, expire_secs, json.dumps(response_data, ensure_ascii=False))
     return JSONResponse(content=response_data)
 
 
