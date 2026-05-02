@@ -708,28 +708,6 @@ class DBHandling:
         )
         return status is not None
 
-    async def query_like_word(self, word: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
-        """
-        Query word in DB, will return a list of all words that are `LIKE '%word%'`
-
-        Input:
-        - word: the word to be query %word%
-        - limit: the amount of return records, if <= 0, use default value of 10.
-
-        Output: a list of word dicts
-        """
-        if limit < 1:
-            limit = DEFAULT_LIMIT
-        res = []
-        rows = await self._fetch(
-            f"SELECT * FROM {TABLE_WORDS} WHERE word LIKE $1 LIMIT $2;",
-            f"%{word}%", limit
-        )
-        for instance in rows:
-            # Search word doesn't care about user' specifics, use empty {}
-            res.append(self._parse_word(instance, {}))
-        return res
-
     async def get_exact_word(self, user_id: int = None, word_id: int = None) -> dict | None:
         """
         Query a word by word ID and user ID (to get star) in DB.
@@ -756,32 +734,6 @@ class DBHandling:
         if row:
             return self._parse_word(row, user_progress)
         return None
-
-    async def query_word_sense(self, sense: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
-        """
-        Query words table using sense (in English), aka. search by EN word(s).
-        Will sort result based on sense matching position.
-
-        Input:
-        - sense: the English meaning of the JP word
-        - limit: the amount of return records, if <= 0, use default value of 10.
-
-        Output: Returns a list of word dicts
-        """
-        if limit < 1:
-            limit = DEFAULT_LIMIT
-        res: list = []
-        sense_q = f"%{sense.lower()}%"
-        rows = await self._fetch(
-            f"""SELECT *, POSITION($1 IN LOWER(senses)) AS match_pos
-                FROM {TABLE_WORDS} WHERE LOWER(senses) LIKE $2
-                ORDER BY match_pos LIMIT $3;""",
-            sense_q, sense_q, limit
-        )
-        for instance in rows:
-            # Search word doesn't care about user' specifics, use empty {}
-            res.append(self._parse_word(instance, {}))
-        return res
 
     async def get_word_occurence(self, word_id: int = None, word: str = "") -> Tuple[int, int]:
         """
@@ -900,6 +852,60 @@ class DBHandling:
 
         row = await self._fetchrow(query, *params)
         return row["count"] if row else 0
+
+    async def query_search_word(self, word: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
+        """
+        Query `word` in DB in 2 ways:
+        1. WHERE ... `ILIKE '%word%'`: if no result, word is probably a mixed of JP and EN chars, go to 2.
+        2. Split `word` into list, each element is only JP or EN chars, then WHERE each of them.
+
+        Input:
+        - word: the word to be query %word%
+        - limit: the amount of return records, if <= 0, use default value of 10.
+
+        Output: a list of word dicts
+        """
+        if limit < 1:
+            limit = DEFAULT_LIMIT
+        res = []
+        
+        # ver1 - no space for Japanese/Romaji
+        search_no_spaces = f"%{word.replace(' ', '')}%"
+        # ver2 - with inner spaces preserved for English
+        search_exact = f"%{word}%"
+        
+        rows = await self._fetch(
+            f"""SELECT * FROM {TABLE_WORDS} WHERE word ILIKE $1 OR senses ILIKE $2
+                OR spelling ILIKE $1 OR romanji ILIKE $1 LIMIT $3;""",
+            search_no_spaces, search_exact, limit
+        )
+        for instance in rows:
+            # Search word doesn't care about user' specifics, use empty {}
+            res.append(self._parse_word(instance, {}))
+        if res:
+            return res
+            
+        # If no results, possibly mixed JP char + EN char ("学bi" -> ["学", "bi"])
+        chunks = re.findall(r'[a-zA-Z]+|[^a-zA-Z\s]+', word)
+        if len(chunks) > 1:
+            conditions = []
+            params = []
+            param_idx = 1
+            for chunk in chunks:
+                conditions.append(
+                    f"(word ILIKE ${param_idx} OR senses ILIKE ${param_idx} OR spelling ILIKE ${param_idx} OR romanji ILIKE ${param_idx})"
+                )
+                params.append(f"%{chunk}%")
+                param_idx += 1
+            
+            params.append(limit)
+            query_str = f"SELECT * FROM {TABLE_WORDS} WHERE " + " AND ".join(conditions) + f" LIMIT ${param_idx};"
+            
+            fallback_rows = await self._fetch(query_str, *params)
+            for instance in fallback_rows:
+                res.append(self._parse_word(instance, {}))
+
+        return res
 
     async def _collect_object_decrements(self, obj_ids: list, obj_id_col: str, ref_table: str,
                                          target_id_col: str, obj_decrements: dict) -> bool:

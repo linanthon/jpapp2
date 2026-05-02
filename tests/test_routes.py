@@ -4,8 +4,9 @@ Tests the actual HTTP endpoints with mocked DB/Redis/ProcessData.
 Focuses on auth routes (no template rendering needed) and JSON API endpoints.
 """
 from http import HTTPStatus
+import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from tests.conftest import ADMIN_USER, NORMAL_USER, _auth_header
 from utils.auth import hash_password, create_refresh_token
@@ -300,7 +301,7 @@ class TestSearchWordRoute:
     @pytest.mark.asyncio
     async def test_search_jp_word(self, client, mock_db, mock_redis, user_token):
         mock_redis.get.return_value = None
-        mock_db.query_like_word.return_value = [
+        mock_db.query_search_word.return_value = [
             {"word": "食べる", "senses": "to eat ([verb])"}
         ]
         mock_db.get_meanings.return_value = ["to eat"]
@@ -313,9 +314,9 @@ class TestSearchWordRoute:
         assert "results" in data
 
     @pytest.mark.asyncio
-    async def test_search_en_word(self, client, mock_db, mock_redis, user_token):
+    async def test_search_mixed_word(self, client, mock_db, mock_redis, user_token):
         mock_redis.get.return_value = None
-        mock_db.query_word_sense.return_value = [
+        mock_db.query_search_word.return_value = [
             {"word": "食べる", "senses": "to eat ([verb])"}
         ]
         mock_db.get_meanings.return_value = ["to eat"]
@@ -326,13 +327,64 @@ class TestSearchWordRoute:
         assert resp.status_code == 200
 
     @pytest.mark.asyncio
+    async def test_search_en_word(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.query_search_word.return_value = [
+            {"word": "食べる", "senses": "to eat ([verb])"}
+        ]
+        mock_db.get_meanings.return_value = ["to eat"]
+        resp = await client.get(
+            "/v1/api/view/search-word", params={"word": "食べru"},
+            headers=_auth_header(user_token)
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
     async def test_search_invalid_word(self, client, mock_db, mock_redis, user_token):
         mock_redis.get.return_value = None
+        mock_db.query_search_word.return_value = []
         resp = await client.get(
             "/v1/api/view/search-word", params={"word": "123!"},
             headers=_auth_header(user_token)
         )
-        assert resp.status_code == 400
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_search_cache_miss_sets_redis(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.query_search_word.return_value = [
+            {"word": "食べる", "senses": "to eat ([verb])"}
+        ]
+        mock_db.get_meanings.return_value = ["to eat"]
+
+        resp = await client.get(
+            "/v1/api/view/search-word", params={"word": "食べる", "limit": 10},
+            headers=_auth_header(user_token)
+        )
+
+        assert resp.status_code == 200
+        mock_redis.get.assert_any_await("search_word:食べる")
+        mock_redis.setex.assert_awaited_once()
+        _, _, cached_payload = mock_redis.setex.await_args.args
+        assert json.loads(cached_payload)["results"][0]["word"] == "食べる"
+
+    @pytest.mark.asyncio
+    async def test_search_cache_hit_skips_db(self, client, mock_db, mock_redis, user_token):
+        cached = {
+            "results": [{"word": "食べる", "senses": "to eat"}],
+            "bpPrefix": "/v1",
+        }
+        mock_redis.get.side_effect = [None, json.dumps(cached, ensure_ascii=False)]
+
+        resp = await client.get(
+            "/v1/api/view/search-word", params={"word": "食べる", "limit": 10},
+            headers=_auth_header(user_token)
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == cached
+        mock_db.query_search_word.assert_not_called()
+        mock_redis.setex.assert_not_awaited()
 
 
 # ── Toggle Star ───────────────────────────────────────────────────────────────

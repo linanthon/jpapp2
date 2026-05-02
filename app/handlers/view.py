@@ -1,4 +1,5 @@
 import math
+import re
 from typing import List, Tuple, Dict, Any
 
 from utils.data import is_japanese_word, is_english_word
@@ -71,13 +72,8 @@ async def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix:
     Output: {"result": [list of word dicts]}
     """
     res: List[dict] = []
-
-    if is_japanese_word(word):
-        res = await db.query_like_word(word, limit)
-    elif is_english_word(word):
-        res = await db.query_word_sense(word, limit)
-    else:
-        return {"error": "Only accept Japanese or English word"}
+    word = word.strip()
+    res = await db.query_search_word(word, limit)
     
     # Modify senses to only have the first meaning for UI
     for w in res:

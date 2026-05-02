@@ -32,7 +32,7 @@ def mock_db():
         "get_job_book", "get_job_book_list",
         "insert_word", "update_word_occurrence", "update_word_jlpt",
         "update_words_known", "update_word_star",
-        "query_like_word", "get_exact_word", "query_word_sense",
+        "query_search_word", "get_exact_word",
         "get_word_occurence", "get_user_word_quized",
         "list_words", "count_words",
         "insert_update_sentence", "get_sentences_containing_word_by_id",

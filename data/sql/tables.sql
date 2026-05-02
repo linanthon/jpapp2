@@ -1,3 +1,10 @@
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
+CREATE OR REPLACE FUNCTION immutable_array_to_string(arr text[], sep text) 
+RETURNS text AS $$
+    SELECT array_to_string(arr, sep);
+$$ LANGUAGE sql IMMUTABLE;
+
 -- Store a word
 CREATE TABLE IF NOT EXISTS words (
     id SERIAL PRIMARY KEY,
@@ -7,8 +14,14 @@ CREATE TABLE IF NOT EXISTS words (
     forms TEXT,
     occurrence INT, -- occurring frequency
     jlpt_level TEXT,
-    audio_mapping TEXT[]
+    audio_mapping TEXT[],
+    romanji TEXT GENERATED ALWAYS AS (immutable_array_to_string(audio_mapping, '')) STORED
 );
+
+CREATE INDEX idx_words_word_trgm ON words USING gin (word gin_trgm_ops);
+CREATE INDEX idx_words_senses_trgm ON words USING gin (senses gin_trgm_ops);
+CREATE INDEX idx_words_spelling_trgm ON words USING gin (spelling gin_trgm_ops);
+CREATE INDEX idx_words_romanji_trgm ON words USING gin (romanji gin_trgm_ops);
 
 
 -- User (admin role) uploads a book
