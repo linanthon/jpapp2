@@ -72,7 +72,6 @@ async def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix:
     Output: {"result": [list of word dicts]}
     """
     res: List[dict] = []
-    word = word.strip()
     res = await db.query_search_word(word, limit)
     
     # Modify senses to only have the first meaning for UI

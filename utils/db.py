@@ -855,9 +855,10 @@ class DBHandling:
 
     async def query_search_word(self, word: str, limit: int = DEFAULT_LIMIT) -> List[dict]:
         """
-        Query `word` in DB in 2 ways:
-        1. WHERE ... `ILIKE '%word%'`: if no result, word is probably a mixed of JP and EN chars, go to 2.
-        2. Split `word` into list, each element is only JP or EN chars, then WHERE each of them.
+        Query `word` in DB with typo tolerance (fuzzy matching - similarity >= threshold).
+        Mixed-char inputs are split into chunks and each chunk can match by exact-like
+        or (for long enough chunks) trigram similarity.
+        Only 1 chunk = no mixed-char, fuzz matching if len > 4, otherwise match exact.
 
         Input:
         - word: the word to be query %word%
@@ -868,43 +869,134 @@ class DBHandling:
         if limit < 1:
             limit = DEFAULT_LIMIT
         res = []
-        
-        # ver1 - no space for Japanese/Romaji
-        search_no_spaces = f"%{word.replace(' ', '')}%"
-        # ver2 - with inner spaces preserved for English
-        search_exact = f"%{word}%"
-        
-        rows = await self._fetch(
-            f"""SELECT * FROM {TABLE_WORDS} WHERE word ILIKE $1 OR senses ILIKE $2
-                OR spelling ILIKE $1 OR romanji ILIKE $1 LIMIT $3;""",
-            search_no_spaces, search_exact, limit
-        )
-        for instance in rows:
-            # Search word doesn't care about user' specifics, use empty {}
-            res.append(self._parse_word(instance, {}))
-        if res:
+        normalized_word = word.strip()
+        if not normalized_word:
             return res
-            
-        # If no results, possibly mixed JP char + EN char ("学bi" -> ["学", "bi"])
-        chunks = re.findall(r'[a-zA-Z]+|[^a-zA-Z\s]+', word)
+
+        # Higher = more strict
+        def _typo_threshold_full_str(input_len: int) -> float | None:
+            if input_len < 4:
+                return None
+            if input_len <= 5:
+                return 0.55
+            if input_len <= 8:
+                return 0.62
+            return 0.70
+        
+        def _typo_threshold_chunk(chunk: str) -> float | None:
+            # Mixed-char chunks are compared against full fields (e.g., chunk 'nichiwa'
+            # vs romanji 'konnichiha'), so thresholds need to be a bit softer than
+            # single-term full-string matching.
+            input_len = len(chunk)
+            if input_len < 2:
+                return None
+
+            # Romaji chunks need slightly looser matching to tolerate common 1-char
+            # mistakes in endings (e.g. 'nichiwa' vs 'nichiha').
+            if re.fullmatch(r"[a-zA-Z]+", chunk):
+                if input_len <= 4:
+                    return 0.45
+                if input_len <= 7:
+                    return 0.55
+                return 0.62
+
+            if input_len <= 4:
+                return 0.50
+            if input_len <= 7:
+                return 0.60
+            return 0.70
+        
+        compact_word = normalized_word.replace(' ', '')
+
+        # Mixed-char search: all chunks must match (exact-like or fuzzy per chunk).
+        chunks = re.findall(r'[a-zA-Z]+|[^a-zA-Z\s]+', normalized_word)
         if len(chunks) > 1:
             conditions = []
             params = []
-            param_idx = 1
             for chunk in chunks:
-                conditions.append(
-                    f"(word ILIKE ${param_idx} OR senses ILIKE ${param_idx} OR spelling ILIKE ${param_idx} OR romanji ILIKE ${param_idx})"
-                )
+                like_param_idx = len(params) + 1
                 params.append(f"%{chunk}%")
-                param_idx += 1
-            
-            params.append(limit)
-            query_str = f"SELECT * FROM {TABLE_WORDS} WHERE " + " AND ".join(conditions) + f" LIMIT ${param_idx};"
-            
-            fallback_rows = await self._fetch(query_str, *params)
-            for instance in fallback_rows:
-                res.append(self._parse_word(instance, {}))
+                exact_clause = (
+                    f"(word ILIKE ${like_param_idx} OR senses ILIKE ${like_param_idx} "
+                    f"OR spelling ILIKE ${like_param_idx} OR romanji ILIKE ${like_param_idx})"
+                )
 
+                chunk_threshold = _typo_threshold_chunk(chunk)
+                if chunk_threshold is None:
+                    conditions.append(exact_clause)
+                    continue
+
+                raw_param_idx = len(params) + 1
+                params.append(chunk)
+                threshold_param_idx = len(params) + 1
+                params.append(chunk_threshold)
+                fuzzy_clause = (
+                    f"(word_similarity(LOWER(word), LOWER(${raw_param_idx})) >= ${threshold_param_idx} "
+                    f"OR word_similarity(LOWER(senses), LOWER(${raw_param_idx})) >= ${threshold_param_idx} "
+                    f"OR word_similarity(LOWER(spelling), LOWER(${raw_param_idx})) >= ${threshold_param_idx} "
+                    f"OR word_similarity(LOWER(romanji), LOWER(${raw_param_idx})) >= ${threshold_param_idx})"
+                )
+                conditions.append(f"({exact_clause} OR {fuzzy_clause})")
+
+            compact_param_idx = len(params) + 1
+            params.append(compact_word)
+            exact_param_idx = len(params) + 1
+            params.append(normalized_word)
+            limit_param_idx = len(params) + 1
+            params.append(limit)
+            rows = await self._fetch(
+                f"""SELECT *, GREATEST(
+                        word_similarity(LOWER(word), LOWER(${compact_param_idx})),
+                        word_similarity(LOWER(spelling), LOWER(${compact_param_idx})),
+                        word_similarity(LOWER(romanji), LOWER(${compact_param_idx})),
+                        word_similarity(LOWER(senses), LOWER(${exact_param_idx}))
+                    ) AS sim
+                    FROM {TABLE_WORDS}
+                    WHERE {' AND '.join(conditions)}
+                    ORDER BY sim DESC, id
+                    LIMIT ${limit_param_idx};""",
+                *params
+            )
+            for instance in rows:
+                res.append(self._parse_word(instance, {}))
+            return res
+
+        # Single-term search: exact-like first, fuzzy for longer inputs.
+        like_no_space = f"%{compact_word}%"
+        like_original = f"%{normalized_word}%"
+        typo_thres = _typo_threshold_full_str(len(compact_word))
+
+        if typo_thres is None:
+            rows = await self._fetch(
+                f"""SELECT *, 1.0 AS sim, 1 AS exact_rank
+                    FROM {TABLE_WORDS}
+                    WHERE word ILIKE $1 OR spelling ILIKE $1 OR romanji ILIKE $1 OR senses ILIKE $2
+                    ORDER BY exact_rank DESC, id
+                    LIMIT $3;""",
+                like_no_space, like_original, limit
+            )
+        else:
+            rows = await self._fetch(
+                f"""SELECT *, GREATEST(
+                        word_similarity(LOWER(word), LOWER($3)),
+                        word_similarity(LOWER(spelling), LOWER($3)),
+                        word_similarity(LOWER(romanji), LOWER($3)),
+                        word_similarity(LOWER(senses), LOWER($4))
+                    ) AS sim,
+                    CASE WHEN word ILIKE $1 OR spelling ILIKE $1 OR romanji ILIKE $1 OR senses ILIKE $2 THEN 1 ELSE 0 END AS exact_rank
+                    FROM {TABLE_WORDS}
+                    WHERE word ILIKE $1 OR spelling ILIKE $1 OR romanji ILIKE $1 OR senses ILIKE $2
+                       OR word_similarity(LOWER(word), LOWER($3)) >= $5
+                       OR word_similarity(LOWER(spelling), LOWER($3)) >= $5
+                       OR word_similarity(LOWER(romanji), LOWER($3)) >= $5
+                       OR word_similarity(LOWER(senses), LOWER($4)) >= $5
+                    ORDER BY exact_rank DESC, sim DESC, id
+                    LIMIT $6;""",
+                like_no_space, like_original, compact_word, normalized_word, typo_thres, limit
+            )
+
+        for instance in rows:
+            res.append(self._parse_word(instance, {}))
         return res
 
     async def _collect_object_decrements(self, obj_ids: list, obj_id_col: str, ref_table: str,
