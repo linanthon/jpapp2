@@ -18,10 +18,10 @@ CREATE TABLE IF NOT EXISTS words (
     romanji TEXT GENERATED ALWAYS AS (immutable_array_to_string(audio_mapping, '')) STORED
 );
 
-CREATE INDEX idx_words_word_trgm ON words USING gin (word gin_trgm_ops);
-CREATE INDEX idx_words_senses_trgm ON words USING gin (senses gin_trgm_ops);
-CREATE INDEX idx_words_spelling_trgm ON words USING gin (spelling gin_trgm_ops);
-CREATE INDEX idx_words_romanji_trgm ON words USING gin (romanji gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_words_word_trgm ON words USING gin (word gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_words_senses_trgm ON words USING gin (senses gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_words_spelling_trgm ON words USING gin (spelling gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_words_romanji_trgm ON words USING gin (romanji gin_trgm_ops);
 
 
 -- User (admin role) uploads a book

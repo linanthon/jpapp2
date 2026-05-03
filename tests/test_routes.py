@@ -386,6 +386,24 @@ class TestSearchWordRoute:
         mock_db.query_search_word.assert_not_called()
         mock_redis.setex.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_search_cache_hit_bytes_payload(self, client, mock_db, mock_redis, user_token):
+        cached = {
+            "results": [{"word": "食べる", "senses": "to eat"}],
+            "bpPrefix": "/v1",
+        }
+        mock_redis.get.side_effect = [None, json.dumps(cached, ensure_ascii=False).encode("utf-8")]
+
+        resp = await client.get(
+            "/v1/api/view/search-word", params={"word": "食べる", "limit": 10},
+            headers=_auth_header(user_token)
+        )
+
+        assert resp.status_code == 200
+        assert resp.json() == cached
+        mock_db.query_search_word.assert_not_called()
+        mock_redis.setex.assert_not_awaited()
+
 
 # ── Toggle Star ───────────────────────────────────────────────────────────────
 class TestToggleStar:

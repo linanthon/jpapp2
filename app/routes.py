@@ -456,13 +456,17 @@ async def api_search_word(
     current_user_id: int = Depends(get_current_user_id)
 ):
     """Search for a word, returns JSON results"""
-    cache_key = f"search_word:{word}"
+    normalized_word = word.strip()
+    cache_key = f"search_word:{normalized_word.lower()}"
     value = await redis.get(cache_key)
-    if value:
+    if value is not None:
         try:
+            if isinstance(value, (bytes, bytearray)):
+                value = value.decode("utf-8")
             return JSONResponse(content=json.loads(value))
-        except (TypeError, json.JSONDecodeError):
+        except (UnicodeDecodeError, TypeError, json.JSONDecodeError):
             log.warning("Invalid cached search payload for key=%s", cache_key)
+            await redis.delete(cache_key)
 
     response_data = await handle_search_word(db, word, limit, bpv1_url_prefix)
     if "error" in response_data:

@@ -475,3 +475,67 @@ class TestInsertBookFinished:
         self.db._execute = AsyncMock(return_value=None)
         result = await self.db.insert_book_finished(5)
         assert result is False
+
+
+# ── QuerySearchWord ───────────────────────────────────────────────────────────
+class TestQuerySearchWord:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+        self.db._parse_word = lambda record, _progress: {"word": record["word"]}
+
+    @pytest.mark.asyncio
+    async def test_empty_input_returns_empty(self):
+        self.db._fetch = AsyncMock()
+        result = await self.db.query_search_word("   ", 10)
+        assert result == []
+        self.db._fetch.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_typo_query_enabled_for_single_term(self):
+        self.db._fetch = AsyncMock(return_value=[{"word": "食べる"}])
+
+        result = await self.db.query_search_word("taberu", 10)
+
+        assert result == [{"word": "食べる"}]
+        assert self.db._fetch.await_count == 1
+        sql = self.db._fetch.await_args.args[0]
+        assert "word_similarity(" in sql
+        assert "exact_rank" in sql
+
+    @pytest.mark.asyncio
+    async def test_typo_disabled_for_short_query(self):
+        self.db._fetch = AsyncMock(side_effect=[[]])
+
+        result = await self.db.query_search_word("ab", 10)
+
+        assert result == []
+        assert self.db._fetch.await_count == 1
+        sql = self.db._fetch.await_args.args[0]
+        assert "word_similarity(" not in sql
+
+    @pytest.mark.asyncio
+    async def test_mixed_chunk_query_runs_with_typo_support(self):
+        self.db._fetch = AsyncMock(return_value=[{"word": "学び"}])
+
+        result = await self.db.query_search_word("学bi", 10)
+
+        assert result == [{"word": "学び"}]
+        assert self.db._fetch.await_count == 1
+        sql = self.db._fetch.await_args.args[0]
+        assert " AND " in sql
+        assert "word ILIKE $1" in sql
+        assert "word_similarity(" in sql
+
+    @pytest.mark.asyncio
+    async def test_mixed_with_space_uses_compact_similarity_value(self):
+        self.db._fetch = AsyncMock(return_value=[{"word": "学び"}])
+
+        result = await self.db.query_search_word("学 bi", 10)
+
+        assert result == [{"word": "学び"}]
+        assert self.db._fetch.await_count == 1
+        call_args = self.db._fetch.await_args.args
+        sql = call_args[0]
+        assert "word_similarity(" in sql
+        # compact term is passed for similarity ranking.
+        assert "学bi" in call_args
