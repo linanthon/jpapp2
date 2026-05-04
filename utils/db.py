@@ -1177,9 +1177,11 @@ class DBHandling:
         )
         return row["occurrence"] if row else 0
 
-    async def get_sentences_containing_word_by_id(self, word_id: int = None, limit: int = DEFAULT_LIMIT) -> List[str]:
+    async def get_sentences_containing_word_by_id(self, word_id: int = None, limit: int = DEFAULT_LIMIT,
+                                                  word: str = None) -> List[str]:
         """
         Get limited amount sentences that their IDs are associated with this word ID.
+        Avoid sentences that are just the word itself.
 
         Input:
         - word_id: the word's ID
@@ -1188,18 +1190,21 @@ class DBHandling:
         Output: a list of sentences that their IDs are associated with this word ID,
         length <= `sentence_count`. Return empty if not found or word_id < 1.
         """
-        if word_id < 1:
+        if not word_id or word_id < 1:
             return []
 
         if limit < 1:
             limit = DEFAULT_LIMIT
-        rows = await self._fetch(
-            f"""SELECT s.sentence FROM {TABLE_SENTENCES} s
+        query = f"""SELECT s.sentence FROM {TABLE_SENTENCES} s
             JOIN {TABLE_WORD_SENTENCE_REF} ws ON s.id = ws.sentence_id
-            WHERE ws.word_id = $1
-            ORDER BY RANDOM() LIMIT $2;""",
-            word_id, limit
-        )
+            WHERE ws.word_id = $1"""
+        normalized_word = word.strip() if word else ""
+        if normalized_word:
+            query += " AND CHAR_LENGTH(s.sentence) - CHAR_LENGTH($2) > 2 ORDER BY RANDOM() LIMIT $3;"
+            rows = await self._fetch(query, word_id, normalized_word, limit)
+        else:
+            query += " ORDER BY RANDOM() LIMIT $2;"
+            rows = await self._fetch(query, word_id, limit)
         return [sen["sentence"] for sen in rows if sen["sentence"]]
     # =======================================================================================
 

@@ -14,10 +14,10 @@ TODO backend:
 - ~~Add progress page~~
 - ~~Accept word, vector/digital pdf files~~
 - ~~Move inserted file into storage (MinIO)~~
-- Update sentence example when view word, avoid short/no meaning sentences
-- Search by kana, romaji, EN
-- API now is concurrent, insert will meet `process_data` bottle neck --> move to background job
-- Can insert multiple files 
+- ~~Update sentence example when view word, avoid short/no meaning sentences~~
+- ~~Search by kana, romaji, EN~~
+- ~~API now is concurrent, insert will meet `process_data` bottle neck --> move to background job~~
+- Can insert multiple files
 - Redis LRU words
 
 TODO frontend
