@@ -19,7 +19,7 @@ from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_
                               DEFAULT_FORMULA_K, DEFAULT_TIME_EXPODECAY, QUIZ_WORD_SORT_COLUMNS,
                               WORD_SENSES_REGEX, QUIZ_SOFT_CAP, QUIZ_HARD_CAP, DEFAULT_MULTI_PENALTY,
                               DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS, TABLE_USER_BOOK_STAR,
-                              TABLE_JOB_BOOKS)
+                              TABLE_JOB_BOOKS, TABLE_JOB_BOOK_BATCHES, TABLE_JOB_BOOK_BATCH_ITEMS)
 
 log = get_logger(__file__)
 
@@ -267,14 +267,16 @@ class DBHandling:
     # Book ==================================================================================
     async def insert_book_init(self, user_id: int, filename: str, idempotency_key: str) -> Tuple[int, bool]:
         """
-        Init insert filename and status = 'PENDING'
+        Init insert filename and status = 'PENDING' to table `books`.
 
         Input:
         - user_id: The user who requested inserting this book
         - filename: The full path filename. the file name without path must be unique.
         - idempotency_key: The request ID for inserting this book
 
-        Output: Return (inserted book ID, True) if success. (-1, False) if failed.
+        Output: Return (inserted book ID, True) if successfully inserted.
+        (inserted book ID, False) if row already existed.
+        (-1, False) if the entire sql failed.
         """
         bookname = filename
         # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
@@ -301,9 +303,9 @@ class DBHandling:
             return row['id'], row['is_new']
         return -1, False
 
-    async def insert_book_uploaded(self, book_id: int, object_name: str = "") -> bool:
+    async def update_insert_book_status_uploaded(self, book_id: int, object_name: str = "") -> bool:
         """
-        Update the inserting book file url and status after uploaded to MinIO/S3.
+        Update to table `books` the inserting book file url and status after uploaded to MinIO/S3.
 
         Input:
         - book_id: The book ID.
@@ -317,9 +319,38 @@ class DBHandling:
         )
         return status is not None
 
-    async def insert_book_finished(self, book_id: int) -> bool:
+    async def insert_book_init_uploaded(self, user_id: int, filename: str, idempotency_key: str) -> Tuple[int, bool]:
         """
-        Update the inserting book process is finished.
+        Init insert filename and status = 'UPLOADED' to table `books`.
+
+        Input:
+        - user_id: The user who requested inserting this book
+        - filename: The full path filename. the file name without path must be unique.
+        - idempotency_key: The request ID for inserting this book
+
+        Output: Return (inserted book ID, True) if successfully inserted.
+        (inserted book ID, False) if row already existed.
+        (-1, False) if the entire sql failed.
+        """
+        bookname = filename
+        # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
+        match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
+        if match:
+            bookname = match.group()
+        else:
+            match = re.search(r'[^\\/]', filename)
+            if match:
+                bookname = match.group()
+        row = await self._fetchrow(
+            f"""INSERT INTO {TABLE_BOOKS} (user_id, name, idempotency_key, status)
+            VALUES ($1, $2, $3, 'UPLOADED') ON CONFLICT (idempotency_key) DO NOTHING RETURNING id;""",
+            user_id, bookname, idempotency_key
+        )
+        return row['id'] if row else -1
+
+    async def update_insert_book_status_finished(self, book_id: int) -> bool:
+        """
+        Update the inserting book process is finished to table `books`.
 
         Input:
         - book_id: The book ID.
@@ -335,7 +366,7 @@ class DBHandling:
     async def rollback_insert_book(self, book_id: int) -> bool:
         """Compensate a failed insert saga before processing begins.
 
-        Deletes the initialized/uploaded book row so idempotency init leftovers
+        Deletes the initialized/uploaded book row (in table `books`) so idempotency init leftovers
         do not remain in PENDING/UPLOADED states.
         """
         status = await self._execute(
@@ -410,9 +441,175 @@ class DBHandling:
         )
         return self._parse_job_list(rows)
 
+    async def create_job_book_batch(self, user_id: int, idempotency_key: str) -> Tuple[str, bool]:
+        """Create or fetch a multi-file request batch by idempotency key.
+        Aka. this is to idempotent check the 'multi-file-submit' request.
+
+        Returns (batch_id, is_new).
+        """
+        if not idempotency_key:
+            return "", False
+
+        batch_id = str(uuid.uuid4())
+        row = await self._fetchrow(
+            f"""INSERT INTO {TABLE_JOB_BOOK_BATCHES} (id, user_id, idempotency_key, status)
+            VALUES ($1::uuid, $2, $3, 'QUEUED')
+            ON CONFLICT (user_id, idempotency_key) DO UPDATE SET modified_at = NOW()
+            RETURNING id, (xmax = 0) AS is_new;""",
+            batch_id, user_id, idempotency_key,
+        )
+        if not row:
+            return "", False
+        return str(row["id"]), bool(row["is_new"])
+
+    async def get_job_book_batch(self, batch_id: str) -> dict | None:
+        """Get a multi-file request batch by UUID."""
+        row = await self._fetchrow(
+            f"SELECT * FROM {TABLE_JOB_BOOK_BATCHES} WHERE id = $1::uuid;",
+            batch_id,
+        )
+        return self._parse_job_batch(row) if row else None
+
+    async def get_job_book_batch_items(self, batch_id: str) -> List[dict]:
+        """Get all file items for a batch, ordered by creation time."""
+        rows = await self._fetch(
+            f"""SELECT * FROM {TABLE_JOB_BOOK_BATCH_ITEMS}
+            WHERE batch_id = $1::uuid
+            ORDER BY created_at ASC;""",
+            batch_id,
+        )
+        return self._parse_job_batch_item_list(rows)
+
+    async def create_job_book_batch_item(self, batch_id: str, user_id: int, file_name: str,
+                                         file_size: int = 0, spool_path: str = "",
+                                         object_name: str = "", status: str = "UPLOADING",
+                                         max_attempts: int = TASKIQ_MAX_ATTEMPTS) -> str:
+        """Init row for 1 file in a 'multi-file-submit' request.
+        This is NOT idempotent check. Status is UPLOADING by default, it is expected
+        that Frontend will do the upload after this."""
+        item_id = str(uuid.uuid4())
+        row = await self._fetchrow(
+            f"""INSERT INTO {TABLE_JOB_BOOK_BATCH_ITEMS}
+            (id, batch_id, user_id, file_name, file_size, spool_path, object_name, status, max_attempts)
+            VALUES ($1::uuid, $2::uuid, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''), $8, $9)
+            RETURNING id;""",
+            item_id, batch_id, user_id, file_name, file_size, spool_path, object_name, status, max_attempts,
+        )
+        if not row:
+            return ""
+
+        await self._refresh_job_book_batch_status(batch_id)
+        return str(row["id"])
+
+    async def claim_job_book_batch_item_for_upload(self, item_id: str) -> bool:
+        """Claim a queued file-item for upload phase.
+
+        Returns True only for the worker that transitions:
+        QUEUED_UPLOAD -> UPLOADING and increments attempts by 1.
+        """
+        row = await self._fetchrow(
+            f"""UPDATE {TABLE_JOB_BOOK_BATCH_ITEMS}
+            SET status = 'UPLOADING',
+                attempts = attempts + 1,
+                modified_at = NOW()
+            WHERE id = $1::uuid
+              AND status = 'QUEUED_UPLOAD'
+              AND attempts < max_attempts
+            RETURNING batch_id;""",
+            item_id,
+        )
+        if not row:
+            return False
+        await self._refresh_job_book_batch_status(str(row["batch_id"]))
+        return True
+
+    async def get_job_book_batch_item(self, item_id: str) -> dict | None:
+        """Get one batch file-item row by UUID."""
+        row = await self._fetchrow(
+            f"SELECT * FROM {TABLE_JOB_BOOK_BATCH_ITEMS} WHERE id = $1::uuid;",
+            item_id,
+        )
+        return self._parse_job_batch_item(row) if row else None
+
+    async def update_job_book_batch_item_queued_process(self, item_id: str, book_id: int,
+                                               object_name: str, process_job_id: str) -> bool:
+        """Set uploaded metadata and handoff state to processing queue."""
+        row = await self._fetchrow(
+            f"""UPDATE {TABLE_JOB_BOOK_BATCH_ITEMS}
+            SET book_id = $1,
+                object_name = $2,
+                process_job_id = $3::uuid,
+                status = 'QUEUED_PROCESS',
+                error = '',
+                modified_at = NOW()
+            WHERE id = $4::uuid
+            RETURNING batch_id;""",
+            book_id, object_name, process_job_id, item_id,
+        )
+        if not row:
+            return False
+        await self._refresh_job_book_batch_status(str(row["batch_id"]))
+        return True
+
+    async def update_job_book_batch_item_status(self, item_id: str, status: str,
+                                                error: str = "") -> bool:
+        """Update one file-item status and refresh parent batch status."""
+        row = await self._fetchrow(
+            f"""UPDATE {TABLE_JOB_BOOK_BATCH_ITEMS}
+            SET status = $1,
+                error = CASE WHEN $2 = '' THEN error ELSE $2 END,
+                modified_at = NOW()
+            WHERE id = $3::uuid
+            RETURNING batch_id;""",
+            status, error, item_id,
+        )
+        if not row:
+            return False
+        await self._refresh_job_book_batch_status(str(row["batch_id"]))
+        return True
+
+    async def update_job_book_batch_status(self, batch_id: str, status: str,
+                                           error: str = "") -> bool:
+        """Update parent batch status directly."""
+        result = await self._execute(
+            f"""UPDATE {TABLE_JOB_BOOK_BATCHES}
+            SET status = $1,
+                error = CASE WHEN $2 = '' THEN error ELSE $2 END,
+                modified_at = NOW()
+            WHERE id = $3::uuid;""",
+            status, error, batch_id,
+        )
+        return bool(result) and self._get_rowcount(result) > 0
+
+    async def _refresh_job_book_batch_status(self, batch_id: str) -> None:
+        """Aggregate child states into one useful parent batch status."""
+        row = await self._fetchrow(
+            f"""SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE status = 'FINISHED') AS finished,
+                COUNT(*) FILTER (WHERE status IN ('FAILED_UPLOAD', 'FAILED_PROCESS')) AS failed,
+                COUNT(*) FILTER (WHERE status IN ('UPLOADING', 'QUEUED_PROCESS', 'PROCESSING')) AS active
+            FROM {TABLE_JOB_BOOK_BATCH_ITEMS}
+            WHERE batch_id = $1::uuid;""",
+            batch_id,
+        )
+        if not row or row["total"] == 0:
+            return
+
+        if row["finished"] == row["total"]:
+            status = "FINISHED"
+        elif row["active"] > 0:
+            status = "RUNNING"
+        elif row["failed"] > 0:
+            status = "FAILED"
+        else:
+            status = "QUEUED"
+
+        await self.update_job_book_batch_status(batch_id, status)
+
     async def update_book(self, book_id: int = 0, name: str = "", append_content: str = "") -> bool:
         """
-        Append data to an existing record's `content` column.
+        Append data to an existing record's `content` column in table `books`.
 
         Input:
         - book_id: the book's ID
@@ -1517,6 +1714,42 @@ class DBHandling:
     def _parse_job_list(self, rows) -> List[dict]:
         """Parse a list of job-book records into JSON-safe dicts."""
         return [self._parse_job(row) for row in rows]
+
+    def _parse_job_batch(self, batch) -> dict:
+        """Build a multi-file request batch dict from a DB record."""
+        return {
+            "id": str(batch["id"]),
+            "user_id": batch["user_id"],
+            "idempotency_key": batch["idempotency_key"],
+            "status": batch["status"],
+            "error": batch["error"] or "",
+            "created_at": str(batch["created_at"]),
+            "modified_at": str(batch["modified_at"]),
+        }
+
+    def _parse_job_batch_item(self, row) -> dict:
+        """Build a multi-file request item dict from a DB record."""
+        return {
+            "id": str(row["id"]),
+            "batch_id": str(row["batch_id"]),
+            "user_id": row["user_id"],
+            "book_id": row["book_id"],
+            "process_job_id": str(row["process_job_id"]) if row["process_job_id"] else "",
+            "file_name": row["file_name"],
+            "file_size": int(row["file_size"] or 0),
+            "spool_path": row["spool_path"] or "",
+            "object_name": row["object_name"] or "",
+            "status": row["status"],
+            "error": row["error"] or "",
+            "attempts": row["attempts"],
+            "max_attempts": row["max_attempts"],
+            "created_at": str(row["created_at"]),
+            "modified_at": str(row["modified_at"]),
+        }
+
+    def _parse_job_batch_item_list(self, rows) -> List[dict]:
+        """Parse a list of multi-file request item records."""
+        return [self._parse_job_batch_item(row) for row in rows]
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================

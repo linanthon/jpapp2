@@ -21,6 +21,8 @@ TABLE_USER_WORD_PROGRESS = "user_word_progress"
 TABLE_USER_SENTENCE_PROGRESS = "user_sentence_progress"
 TABLE_USER_BOOK_STAR = "user_book_star"
 TABLE_JOB_BOOKS = "job_books"
+TABLE_JOB_BOOK_BATCHES = "job_book_batches"
+TABLE_JOB_BOOK_BATCH_ITEMS = "job_book_batch_items"
 
 # --- Defaults
 DEFAULT_LIMIT: int = 10

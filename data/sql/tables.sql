@@ -120,3 +120,39 @@ CREATE TABLE IF NOT EXISTS job_books (
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     modified_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- Parent request row for multi-file upload fan-out (idempotent per user + request key)
+CREATE TABLE IF NOT EXISTS job_book_batches (
+    id UUID PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE SET NULL,
+    idempotency_key TEXT NOT NULL,
+    status TEXT NOT NULL,   -- QUEUED / RUNNING / FINISHED / FAILED
+    error TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    modified_at TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    UNIQUE (user_id, idempotency_key)
+);
+
+-- Child rows for each uploaded file in one batch request
+CREATE TABLE IF NOT EXISTS job_book_batch_items (
+    id UUID PRIMARY KEY,
+    batch_id UUID NOT NULL REFERENCES job_book_batches(id) ON DELETE CASCADE,
+    user_id INT REFERENCES users(id) ON DELETE SET NULL,
+    book_id INT REFERENCES books(id) ON DELETE SET NULL,
+    process_job_id UUID REFERENCES job_books(id) ON DELETE SET NULL,
+    file_name TEXT NOT NULL,
+    file_size BIGINT NOT NULL DEFAULT 0,
+    spool_path TEXT,
+    object_name TEXT,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,   -- UPLOADING / QUEUED_PROCESS / PROCESSING / FINISHED / FAILED_UPLOAD / FAILED_PROCESS
+    error TEXT,
+    attempts INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 3,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    modified_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_book_batch_items_batch_id ON job_book_batch_items(batch_id);
+CREATE INDEX IF NOT EXISTS idx_job_book_batch_items_status ON job_book_batch_items(status);

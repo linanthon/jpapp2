@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Response
+from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Response, Body
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
@@ -9,7 +9,8 @@ import redis.asyncio as aioredis
 import uuid
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
-                        FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES, SEARCH_WORD_EXPIRE_MINUTES)
+                        FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES,
+                        SEARCH_WORD_EXPIRE_MINUTES)
 from app.handlers.insert import compensate_insert_saga
 from app.handlers.progress import handle_progress
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
@@ -30,7 +31,8 @@ from utils.helpers import (get_filename_from_path, get_file_extension_from_path,
                            parse_bool_param, validate_star)
 from utils.logger import get_logger
 from utils.process_data import ProcessData
-from utils.storage import upload_file_to_minio, upload_string_to_minio
+from utils.storage import (upload_file_to_minio, upload_string_to_minio,
+                           generate_presigned_upload_url, PRESIGNED_URL_EXPIRY, storage_object_exists)
 
 # Create router
 router = APIRouter()
@@ -250,7 +252,7 @@ async def upload_file_bg(
             error_detail = f"Failed to upload file {file_name} to external storage."
             raise RuntimeError(error_detail)
 
-        if not await db.insert_book_uploaded(book_id, object_name):
+        if not await db.update_insert_book_status_uploaded(book_id, object_name):
             error_detail = "Failed to finalize uploaded file metadata"
             raise RuntimeError(error_detail)
 
@@ -287,6 +289,233 @@ async def upload_file_bg(
             "book_id": book_id,
             "status": "QUEUED",
             "message": "Background file insert queued"
+        }
+    )
+
+
+@router.post("/insert/files/bg")
+async def upload_files_bg(
+    request: Request,
+    payload: dict = Body(...),
+    db: DBHandling = Depends(get_db),
+    current_admin: dict = Depends(get_current_admin_user)
+):
+    """Initialize multi-file direct-upload flow by returning presigned upload URLs.
+    The actual file never sent to BE, this endpoint will only write the job to DB,
+    get presigned MinIO/S3 URLs, send back to FE. It is expected that FE will handle
+    the file uploads, then call `/insert/files/bg/finalize` to run the data handling process.
+
+    `payload` should be: {'files': [{'filename': '...', 'content-type': '...', 'size': ... }, {...}, ...]}.
+    
+    """
+    files = payload.get("files", []) if isinstance(payload, dict) else []
+    if not isinstance(files, list) or not files:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing files metadata")
+
+    idem_key = request.headers.get("Idempotency-Key", "").strip()
+    if not idem_key:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing Idempotency-Key header")
+
+    # Idempotent check this request
+    batch_id, job_created = await db.create_job_book_batch(current_admin["id"], idem_key)
+    if not batch_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to initialize background batch request"
+        )
+    if not job_created:
+        items = await db.get_job_book_batch_items(batch_id)
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content={
+                "batch_id": batch_id,
+                "status": "DUPLICATE_REQUEST",
+                "items": items,
+                "message": "Duplicate request ignored"
+            }
+        )
+
+    # Validate payload
+    normalized_files = []
+    for entry in files:
+        if not isinstance(entry, dict):
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid files metadata format")
+
+        file_name = str(entry.get("filename", "")).strip()
+        content_type = str(entry.get("content_type", "application/octet-stream")).strip() or "application/octet-stream"
+        try:
+            file_size = int(entry.get("size", 0) or 0)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid file size")
+
+        if not file_name:
+            raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="One or more files are invalid")
+
+        ext = get_file_extension_from_path(file_name)
+        if ext not in ProcessData.ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail=f"Unsupported file type: .{ext}. Allowed: {', '.join(ProcessData.ALLOWED_EXTENSIONS)}"
+            )
+        normalized_files.append({
+            "filename": file_name,
+            "content_type": content_type,
+            "size": file_size,
+        })
+
+    # Get presinged URL + write DB job + for each file
+    upload_items: list[dict] = []
+    failed_files: list[dict] = []
+    for one_file in normalized_files:
+        file_name = one_file["filename"]
+        object_name = f"uploads/{current_admin['id']}/{batch_id}/{uuid.uuid4().hex}_{get_filename_from_path(file_name)}"
+        try:
+            upload_url = generate_presigned_upload_url(
+                object_name,
+                expiry=PRESIGNED_URL_EXPIRY,
+                content_type=one_file["content_type"],
+            )
+            if not upload_url:
+                failed_files.append({"file": file_name, "error": "Failed to create presigned upload URL"})
+                continue
+
+            item_id = await db.create_job_book_batch_item(
+                batch_id=batch_id,
+                user_id=current_admin["id"],
+                file_name=file_name,
+                file_size=one_file["size"],
+                object_name=object_name,
+                status="UPLOADING",
+            )
+            if not item_id:
+                failed_files.append({"file": file_name, "error": "Failed to create file job"})
+                continue
+
+            upload_items.append({
+                "item_id": item_id,
+                "file_name": file_name,
+                "file_size": one_file["size"],
+                "content_type": one_file["content_type"],
+                "object_name": object_name,
+                "upload_url": upload_url,
+                "expires_in": PRESIGNED_URL_EXPIRY,
+            })
+        except Exception as e:
+            failed_files.append({"file": file_name, "error": str(e)})
+
+    if not upload_items:
+        await db.update_job_book_batch_status(batch_id, "FAILED", error="No upload URL was generated")
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to initialize multi-file upload"
+        )
+
+    return JSONResponse(
+        status_code=HTTPStatus.ACCEPTED,
+        content={
+            "batch_id": batch_id,
+            "status": "UPLOADING",
+            "item_count": len(upload_items),
+            "items": upload_items,
+            "failed_files": failed_files,
+            "message": "Presigned upload URLs generated"
+        }
+    )
+
+
+@router.post("/insert/files/bg/finalize")
+async def finalize_upload_files_bg(
+    payload: dict = Body(...),
+    db: DBHandling = Depends(get_db),
+    current_admin: dict = Depends(get_current_admin_user)
+):
+    """Frontend upload completed. Calling to enqueue data processing jobs."""
+    batch_id = str(payload.get("batch_id", "")).strip()
+    item_ids = payload.get("item_ids", [])
+    if not batch_id or not isinstance(item_ids, list) or not item_ids:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing batch_id or item_ids")
+
+    # Validate request
+    batch = await db.get_job_book_batch(batch_id)
+    if not batch:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Batch not found")
+    if batch.get("user_id") != current_admin["id"]:
+        raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Not allowed to finalize this batch")
+
+    # Idempotent check the request
+    claimed = await db.update_job_book_batch_status(batch_id, "UPLOADED")
+    if not claimed:
+        items = await db.get_job_book_batch_items(batch_id)
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content={
+                "batch_id": batch_id,
+                "status": "DUPLICATE_REQUEST",
+                "items": items,
+                "message": "Duplicate request ignored"
+            }
+        )
+
+    queued_items = []
+    failed_items = []
+    for item_id in item_ids:
+        item = await db.get_job_book_batch_item(str(item_id))
+        if not item or item.get("batch_id") != batch_id:
+            failed_items.append({"item_id": str(item_id), "error": "Item not found in batch"})
+            continue
+
+        object_name = item.get("object_name", "")
+        if not storage_object_exists(object_name):
+            await db.update_job_book_batch_item_status(item["id"], "FAILED_UPLOAD", error="Uploaded object not found")
+            failed_items.append({"item_id": item["id"], "error": f"Expected uploaded object {object_name} not found"})
+            continue
+
+        # Since we checked idempotency of the request, no other workers will compete for the items inside the request
+        # and the file is already uploaded
+        book_id = await db.insert_book_init_uploaded(current_admin["id"], item["file_name"], item["id"])
+        if book_id <= 0:
+            await db.update_job_book_batch_item_status(item["id"], "FAILED_UPLOAD", error="Failed to initialize book")
+            failed_items.append({"item_id": item["id"], "error": "Failed to initialize book"})
+            continue
+
+        job_id = await db.create_job_book(
+            user_id=current_admin["id"],
+            book_id=book_id,
+            action="INSERT_FILE",
+            payload={"batch_id": batch_id, "batch_item_id": item["id"], "name": item["file_name"], "object_name": object_name, "file_size": item.get("file_size", 0)},
+        )
+        if not job_id:
+            await db.update_job_book_batch_item_status(item["id"], "FAILED_UPLOAD", error="Failed to create processing job")
+            failed_items.append({"item_id": item["id"], "error": "Failed to create processing job"})
+            continue
+
+        if not await db.update_job_book_batch_item_queued_process(item["id"], book_id, object_name, job_id):
+            await db.update_job_book_batch_item_status(item["id"], "FAILED_UPLOAD", error="Failed to update upload status")
+            failed_items.append({"item_id": item["id"], "error": "Failed to update upload status"})
+            continue
+
+        await process_insert_file_job.kiq(
+            job_id=job_id,
+            book_id=book_id,
+            object_name=object_name,
+            filename=item["file_name"],
+            file_size=item.get("file_size", 0),
+            batch_item_id=item["id"],
+        )
+        queued_items.append({"item_id": item["id"], "job_id": job_id, "book_id": book_id})
+
+    if not queued_items:
+        await db.update_job_book_batch_status(batch_id, "FAILED", error="No uploaded file could be queued")
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="No uploaded file could be queued")
+
+    return JSONResponse(
+        status_code=HTTPStatus.ACCEPTED,
+        content={
+            "batch_id": batch_id,
+            "status": "QUEUED_PROCESS",
+            "queued_items": queued_items,
+            "failed_items": failed_items,
+            "message": "Uploaded files finalized and queued"
         }
     )
 
@@ -329,7 +558,7 @@ async def upload_string_bg(
             error_detail = f"Failed to upload file {stringName} to external storage."
             raise RuntimeError(error_detail)
 
-        if not await db.insert_book_uploaded(book_id, object_name):
+        if not await db.update_insert_book_status_uploaded(book_id, object_name):
             error_detail = "Failed to finalize uploaded file metadata"
             raise RuntimeError(error_detail)
 

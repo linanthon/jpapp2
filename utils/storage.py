@@ -130,6 +130,41 @@ def get_file_download_link(object_name: str, expiry: int = PRESIGNED_URL_EXPIRY)
         log.error(f"Failed to generate presigned URL: {e}")
         return ""
 
+
+@_retry()
+def generate_presigned_upload_url(object_name: str, expiry: int = PRESIGNED_URL_EXPIRY,
+                                  content_type: str = "application/octet-stream") -> str:
+    """Return a presigned PUT URL for files to be uploaded to MinIO/S3."""
+    try:
+        init_bucket()
+        params = {"Bucket": MINIO_BUCKET, "Key": object_name}
+        if content_type:
+            params["ContentType"] = content_type
+        return s3_client.generate_presigned_url(
+            "put_object",
+            Params=params,
+            ExpiresIn=expiry,
+        )
+    except ClientError as e:
+        log.error(f"Failed to generate presigned upload URL: {e}")
+        return ""
+
+
+@_retry()
+def storage_object_exists(object_name: str) -> bool:
+    """Check whether an object exists in MinIO/S3 bucket."""
+    if not object_name:
+        return False
+
+    try:
+        s3_client.head_object(Bucket=MINIO_BUCKET, Key=object_name)
+        return True
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code in {"404", "NoSuchKey", "NotFound"}:
+            return False
+        raise
+
 @_retry()
 def delete_storage_file(object_name) -> bool:
     """Delete an object from MinIO/S3 bucket by object name."""
