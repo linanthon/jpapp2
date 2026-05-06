@@ -228,8 +228,11 @@ async def upload_file_bg(
             detail=f"Unsupported file type: .{ext}. Allowed: {', '.join(ProcessData.ALLOWED_EXTENSIONS)}"
         )
 
-    file_name = get_filename_from_path(submittedFile.filename)
     idem_key = request.headers.get("Idempotency-Key", "")
+    if not idem_key:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing Idempotency-Key header")
+
+    file_name = get_filename_from_path(submittedFile.filename)
     book_id, created = await db.insert_book_init(current_admin["id"], file_name, idem_key)
     if book_id <= 0:
         raise HTTPException(
@@ -256,22 +259,31 @@ async def upload_file_bg(
             error_detail = "Failed to finalize uploaded file metadata"
             raise RuntimeError(error_detail)
 
-        job_id = await db.create_job_book(
+        batch_id, _ = await db.create_job_book_batch(current_admin["id"], idem_key)
+        if not batch_id:
+            error_detail = "Failed to initialize insert batch"
+            raise RuntimeError(error_detail)
+
+        item_id = await db.create_job_book_batch_item(
+            batch_id=batch_id,
             user_id=current_admin["id"],
+            file_name=submittedFile.filename,
+            file_size=len(content_bytes),
+            object_name=object_name,
+            status="QUEUED_PROCESS",
             book_id=book_id,
-            action="INSERT_FILE",
-            payload={"name": file_name, "object_name": object_name, "file_size": len(content_bytes)},
         )
-        if not job_id:
-            error_detail = "Failed to create background job"
+        if not item_id:
+            error_detail = "Failed to create batch item"
             raise RuntimeError(error_detail)
 
         await process_insert_file_job.kiq(
-            job_id=job_id,
+            job_id="",
             book_id=book_id,
             object_name=object_name,
             filename=submittedFile.filename,
             file_size=len(content_bytes),
+            batch_item_id=item_id,
         )
     except Exception as e:
         await compensate_insert_saga(db, book_id, object_name)
@@ -285,7 +297,8 @@ async def upload_file_bg(
     return JSONResponse(
         status_code=HTTPStatus.ACCEPTED,
         content={
-            "job_id": job_id,
+            "job_id": item_id,
+            "batch_id": batch_id,
             "book_id": book_id,
             "status": "QUEUED",
             "message": "Background file insert queued"
@@ -470,39 +483,27 @@ async def finalize_upload_files_bg(
             failed_items.append({"item_id": item["id"], "error": f"Expected uploaded object {object_name} not found"})
             continue
 
-        # Since we checked idempotency of the request, no other workers will compete for the items inside the request
-        # and the file is already uploaded
+        # At this point the object exists in storage and can be queued for processing.
         book_id = await db.insert_book_init_uploaded(current_admin["id"], item["file_name"], item["id"])
         if book_id <= 0:
             await db.update_job_book_batch_item_status(item["id"], "FAILED_UPLOAD", error="Failed to initialize book")
             failed_items.append({"item_id": item["id"], "error": "Failed to initialize book"})
             continue
 
-        job_id = await db.create_job_book(
-            user_id=current_admin["id"],
-            book_id=book_id,
-            action="INSERT_FILE",
-            payload={"batch_id": batch_id, "batch_item_id": item["id"], "name": item["file_name"], "object_name": object_name, "file_size": item.get("file_size", 0)},
-        )
-        if not job_id:
-            await db.update_job_book_batch_item_status(item["id"], "FAILED_UPLOAD", error="Failed to create processing job")
-            failed_items.append({"item_id": item["id"], "error": "Failed to create processing job"})
-            continue
-
-        if not await db.update_job_book_batch_item_queued_process(item["id"], book_id, object_name, job_id):
+        if not await db.update_job_book_batch_item_queued_process(item["id"], book_id, object_name):
             await db.update_job_book_batch_item_status(item["id"], "FAILED_UPLOAD", error="Failed to update upload status")
             failed_items.append({"item_id": item["id"], "error": "Failed to update upload status"})
             continue
 
         await process_insert_file_job.kiq(
-            job_id=job_id,
+            job_id="",
             book_id=book_id,
             object_name=object_name,
             filename=item["file_name"],
             file_size=item.get("file_size", 0),
             batch_item_id=item["id"],
         )
-        queued_items.append({"item_id": item["id"], "job_id": job_id, "book_id": book_id})
+        queued_items.append({"item_id": item["id"], "job_id": item["id"], "book_id": book_id})
 
     if not queued_items:
         await db.update_job_book_batch_status(batch_id, "FAILED", error="No uploaded file could be queued")

@@ -442,7 +442,7 @@ class DBHandling:
         return self._parse_job_list(rows)
 
     async def create_job_book_batch(self, user_id: int, idempotency_key: str) -> Tuple[str, bool]:
-        """Create or fetch a multi-file request batch by idempotency key.
+        """Create or fetch a multi-file request batch by idempotency key, to table `job_book_batches`.
         Aka. this is to idempotent check the 'multi-file-submit' request.
 
         Returns (batch_id, is_new).
@@ -483,17 +483,19 @@ class DBHandling:
     async def create_job_book_batch_item(self, batch_id: str, user_id: int, file_name: str,
                                          file_size: int = 0, spool_path: str = "",
                                          object_name: str = "", status: str = "UPLOADING",
+                                         book_id: int = 0, process_job_id: str = "",
                                          max_attempts: int = TASKIQ_MAX_ATTEMPTS) -> str:
-        """Init row for 1 file in a 'multi-file-submit' request.
+        """Init row for 1 file in an insert file(s) request, to table `job_book_batch_items`.
         This is NOT idempotent check. Status is UPLOADING by default, it is expected
         that Frontend will do the upload after this."""
         item_id = str(uuid.uuid4())
         row = await self._fetchrow(
             f"""INSERT INTO {TABLE_JOB_BOOK_BATCH_ITEMS}
-            (id, batch_id, user_id, file_name, file_size, spool_path, object_name, status, max_attempts)
-            VALUES ($1::uuid, $2::uuid, $3, $4, $5, NULLIF($6, ''), NULLIF($7, ''), $8, $9)
+            (id, batch_id, user_id, book_id, process_job_id, file_name, file_size, spool_path, object_name, status, max_attempts)
+            VALUES ($1::uuid, $2::uuid, $3, NULLIF($4, 0), NULLIF($5, '')::uuid, $6, $7, NULLIF($8, ''), NULLIF($9, ''), $10, $11)
             RETURNING id;""",
-            item_id, batch_id, user_id, file_name, file_size, spool_path, object_name, status, max_attempts,
+            item_id, batch_id, user_id, book_id, process_job_id, file_name, file_size,
+            spool_path, object_name, status, max_attempts,
         )
         if not row:
             return ""
@@ -531,14 +533,36 @@ class DBHandling:
         )
         return self._parse_job_batch_item(row) if row else None
 
+    async def claim_job_book_batch_item_for_processing(self, item_id: str) -> bool:
+        """Claim a queued file-item for processing phase.
+
+        Returns True only for the first worker that transitions:
+        QUEUED_PROCESS -> PROCESSING and increments attempts by 1.
+        """
+        row = await self._fetchrow(
+            f"""UPDATE {TABLE_JOB_BOOK_BATCH_ITEMS}
+            SET status = 'PROCESSING',
+                attempts = attempts + 1,
+                modified_at = NOW()
+            WHERE id = $1::uuid
+              AND status = 'QUEUED_PROCESS'
+              AND attempts < max_attempts
+            RETURNING batch_id;""",
+            item_id,
+        )
+        if not row:
+            return False
+        await self._refresh_job_book_batch_status(str(row["batch_id"]))
+        return True
+
     async def update_job_book_batch_item_queued_process(self, item_id: str, book_id: int,
-                                               object_name: str, process_job_id: str) -> bool:
+                                               object_name: str, process_job_id: str = "") -> bool:
         """Set uploaded metadata and handoff state to processing queue."""
         row = await self._fetchrow(
             f"""UPDATE {TABLE_JOB_BOOK_BATCH_ITEMS}
             SET book_id = $1,
                 object_name = $2,
-                process_job_id = $3::uuid,
+                process_job_id = COALESCE(NULLIF($3, '')::uuid, process_job_id),
                 status = 'QUEUED_PROCESS',
                 error = '',
                 modified_at = NOW()

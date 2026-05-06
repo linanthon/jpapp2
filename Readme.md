@@ -21,6 +21,7 @@ TODO backend:
 - Redis LRU words
 
 TODO frontend
+- Quiz update to Redis in session, update to DB once at end
 - Fix goBack auth problem
 - Fix view word filter adding infinite param
 - Fix view specific book page

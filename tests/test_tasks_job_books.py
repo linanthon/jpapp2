@@ -13,8 +13,10 @@ from app.tasks.job_books import (
 def _make_runtime():
     db = MagicMock()
     db.claim_job_book_for_processing = AsyncMock(return_value=True)
+    db.claim_job_book_batch_item_for_processing = AsyncMock(return_value=True)
     db.update_job_book_status = AsyncMock(return_value=True)
-    db.insert_book_finished = AsyncMock(return_value=True)
+    db.update_job_book_batch_item_status = AsyncMock(return_value=True)
+    db.update_insert_book_status_finished = AsyncMock(return_value=True)
     db.get_exact_book = AsyncMock(return_value={"object_name": "obj_1"})
     db.get_job_book = AsyncMock(
         return_value={
@@ -43,7 +45,7 @@ class TestJobBookTasks:
             await process_insert_str_job.original_func("job-1", 10, "abc")
 
         insert_mock.assert_awaited_once_with(pdata, db, redis, 10, "abc")
-        db.insert_book_finished.assert_awaited_once_with(10)
+        db.update_insert_book_status_finished.assert_awaited_once_with(10)
         db.claim_job_book_for_processing.assert_awaited_once_with("job-1")
         db.update_job_book_status.assert_any_await("job-1", "FINISHED")
         cleanup_mock.assert_awaited_once()
@@ -73,13 +75,14 @@ class TestJobBookTasks:
             patch("app.tasks.job_books.get_file_from_minio_as_stream", return_value=io.BytesIO(b"x")) as stream_mock, \
             patch("app.tasks.job_books.handle_insert_file_stream", new=AsyncMock()) as insert_mock:
             await process_insert_file_job.original_func(
-                "job-3", 12, "obj_file", "book.txt", 1
+                "job-3", 12, "obj_file", "book.txt", 1, "item-3"
             )
 
         stream_mock.assert_called_once_with("obj_file")
         insert_mock.assert_awaited_once()
-        db.claim_job_book_for_processing.assert_awaited_once_with("job-3")
+        db.claim_job_book_batch_item_for_processing.assert_awaited_once_with("item-3")
         db.update_job_book_status.assert_any_await("job-3", "FINISHED")
+        db.update_job_book_batch_item_status.assert_any_await("item-3", "FINISHED")
         cleanup_mock.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -115,11 +118,19 @@ class TestJobBookTasks:
             patch("app.tasks.job_books.delete_book_helper", new=AsyncMock(return_value=False)):
             with pytest.raises(RuntimeError, match="boom"):
                 await process_insert_file_job.original_func(
-                    "job-5", 12, "obj_file", "book.txt", 1
+                    "job-5", 12, "obj_file", "book.txt", 1, "item-5"
                 )
 
         redis.xadd.assert_awaited_once()
         cleanup_mock.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_insert_file_missing_batch_item_id_fails_fast(self):
+        with patch("app.tasks.job_books._bootstrap_runtime", new=AsyncMock()) as bootstrap_mock:
+            with pytest.raises(ValueError, match="Missing required batch_item_id"):
+                await process_insert_file_job.original_func("job-6", 12, "obj_file", "book.txt", 1, "")
+
+        bootstrap_mock.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_insert_str_duplicate_delivery_is_noop_when_claim_fails(self):
@@ -133,6 +144,6 @@ class TestJobBookTasks:
 
         db.claim_job_book_for_processing.assert_awaited_once_with("job-dup")
         insert_mock.assert_not_awaited()
-        db.insert_book_finished.assert_not_awaited()
+        db.update_insert_book_status_finished.assert_not_awaited()
         db.update_job_book_status.assert_not_awaited()
         cleanup_mock.assert_awaited_once()

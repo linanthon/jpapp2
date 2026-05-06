@@ -449,13 +449,13 @@ class TestInsertBookUploaded:
     @pytest.mark.asyncio
     async def test_success(self):
         self.db._execute = AsyncMock(return_value="UPDATE 1")
-        result = await self.db.insert_book_uploaded(5, "minio/path/file.txt")
+        result = await self.db.update_insert_book_status_uploaded(5, "minio/path/file.txt")
         assert result is True
 
     @pytest.mark.asyncio
     async def test_failure(self):
         self.db._execute = AsyncMock(return_value=None)
-        result = await self.db.insert_book_uploaded(5, "minio/path/file.txt")
+        result = await self.db.update_insert_book_status_uploaded(5, "minio/path/file.txt")
         assert result is False
 
 
@@ -467,13 +467,13 @@ class TestInsertBookFinished:
     @pytest.mark.asyncio
     async def test_success(self):
         self.db._execute = AsyncMock(return_value="UPDATE 1")
-        result = await self.db.insert_book_finished(5)
+        result = await self.db.update_insert_book_status_finished(5)
         assert result is True
 
     @pytest.mark.asyncio
     async def test_failure(self):
         self.db._execute = AsyncMock(return_value=None)
-        result = await self.db.insert_book_finished(5)
+        result = await self.db.update_insert_book_status_finished(5)
         assert result is False
 
 
