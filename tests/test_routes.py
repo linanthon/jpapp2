@@ -356,7 +356,8 @@ class TestInsertStringRoute:
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.insert_book_init.return_value = (201, True)
         mock_db.update_insert_book_status_uploaded.return_value = True
-        mock_db.create_job_book.return_value = "22222222-2222-2222-2222-222222222222"
+        mock_db.create_job_book_batch.return_value = ("batch-ss-1", True)
+        mock_db.create_job_book_batch_item = AsyncMock(return_value="item-ss-1")
 
         with patch("app.routes.upload_string_to_minio", return_value="obj_str"), \
             patch("app.routes.process_insert_str_job.kiq", new=AsyncMock()) as kiq_mock:
@@ -371,7 +372,8 @@ class TestInsertStringRoute:
 
         assert resp.status_code == 202
         kiq_mock.assert_awaited_once()
-        assert resp.json()["job_id"] == "22222222-2222-2222-2222-222222222222"
+        assert resp.json()["job_id"] == "item-ss-1"
+        assert resp.json()["batch_id"] == "batch-ss-1"
 
     @pytest.mark.asyncio
     async def test_insert_str_upload_failure_rolls_back_init(self, client, mock_db, mock_redis, admin_token):

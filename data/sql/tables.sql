@@ -106,21 +106,6 @@ CREATE TABLE IF NOT EXISTS user_book_star (
     PRIMARY KEY(user_id, book_id)
 );
 
--- Background jobs for insert/delete workflows
-CREATE TABLE IF NOT EXISTS job_books (
-    id UUID PRIMARY KEY,
-    user_id INT REFERENCES users(id) ON DELETE SET NULL,
-    book_id INT REFERENCES books(id) ON DELETE CASCADE,
-    action TEXT NOT NULL,
-    status TEXT NOT NULL,   -- QUEUED / PROCESSING / FINISHED / FAILED / ROLLING_BACK / ROLLED_BACK
-    payload JSONB,
-    error TEXT,
-    attempts INT NOT NULL DEFAULT 0,
-    max_attempts INT NOT NULL DEFAULT 3,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    modified_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
 -- Parent request row for multi-file upload fan-out (idempotent per user + request key)
 CREATE TABLE IF NOT EXISTS job_book_batches (
     id UUID PRIMARY KEY,
@@ -140,7 +125,7 @@ CREATE TABLE IF NOT EXISTS job_book_batch_items (
     batch_id UUID NOT NULL REFERENCES job_book_batches(id) ON DELETE CASCADE,
     user_id INT REFERENCES users(id) ON DELETE SET NULL,
     book_id INT REFERENCES books(id) ON DELETE SET NULL,
-    process_job_id UUID REFERENCES job_books(id) ON DELETE SET NULL,
+    process_job_id UUID,
     file_name TEXT NOT NULL,
     file_size BIGINT NOT NULL DEFAULT 0,
     spool_path TEXT,

@@ -71,54 +71,52 @@ async def _publish_dlq_message(
 async def _maybe_publish_dlq(
 	db: DBHandling,
 	redis: aioredis.Redis | None,
-	job_id: str,
+	batch_item_id: str,
 	task_name: str,
 	error: str,
 	payload: dict,
 ):
-	"""Get job in DB by job ID to check 'attempts' and 'max_attempts' values.
+	"""Get batch item in DB by ID to check 'attempts' and 'max_attempts' values.
 	Publish to DLQ only when retry attemp reached maximum."""
 	if redis is None:
 		return
 
-	job = await db.get_job_book(job_id)
-	if not job:
+	item = await db.get_job_book_batch_item(batch_item_id)
+	if not item:
 		return
 
-	attempts = int(job.get("attempts", 0) or 0)
-	max_attempts = int(job.get("max_attempts", 0) or 0)
+	attempts = int(item.get("attempts", 0) or 0)
+	max_attempts = int(item.get("max_attempts", 0) or 0)
 	if max_attempts > 0 and attempts >= max_attempts:
-		await _publish_dlq_message(redis, job, task_name, error, payload)
+		await _publish_dlq_message(redis, item, task_name, error, payload)
 
 
 async def _rollback_process_book_data_job(
 	db: DBHandling,
 	redis: aioredis.Redis | None,
-	job_id: str,
+	batch_item_id: str,
 	book_id: int,
 	task_name: str,
 	error: str,
 	payload: dict,
 ) -> None:
-	"""Compensating action for insert task failures.
+	"""Compensating action for insert task failures using batch-item state.
 
 	Saga step order on failure:
-	1) mark job ROLLING_BACK
+	1) mark item FAILED_PROCESS
 	2) compensate book + storage via delete_book_helper
-	3) mark ROLLED_BACK or FAILED_ROLLBACK (+DLQ on terminal failure)
+	3) publish DLQ when retries are exhausted and rollback fails
 	"""
-	await db.update_job_book_status(job_id, "ROLLING_BACK", error=error)
+	await db.update_job_book_batch_item_status(batch_item_id, "FAILED_PROCESS", error=error)
 	book = await db.get_exact_book(book_id=book_id)
 	rolled_back = await delete_book_helper(db, book_id, (book or {}).get("object_name", ""))
 	if rolled_back:
-		await db.update_job_book_status(job_id, "ROLLED_BACK", error=error)
 		return
 
-	await db.update_job_book_status(job_id, "FAILED_ROLLBACK", error=error)
 	await _maybe_publish_dlq(
 		db,
 		redis,
-		job_id,
+		batch_item_id,
 		task_name,
 		error,
 		payload,
@@ -126,26 +124,32 @@ async def _rollback_process_book_data_job(
 
 
 @broker.task(task_name="jobbook.process_insert_str")
-async def process_insert_str_job(job_id: str, book_id: int, data: str) -> None:
-	"""Process string insert in worker and persist workflow state for retries/rollback."""
+async def process_insert_str_job(batch_item_id: str, book_id: int, data: str) -> None:
+	"""Process string insert in worker and persist workflow state for retries/rollback.
+	
+	Input:
+	- batch_item_id: The job ID for 1 single item in the batch
+	"""
 	db: DBHandling | None = None
 	redis: aioredis.Redis | None = None
+	if not batch_item_id:
+		raise ValueError("Missing required batch_item_id")
 
 	try:
 		db, redis, pdata = await _bootstrap_runtime()
-		if not await db.claim_job_book_for_processing(job_id):
+		if not await db.claim_job_book_batch_item_for_processing(batch_item_id):
 			return
 
 		await handle_insert_str_stream(pdata, db, redis, book_id, data)
 		await db.update_insert_book_status_finished(book_id)
-		await db.update_job_book_status(job_id, "FINISHED")
+		await db.update_job_book_batch_item_status(batch_item_id, "FINISHED")
 
 	except Exception as e:
 		if db is not None:
 			await _rollback_process_book_data_job(
 				db,
 				redis,
-				job_id,
+				batch_item_id,
 				book_id,
 				task_name="jobbook.process_insert_str",
 				error=str(e),
@@ -157,10 +161,13 @@ async def process_insert_str_job(job_id: str, book_id: int, data: str) -> None:
 
 
 @broker.task(task_name="jobbook.process_insert_file")
-async def process_insert_file_job(job_id: str, book_id: int, object_name: str,
-								  filename: str, file_size: int | None = 0,
-								  batch_item_id: str = "") -> None:
-	"""Process file insert in worker from MinIO object and persist workflow state."""
+async def process_insert_file_job(batch_item_id: str, book_id: int, object_name: str,
+								  filename: str, file_size: int | None = 0) -> None:
+	"""Process file insert in worker from MinIO object and persist workflow state.
+	
+	Input:
+	- batch_item_id: The job ID for 1 single item in the batch
+	"""
 	db: DBHandling | None = None
 	redis: aioredis.Redis | None = None
 	if not batch_item_id:
@@ -175,18 +182,14 @@ async def process_insert_file_job(job_id: str, book_id: int, object_name: str,
 		upload = UploadFile(file=file_stream, filename=filename, size=file_size)
 		await handle_insert_file_stream(pdata, db, redis, book_id, upload)
 		await db.update_insert_book_status_finished(book_id)
-		if job_id:
-			await db.update_job_book_status(job_id, "FINISHED")
 		await db.update_job_book_batch_item_status(batch_item_id, "FINISHED")
 
 	except Exception as e:
-		if db is not None and batch_item_id:
-			await db.update_job_book_batch_item_status(batch_item_id, "FAILED_PROCESS", error=str(e))
-		if db is not None and job_id:
+		if db is not None:
 			await _rollback_process_book_data_job(
 				db,
 				redis,
-				job_id,
+				batch_item_id,
 				book_id,
 				task_name="jobbook.process_insert_file",
 				error=str(e),
@@ -197,38 +200,37 @@ async def process_insert_file_job(job_id: str, book_id: int, object_name: str,
 					"file_size": file_size,
 				},
 			)
-		if db is not None and batch_item_id and not job_id:
-			rb_book = await db.get_exact_book(book_id=book_id)
-			await delete_book_helper(db, book_id, (rb_book or {}).get("object_name", ""))
 		raise
 	finally:
 		await _cleanup_runtime(db, redis)
 
 
 @broker.task(task_name="jobbook.process_delete")
-async def process_delete_job_book(job_id: str, book_id: int, object_name: str = "") -> None:
+async def process_delete_job_book(job_id: str, book_id: int, object_name: str = "", batch_item_id: str = "") -> None:
 	"""Delete a book in worker with workflow status updates."""
 	db: DBHandling | None = None
 	redis: aioredis.Redis | None = None
+	if not batch_item_id:
+		raise ValueError("Missing required batch_item_id")
 
 	try:
 		db, redis, _ = await _bootstrap_runtime()
-		if not await db.claim_job_book_for_processing(job_id):
+		if not await db.claim_job_book_batch_item_for_processing(batch_item_id):
 			return
 
 		deleted = await delete_book_helper(db, book_id, object_name)
 		if not deleted:
-			await db.update_job_book_status(job_id, "FAILED", error="Failed to delete book")
+			await db.update_job_book_batch_item_status(batch_item_id, "FAILED_PROCESS", error="Failed to delete book")
 			raise RuntimeError("Failed to delete book")
 
-		await db.update_job_book_status(job_id, "FINISHED")
+		await db.update_job_book_batch_item_status(batch_item_id, "FINISHED")
 	except Exception as e:
 		if db is not None:
-			await db.update_job_book_status(job_id, "FAILED", error=str(e))
+			await db.update_job_book_batch_item_status(batch_item_id, "FAILED_PROCESS", error=str(e))
 			await _maybe_publish_dlq(
 				db,
 				redis,
-				job_id,
+				batch_item_id,
 				"jobbook.process_delete",
 				str(e),
 				{"book_id": book_id, "object_name": object_name},

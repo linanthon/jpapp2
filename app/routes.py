@@ -278,12 +278,11 @@ async def upload_file_bg(
             raise RuntimeError(error_detail)
 
         await process_insert_file_job.kiq(
-            job_id="",
+            batch_item_id=item_id,
             book_id=book_id,
             object_name=object_name,
             filename=submittedFile.filename,
             file_size=len(content_bytes),
-            batch_item_id=item_id,
         )
     except Exception as e:
         await compensate_insert_saga(db, book_id, object_name)
@@ -496,12 +495,11 @@ async def finalize_upload_files_bg(
             continue
 
         await process_insert_file_job.kiq(
-            job_id="",
+            batch_item_id=item["id"],
             book_id=book_id,
             object_name=object_name,
             filename=item["file_name"],
             file_size=item.get("file_size", 0),
-            batch_item_id=item["id"],
         )
         queued_items.append({"item_id": item["id"], "job_id": item["id"], "book_id": book_id})
 
@@ -538,6 +536,9 @@ async def upload_string_bg(
         )
 
     idem_key = request.headers.get("Idempotency-Key", "")
+    if not idem_key:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing Idempotency-Key header")
+
     book_id, created = await db.insert_book_init(current_admin["id"], stringName, idem_key)
     if book_id <= 0:
         raise HTTPException(
@@ -563,17 +564,26 @@ async def upload_string_bg(
             error_detail = "Failed to finalize uploaded file metadata"
             raise RuntimeError(error_detail)
 
-        job_id = await db.create_job_book(
-            user_id=current_admin["id"],
-            book_id=book_id,
-            action="INSERT_STR",
-            payload={"name": stringName, "object_name": object_name},
-        )
-        if not job_id:
-            error_detail = "Failed to create background job"
+        batch_id, _ = await db.create_job_book_batch(current_admin["id"], idem_key)
+        if not batch_id:
+            error_detail = "Failed to initialize insert batch"
             raise RuntimeError(error_detail)
 
-        await process_insert_str_job.kiq(job_id=job_id, book_id=book_id, data=stringBody)
+        item_job_id = await db.create_job_book_batch_item(
+            batch_id=batch_id,
+            user_id=current_admin["id"],
+            file_name=stringName,
+            file_size=len(stringBody.encode("utf-8")),
+            object_name=object_name,
+            action="INSERT_STR",
+            status="QUEUED_PROCESS",
+            book_id=book_id,
+        )
+        if not item_job_id:
+            error_detail = "Failed to create batch item"
+            raise RuntimeError(error_detail)
+
+        await process_insert_str_job.kiq(batch_item_id=item_job_id, book_id=book_id, data=stringBody)
     except Exception as e:
         await compensate_insert_saga(db, book_id, object_name)
         if not error_detail:
@@ -586,7 +596,8 @@ async def upload_string_bg(
     return JSONResponse(
         status_code=HTTPStatus.ACCEPTED,
         content={
-            "job_id": job_id,
+            "job_id": item_job_id,
+            "batch_id": batch_id,
             "book_id": book_id,
             "status": "QUEUED",
             "message": "Background insert queued"
@@ -839,26 +850,43 @@ async def delete_book_bg(
     if not book:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Book not found")
 
-    job_id = await db.create_job_book(
-        user_id=current_admin_user["id"],
-        book_id=obj_id,
-        action="DELETE_BOOK",
-        payload={"object_name": book.get("object_name", "")},
-    )
-    if not job_id:
+    # Because delete is auto idempotent, it's not necessary to send idem key
+    idem_key = request.headers.get("Idempotency-Key", "").strip()
+    if not idem_key:
+        idem_key = f"delete-book:{current_admin_user['id']}:{obj_id}:{uuid.uuid4().hex}"
+
+    batch_id, _ = await db.create_job_book_batch(current_admin_user["id"], idem_key)
+    if not batch_id:
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
-            detail="Failed to create background job"
+            detail="Failed to initialize delete batch"
+        )
+
+    item_id = await db.create_job_book_batch_item(
+        batch_id=batch_id,
+        user_id=current_admin_user["id"],
+        file_name=f"delete-book:{obj_id}",
+        file_size=0,
+        object_name=book.get("object_name", ""),
+        action="DELETE_BOOK",
+        status="QUEUED_PROCESS",
+        book_id=obj_id,
+    )
+    if not item_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to create delete batch item"
         )
 
     try:
         await process_delete_job_book.kiq(
-            job_id=job_id,
+            job_id="",
             book_id=obj_id,
             object_name=book.get("object_name", ""),
+            batch_item_id=item_id,
         )
     except Exception as e:
-        await db.update_job_book_status(job_id, "FAILED", error=str(e))
+        await db.update_job_book_batch_item_status(item_id, "FAILED_PROCESS", error=str(e))
         raise HTTPException(
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
             detail="Failed to enqueue background task"
@@ -867,7 +895,8 @@ async def delete_book_bg(
     return JSONResponse(
         status_code=HTTPStatus.ACCEPTED,
         content={
-            "job_id": job_id,
+            "job_id": item_id,
+            "batch_id": batch_id,
             "book_id": obj_id,
             "status": "QUEUED",
             "message": "Background delete queued"
