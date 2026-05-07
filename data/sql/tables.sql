@@ -140,4 +140,3 @@ CREATE TABLE IF NOT EXISTS job_book_batch_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_job_book_batch_items_batch_id ON job_book_batch_items(batch_id);
-CREATE INDEX IF NOT EXISTS idx_job_book_batch_items_status ON job_book_batch_items(status);
