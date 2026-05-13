@@ -395,6 +395,51 @@ class TestInsertStringRoute:
         assert resp.status_code == 500
         mock_db.rollback_insert_book.assert_awaited_once_with(202)
 
+    @pytest.mark.asyncio
+    async def test_insert_str_rejects_over_byte_limit(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+
+        # 4 Japanese chars => 12 UTF-8 bytes, greater than patched limit=10
+        with patch("app.routes.MAX_INSERT_STRING_BYTES", 1):
+            resp = await client.post(
+                "/v1/insert/str/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-str-too-large",
+                },
+                data={"stringName": "my-book", "stringBody": "あいうえあいうえ"},
+            )
+
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+        assert "max 10 bytes" in resp.json()["detail"]
+        mock_db.insert_book_init.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_insert_str_accepts_within_byte_limit(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.insert_book_init.return_value = (203, True)
+        mock_db.update_insert_book_status_uploaded.return_value = True
+        mock_db.create_job_book_batch.return_value = ("batch-ss-2", True)
+        mock_db.create_job_book_batch_item = AsyncMock(return_value="item-ss-2")
+
+        # 3 Japanese chars => 9 UTF-8 bytes, within patched limit=10
+        with patch("app.routes.MAX_INSERT_STRING_BYTES", 10), \
+             patch("app.routes.upload_string_to_minio", return_value="obj_str"), \
+             patch("app.routes.process_insert_str_job.kiq", new=AsyncMock()) as kiq_mock:
+            resp = await client.post(
+                "/v1/insert/str/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-str-small",
+                },
+                data={"stringName": "my-book", "stringBody": "あいう"},
+            )
+
+        assert resp.status_code == HTTPStatus.ACCEPTED
+        kiq_mock.assert_awaited_once()
+
 
 # ── Search Word ───────────────────────────────────────────────────────────────
 class TestSearchWordRoute:

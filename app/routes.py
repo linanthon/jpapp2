@@ -10,7 +10,7 @@ import uuid
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
                         FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES,
-                        SEARCH_WORD_EXPIRE_MINUTES)
+                        SEARCH_WORD_EXPIRE_MINUTES, MAX_INSERT_STRING_BYTES)
 from app.handlers.insert import compensate_insert_saga
 from app.handlers.progress import handle_progress
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
@@ -533,6 +533,12 @@ async def upload_string_bg(
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="Missing book name or content"
+        )
+    string_size_bytes = len(stringBody.encode("utf-8"))
+    if string_size_bytes > MAX_INSERT_STRING_BYTES:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=f"String content too long, max {MAX_INSERT_STRING_BYTES} bytes"
         )
 
     idem_key = request.headers.get("Idempotency-Key", "")

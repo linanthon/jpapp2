@@ -39,6 +39,7 @@ MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "miniouser")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "miniopass")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "jpapp-books")
+MAX_INSERT_STRING_BYTES = int(os.getenv("MAX_INSERT_STRING_BYTES", 15000))  # 15kb = 5k JP characters
 
 # Blueprint prefix
 bpv1_url_prefix = "/v1"
