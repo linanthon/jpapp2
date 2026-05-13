@@ -13,6 +13,18 @@ log = get_logger(__name__)
 # cache word count for /view/word
 view_count_cache = {}
 
+
+def _strip_storage_prefix(name: str) -> str:
+    """Strip generated UUID prefix from storage object names, if present."""
+    if not name:
+        return ""
+    # Keep only basename if object_name includes folders like uploads/{user}/{batch}/...
+    base = name.split("/")[-1].split("\\")[-1]
+    # Remove '<32 hex chars>_' prefix used by insert endpoints.
+    if re.match(r"^[0-9a-fA-F]{32}_.+", base):
+        return base[33:]
+    return base
+
 def reset_view_word_count():
     """call this when insert new book/word"""
     view_count_cache.clear()
@@ -137,8 +149,11 @@ async def handle_view_specific_book(db: "DBHandling", user_id: int, book_id: int
 
     object_name = book.get("object_name", "")
     if object_name:
-        book["download_url"] = get_file_download_link(object_name)
+        download_name = _strip_storage_prefix(object_name) or book.get("name", "download")
+        book["download_url"] = get_file_download_link(object_name, download_name=download_name)
+        book["download_name"] = download_name
     else:
         book["download_url"] = ""
+        book["download_name"] = ""
 
     return book

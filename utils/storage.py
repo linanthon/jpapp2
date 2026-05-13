@@ -116,13 +116,21 @@ def get_file_from_minio_as_stream(object_name: str) -> io.BytesIO:
     return file_stream
 
 @_retry()
-def get_file_download_link(object_name: str, expiry: int = PRESIGNED_URL_EXPIRY) -> str:
+def get_file_download_link(object_name: str, expiry: int = PRESIGNED_URL_EXPIRY,
+                           download_name: str = "", content_type: str = "") -> str:
     """Return a presigned download URL for the frontend.
     Backend won't have to store the file in memory."""
     try:
+        params = {"Bucket": MINIO_BUCKET, "Key": object_name}
+        if download_name:
+            # Force browser download dialog to use a clean user-facing filename.
+            params["ResponseContentDisposition"] = f'attachment; filename="{download_name}"'
+        if content_type:
+            params["ResponseContentType"] = content_type
+
         url = s3_client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": MINIO_BUCKET, "Key": object_name},
+            Params=params,
             ExpiresIn=expiry,
         )
         return url
