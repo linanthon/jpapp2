@@ -1340,6 +1340,16 @@ class DBHandling:
             return False
         return True
 
+    async def list_jlpt_levels(self) -> Dict[str, str]:
+        """Get full JLPT mapping as dict[word] = level from jlpt_levels table."""
+        rows = await self._fetch(
+            f"SELECT word, jlpt_level FROM {TABLE_JLPT};"
+        )
+        res: Dict[str, str] = {}
+        for row in rows:
+            res[row["word"]] = row["jlpt_level"]
+        return res
+
 
     # =======================================================================================
 

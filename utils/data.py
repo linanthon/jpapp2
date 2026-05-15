@@ -199,6 +199,22 @@ def read_jlpt(dirname: str = JLPT_DIR) -> None:
             except Exception as e:
                 log.error(f"Failed to read JLPT file {filename}: {e}")
 
+
+async def read_jlpt_from_db(db: "DBHandling") -> None:
+    """Read word JLPT mapping from database and refresh in-memory JLPT_DICT."""
+    if db is None:
+        log.error("read_jlpt_from_db requires a db instance")
+        return
+
+    try:
+        mapping = await db.list_jlpt_levels()
+    except Exception as e:
+        log.error(f"Failed to load JLPT from DB: {e}")
+        return
+
+    JLPT_DICT.clear()
+    JLPT_DICT.update(mapping)
+
 """Unavailable because failed to install miniaudio on Windows env"""
 def play_audio(audio_mapping: List[str]) -> None:
     """

@@ -31,6 +31,7 @@ from app.tasks.job_scrape import (
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
+from utils.data import read_jlpt_from_db, JLPT_DICT
 from utils.db import DBHandling
 from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
                            parse_bool_param, validate_star)
@@ -1207,6 +1208,22 @@ async def update_words_jlpt_bg(
             "status": "QUEUED",
             "source": "jlpt_levels",
             "message": "Background JLPT words sync queued" if is_new else "Duplicate request ignored",
+        },
+    )
+
+
+@router.post("/jlpt/reload-cache")
+async def reload_jlpt_cache(
+    db: DBHandling = Depends(get_db),
+    current_admin_user: dict = Depends(get_current_admin_user)
+):
+    """Reload in-memory JLPT cache from jlpt_levels table without restarting API."""
+    await read_jlpt_from_db(db)
+    return JSONResponse(
+        status_code=HTTPStatus.OK,
+        content={
+            "message": "JLPT cache reloaded",
+            "count": len(JLPT_DICT),
         },
     )
 
