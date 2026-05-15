@@ -32,5 +32,5 @@ TODO frontend
 Run each in separate command prompt:
 * minio server minio-data/
 * memurai
-* taskiq worker app.taskiq_broker:broker app.tasks.job_books --workers 4
+* taskiq worker app.taskiq_broker:broker app.tasks.job_books --workers 3
 * python -m app.main

@@ -401,7 +401,7 @@ class TestInsertStringRoute:
         mock_db.get_user_by_id.return_value = ADMIN_USER
 
         # 4 Japanese chars => 12 UTF-8 bytes, greater than patched limit=10
-        with patch("app.routes.MAX_INSERT_STRING_BYTES", 1):
+        with patch("app.routes.MAX_INSERT_STRING_BYTES", 10):
             resp = await client.post(
                 "/v1/insert/str/bg",
                 headers={
@@ -588,8 +588,7 @@ class TestDeleteBook:
         mock_redis.get.return_value = None
         mock_db.get_user_by_id.return_value = NORMAL_USER
         resp = await client.post(
-            "/v1/del/book",
-            json={"id": 1},
+            "/v1/del/book/bg/1",
             headers=_auth_header(user_token),
         )
         assert resp.status_code == 403
@@ -600,14 +599,15 @@ class TestDeleteBook:
         mock_redis.get.return_value = None
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.get_exact_book.return_value = {"book_id": 1, "object_name": "obj.pdf"}
+        mock_db.create_job_book_batch.return_value = ("batch-del-1", True)
+        mock_db.create_job_book_batch_item = AsyncMock(return_value="item-del-1")
         mock_db.delete_book.return_value = True
         with patch("app.handlers.view.delete_storage_file", return_value=True):
             resp = await client.post(
-                "/v1/del/book",
-                json={"id": 1},
+                "/v1/del/book/bg/1",
                 headers=_auth_header(admin_token),
             )
-        assert resp.status_code == 204
+        assert resp.status_code == 202
 
     @pytest.mark.asyncio
     async def test_delete_not_found(self, client, mock_db, mock_redis, admin_token):
@@ -615,15 +615,14 @@ class TestDeleteBook:
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.get_exact_book.return_value = None
         resp = await client.post(
-            "/v1/del/book",
-            json={"id": 999},
+            "/v1/del/book/bg/999",
             headers=_auth_header(admin_token),
         )
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_delete_no_auth(self, client):
-        resp = await client.post("/v1/del/book", json={"id": 1})
+        resp = await client.post("/v1/del/book/bg/1")
         assert resp.status_code == 401
 
 

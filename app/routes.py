@@ -814,52 +814,23 @@ async def view_specific_book(
         {"request": {}, "book_details": await handle_view_specific_book(db, current_user, book_id)}
     )
 
-#TODO: change to DELETE /book/{id} some day
-@router.post("/del/book")
-async def delete_book(
-    request: Request,
-    db: DBHandling = Depends(get_db),
-    current_admin_user: dict = Depends(get_current_admin_user)
-):
-    """Delete a book, admin account is required."""
-    data = await request.json()
-    try:
-        obj_id = int(data.get("id", ""))
-    except:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing book `id`")
 
-    book = await db.get_exact_book(user_id=current_admin_user["id"], book_id=obj_id)
-    if not book:
-        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Book not found")
-
-    deleted = await delete_book_helper(db, obj_id, book.get("object_name", ""))
-    if not deleted:
-        raise HTTPException(status_code=HTTPStatus.INTERNAL_SERVER_ERROR, detail="Failed to delete book")
-
-    return Response(status_code=HTTPStatus.NO_CONTENT)
-
-
-@router.post("/del/book/bg")
+@router.post("/del/book/bg/{book_id}")
 async def delete_book_bg(
     request: Request,
+    book_id: int,
     db: DBHandling = Depends(get_db),
     current_admin_user: dict = Depends(get_current_admin_user)
 ):
     """Queue book deletion in background and return a job ID."""
-    data = await request.json()
-    try:
-        obj_id = int(data.get("id", ""))
-    except:
-        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing book `id`")
-
-    book = await db.get_exact_book(user_id=current_admin_user["id"], book_id=obj_id)
+    book = await db.get_exact_book(user_id=current_admin_user["id"], book_id=book_id)
     if not book:
         raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Book not found")
 
     # Because delete is auto idempotent, it's not necessary to send idem key
     idem_key = request.headers.get("Idempotency-Key", "").strip()
     if not idem_key:
-        idem_key = f"delete-book:{current_admin_user['id']}:{obj_id}:{uuid.uuid4().hex}"
+        idem_key = f"delete-book:{current_admin_user['id']}:{book_id}:{uuid.uuid4().hex}"
 
     batch_id, _ = await db.create_job_book_batch(current_admin_user["id"], idem_key)
     if not batch_id:
@@ -871,12 +842,12 @@ async def delete_book_bg(
     item_id = await db.create_job_book_batch_item(
         batch_id=batch_id,
         user_id=current_admin_user["id"],
-        file_name=f"delete-book:{obj_id}",
+        file_name=f"delete-book:{book_id}",
         file_size=0,
         object_name=book.get("object_name", ""),
         action="DELETE_BOOK",
         status="QUEUED_PROCESS",
-        book_id=obj_id,
+        book_id=book_id,
     )
     if not item_id:
         raise HTTPException(
@@ -887,7 +858,7 @@ async def delete_book_bg(
     try:
         await process_delete_job_book.kiq(
             job_id="",
-            book_id=obj_id,
+            book_id=book_id,
             object_name=book.get("object_name", ""),
             batch_item_id=item_id,
         )
@@ -903,7 +874,7 @@ async def delete_book_bg(
         content={
             "job_id": item_id,
             "batch_id": batch_id,
-            "book_id": obj_id,
+            "book_id": book_id,
             "status": "QUEUED",
             "message": "Background delete queued"
         }

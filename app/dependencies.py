@@ -139,7 +139,6 @@ def get_jinja_globals():
             'view_books': f'{url_prefix}/view/book',
             'api_view_books': f'{url_prefix}/api/view/book',
             'view_specific_book': f'{url_prefix}/view/book/',
-            'delete_book': f'{url_prefix}/del/book',
             'delete_book_bg': f'{url_prefix}/del/book/bg',
             'job_list': f'{url_prefix}/job',
             'api_job_list': f'{url_prefix}/api/job',
