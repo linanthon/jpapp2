@@ -5,6 +5,13 @@ RETURNS text AS $$
     SELECT array_to_string(arr, sep);
 $$ LANGUAGE sql IMMUTABLE;
 
+-- Store JLPT level
+CREATE TABLE IF NOT EXISTS jlpt_levels (
+    id SERIAL PRIMARY KEY,
+    word TEXT UNIQUE NOT NULL,
+    jlpt_level TEXT NOT NULL
+);
+
 -- Store a word
 CREATE TABLE IF NOT EXISTS words (
     id SERIAL PRIMARY KEY,
@@ -140,3 +147,18 @@ CREATE TABLE IF NOT EXISTS job_book_batch_items (
 );
 
 CREATE INDEX IF NOT EXISTS idx_job_book_batch_items_batch_id ON job_book_batch_items(batch_id);
+
+-- Job info for scraping JLPT level data
+CREATE TABLE IF NOT EXISTS job_scrape (
+    id UUID PRIMARY KEY,
+    user_id INT REFERENCES users(id) ON DELETE SET NULL,
+    idempotency_key TEXT NOT NULL,
+    trigger_type TEXT,  -- MANUAL, SCHEDULED, STARTUP
+    source TEXT,    -- wikipedia, jlpt_sensei, ...
+    status TEXT,    -- QUEUED / SCRAPING / UPDATING_WORDS / FINISHED / FAILED
+    error TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    modified_at TIMESTAMP NOT NULL DEFAULT NOW(),
+
+    UNIQUE (user_id, idempotency_key)
+);

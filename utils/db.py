@@ -13,13 +13,13 @@ if TYPE_CHECKING:
 
 from app.config import DB_HOST, DB_PORT, TASKIQ_MAX_ATTEMPTS
 from utils.logger import get_logger
-from schemas.constants import (TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,
+from schemas.constants import (TABLE_JLPT, TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,
                               TABLE_WORD_SENTENCE_REF, TABLE_SENTENCE_BOOK_REF, DB_NAME,
                               SQL_TABLE_SCRIPT, DEFAULT_LIMIT, SQL_WORD_PRIO_SCRIPT, TABLE_USER,
                               DEFAULT_FORMULA_K, DEFAULT_TIME_EXPODECAY, QUIZ_WORD_SORT_COLUMNS,
                               WORD_SENSES_REGEX, QUIZ_SOFT_CAP, QUIZ_HARD_CAP, DEFAULT_MULTI_PENALTY,
                               DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS, TABLE_USER_BOOK_STAR,
-                              TABLE_JOB_BOOK_BATCHES, TABLE_JOB_BOOK_BATCH_ITEMS)
+                              TABLE_JOB_BOOK_BATCHES, TABLE_JOB_BOOK_BATCH_ITEMS, TABLE_JOB_SCRAPE)
 
 log = get_logger(__file__)
 
@@ -830,20 +830,6 @@ class DBHandling:
 
         return True
 
-    #TODO: currently not used, remove?
-    async def update_word_jlpt(self, word: str, new_jlpt_level: str) -> bool:
-        """
-        Update a word's jlpt level (word must match exact).
-        Return true if success, false if fail/not found (update 0 row).
-        """
-        status = await self._execute(
-            f"UPDATE {TABLE_WORDS} SET jlpt_level = $1 WHERE word = $2;",
-            new_jlpt_level, word
-        )
-        if status and self._get_rowcount(status) > 0:
-            return True
-        return False
-
     async def update_words_known(self, user_id: int, word_ids: List[int] = []) -> bool:
         """Update words priority to -1.0 (to fail the > 0.0 check when query for quiz).
         Returns True if success, False if fail."""
@@ -1235,6 +1221,128 @@ class DBHandling:
 
         return status is not None
     # =======================================================================================
+
+
+    # Word JLPT level related ===============================================================
+    async def create_job_scrape(self, user_id: int, idempotency_key: str, trigger_type: str, source: str) -> Tuple[str, bool]:
+        """Init row for a JLPT level scraping request, to table `job_scrape`
+        This is the feature's idempotent check.
+
+        Input:
+        - user_id: user ID
+        - idempotency_key: idempotent key
+        - trigger_type: the approach this job is called: MANUAL, SCHEDULED, STARTUP
+        - source: the site to scrape: wikipedia, jlpt_sensei, ... 
+
+        Output: tuple of (job_id, is_new)
+        """
+        if not idempotency_key:
+            return "", False
+
+        job_id = str(uuid.uuid4())
+        row = await self._fetchrow(
+            f"""INSERT INTO {TABLE_JOB_SCRAPE} (id, user_id, idempotency_key, trigger_type, source, status)
+            VALUES ($1::uuid, $2, $3, $4, $5, 'QUEUED')
+            ON CONFLICT (user_id, idempotency_key) DO UPDATE SET modified_at = NOW()
+            RETURNING id, (xmax = 0) AS is_new;""",
+            job_id, user_id, idempotency_key, trigger_type, source
+        )
+        if not row:
+            return "", False
+        return str(row["id"]), bool(row["is_new"])
+
+    async def claim_job_scrape(self, job_id: str) -> bool:
+        """Claim a queued JLPT scrape job for processing.
+
+        Returns True only for the worker that transitions:
+        QUEUED -> SCRAPING.
+        """
+        status = await self._execute(
+            f"""UPDATE {TABLE_JOB_SCRAPE}
+            SET status = 'SCRAPING',
+                error = '',
+                modified_at = NOW()
+            WHERE id = $1::uuid
+              AND status = 'QUEUED';""",
+            job_id,
+        )
+        return bool(status) and self._get_rowcount(status) > 0
+
+    async def update_job_scrape_status(self, job_id: str, status: str, error: str = "") -> bool:
+        """Update scraping JLPT level job status (SCRAPING, UPDATING_WORDS, FINISHED, FAILED)."""
+        result = await self._execute(
+            f"""UPDATE {TABLE_JOB_SCRAPE}
+            SET status = $1,
+                error = CASE WHEN $2 = '' THEN error ELSE $2 END,
+                modified_at = NOW()
+            WHERE id = $3::uuid;""",
+            status, error, job_id,
+        )
+        return bool(result) and self._get_rowcount(result) > 0
+
+    async def replace_jlpt_levels(self, jlpt_levels: Dict[str, str]) -> bool:
+        """Replace JLPT mapping table with a freshly scraped snapshot.
+
+        Input:
+        - jlpt_levels: dict[word] = level
+        """
+        if not jlpt_levels:
+            return False
+
+        words = list(jlpt_levels.keys())
+        levels = list(jlpt_levels.values())
+
+        async with self.transaction():
+            status = await self._execute(f"TRUNCATE TABLE {TABLE_JLPT};")
+            if not status:
+                return False
+
+            status = await self._execute(
+                f"""INSERT INTO {TABLE_JLPT} (word, jlpt_level)
+                SELECT * FROM unnest($1::text[], $2::text[]);""",
+                words,
+                levels,
+            )
+            if not status:
+                return False
+
+        return True
+
+    async def update_word_jlpt(self) -> bool:
+        """
+        !!! This will change everything about user learning experience !!!
+
+        Update all word's jlpt level using TABLE_JLPT.
+        Words not in TABLE_JLPT will be mark as N0.
+        Return true if success, false if fail/not found (update 0 row).
+        """
+        # Update to new JLPT level
+        status = await self._execute(
+            f"""UPDATE {TABLE_WORDS} w
+            SET jlpt_level = j.jlpt_level
+            FROM {TABLE_JLPT} j
+            WHERE w.word = j.word
+            AND w.jlpt_level IS DISTINCT FROM j.jlpt_level;"""
+        )
+        if not status:
+            return False
+        
+        # Update unknown words to N0
+        status = await self._execute(
+            f"""UPDATE {TABLE_WORDS} w
+            SET jlpt_level = 'N0'
+            WHERE NOT EXISTS (
+                SELECT 1 FROM {TABLE_JLPT} j WHERE j.word = w.word
+            )
+            AND w.jlpt_level IS DISTINCT FROM 'N0';"""
+        )
+        if not status:
+            return False
+        return True
+
+
+    # =======================================================================================
+
 
     # Sentence ==============================================================================
     async def query_like_sentence(self, sentence: str, limit: int = DEFAULT_LIMIT) -> List[dict]:

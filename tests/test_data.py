@@ -165,18 +165,3 @@ class TestGetQuizDistractors:
         # distractor JP word should be the kana form, not kanji
         assert result.jp[0] == "ビール"
 
-
-# ── scrape_all_jlpt ──────────────────────────────────────────────────────────
-class TestScrapeAllJlpt:
-    def test_invalid_option(self):
-        assert scrape_all_jlpt(option=-1) == "invalid option"
-        assert scrape_all_jlpt(option=5) == "invalid option"
-
-    def test_files_already_exist(self, tmp_path, monkeypatch):
-        # Create a file that makes the check fail
-        import os
-        monkeypatch.chdir(tmp_path)
-        os.makedirs("data/jlpt", exist_ok=True)
-        (tmp_path / "data" / "jlpt" / "n5.txt").write_text("word\n")
-        result = scrape_all_jlpt(option=0)
-        assert result == "JLPT file(s) already existed"
