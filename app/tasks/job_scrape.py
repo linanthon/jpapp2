@@ -151,7 +151,7 @@ async def process_scrape_jlpt_job(job_id: str, source: str) -> None:
 
 @broker.task(task_name="jobscrape.update_words_from_jlpt")
 async def process_update_words_from_jlpt_job(job_id: str) -> None:
-    """Update words.jlpt_level from jlpt_levels only (no scraping)."""
+    """Update words.jlpt_level from existing jlpt_levels values only (no scraping)."""
     db: DBHandling | None = None
     redis: aioredis.Redis | None = None
     if not job_id:

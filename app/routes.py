@@ -23,7 +23,11 @@ from app.dependencies import (
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                change_word_prio_to_negative, reset_word_prio)
 from app.tasks.job_books import process_insert_file_job, process_insert_str_job, process_delete_job_book
-from app.tasks.job_scrape import process_scrape_jlpt_job, ScrapeSources
+from app.tasks.job_scrape import (
+    process_scrape_jlpt_job,
+    process_update_words_from_jlpt_job,
+    ScrapeSources,
+)
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
@@ -1159,6 +1163,50 @@ async def scrape_jlpt_bg(
             "status": "QUEUED",
             "source": source.value,
             "message": "Background JLPT scrape queued" if is_new else "Duplicate request ignored",
+        },
+    )
+
+
+@router.post("/jlpt/update-words/bg")
+async def update_words_jlpt_bg(
+    request: Request,
+    db: DBHandling = Depends(get_db),
+    current_admin_user: dict = Depends(get_current_admin_user)
+):
+    """Sync words.jlpt_level from jlpt_levels without scraping."""
+    idem_key = request.headers.get("Idempotency-Key", "")
+    if not idem_key:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing Idempotency-Key header")
+
+    job_id, is_new = await db.create_job_scrape(
+        user_id=current_admin_user["id"],
+        idempotency_key=idem_key,
+        trigger_type="MANUAL_UPDATE_WORDS",
+        source="jlpt_levels",
+    )
+    if not job_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to initialize update words job",
+        )
+
+    if is_new:
+        try:
+            await process_update_words_from_jlpt_job.kiq(job_id=job_id)
+        except Exception as e:
+            await db.update_job_scrape_status(job_id, "FAILED", error=str(e))
+            raise HTTPException(
+                status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+                detail="Failed to enqueue update words background task",
+            )
+
+    return JSONResponse(
+        status_code=HTTPStatus.ACCEPTED,
+        content={
+            "job_id": job_id,
+            "status": "QUEUED",
+            "source": "jlpt_levels",
+            "message": "Background JLPT words sync queued" if is_new else "Duplicate request ignored",
         },
     )
 
