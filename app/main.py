@@ -124,7 +124,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     if hasattr(app.state, "redis"):
-        await app.state.redis.close()
+        await app.state.redis.aclose()
     if hasattr(app.state, "db"):
         await app.state.db.close_db()
 

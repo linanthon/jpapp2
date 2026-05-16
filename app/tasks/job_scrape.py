@@ -1,6 +1,7 @@
 from enum import Enum
 from typing import Dict, Tuple
 import time
+import random
 
 import redis.asyncio as aioredis
 import requests
@@ -14,6 +15,21 @@ from utils.logger import get_logger
 
 
 log = get_logger(__name__)
+
+WIKIPEDIA_REQUEST_TIMEOUT_SEC = 20
+WIKIPEDIA_REQUEST_RETRIES = 3
+WIKIPEDIA_BACKOFF_BASE_SEC = 0.5
+WIKIPEDIA_BACKOFF_MAX_SEC = 5.0
+
+WIKIPEDIA_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
 
 
 async def _publish_jlpt_cache_reload(redis: aioredis.Redis | None, job_id: str, source: str) -> None:
@@ -82,13 +98,31 @@ def scrape_wikipedia(level: int) -> Tuple[set[str], str]:
     url = f"https://en.wiktionary.org/wiki/Appendix:JLPT/N{level}"
     log.info(f"Scraping JLPT N{level} from {url}")
 
-    try:
-        response = requests.get(url, timeout=20)
-    except Exception as e:
-        return set(), f"Failed to request N{level}: {e}"
+    response = None
+    err = ""
+    for attempt in range(WIKIPEDIA_REQUEST_RETRIES):
+        try:
+            response = requests.get(
+                url,
+                headers=WIKIPEDIA_HEADERS,
+                timeout=WIKIPEDIA_REQUEST_TIMEOUT_SEC,
+            )
+            if response.status_code == 200:
+                break
 
-    if response.status_code != 200:
-        return set(), f"Failed to request N{level}: status code {response.status_code}"
+            err = f"Failed to request N{level}: status code {response.status_code}"
+            if attempt < WIKIPEDIA_REQUEST_RETRIES - 1:
+                # Exponential backoff with jitter to reduce burst retries.
+                backoff = min(WIKIPEDIA_BACKOFF_BASE_SEC * (2 ** attempt), WIKIPEDIA_BACKOFF_MAX_SEC)
+                time.sleep(backoff + random.uniform(0, backoff * 0.25))
+        except Exception as e:
+            err = f"Failed to request N{level}: {e}"
+            if attempt < WIKIPEDIA_REQUEST_RETRIES - 1:
+                backoff = min(WIKIPEDIA_BACKOFF_BASE_SEC * (2 ** attempt), WIKIPEDIA_BACKOFF_MAX_SEC)
+                time.sleep(backoff + random.uniform(0, backoff * 0.25))
+
+    if response is None or response.status_code != 200:
+        return set(), err or f"Failed to request N{level}: unknown request failure"
 
     try:
         soup = BeautifulSoup(response.text, "html.parser")

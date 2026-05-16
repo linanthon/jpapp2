@@ -75,8 +75,9 @@ class TestScrapeWikipedia:
         assert vocab == set()
         assert err == "invalid level"
 
+    @patch("app.tasks.job_scrape.time.sleep", return_value=None)
     @patch("app.tasks.job_scrape.requests.get")
-    def test_request_failure(self, mock_get):
+    def test_request_failure(self, mock_get, _mock_sleep):
         mock_get.side_effect = RuntimeError("network down")
 
         vocab, err = scrape_wikipedia(5)
@@ -94,6 +95,35 @@ class TestScrapeWikipedia:
 
         assert vocab == set()
         assert "status code 500" in err
+
+    @patch("app.tasks.job_scrape.time.sleep", return_value=None)
+    @patch("app.tasks.job_scrape.requests.get")
+    def test_retry_then_success(self, mock_get, _mock_sleep):
+        r403 = MagicMock()
+        r403.status_code = 403
+        r200 = MagicMock()
+        r200.status_code = 200
+        r200.text = """<table class=\"wikitable\"><tr><td>食べる</td><td>たべる</td><td>x</td><td>1</td></tr></table>"""
+        mock_get.side_effect = [r403, r200]
+
+        vocab, err = scrape_wikipedia(5)
+
+        assert err == ""
+        assert "食べる" in vocab
+        assert mock_get.call_count == 2
+
+    @patch("app.tasks.job_scrape.time.sleep", return_value=None)
+    @patch("app.tasks.job_scrape.requests.get")
+    def test_retry_exhausted_keeps_error(self, mock_get, _mock_sleep):
+        r403 = MagicMock()
+        r403.status_code = 403
+        mock_get.return_value = r403
+
+        vocab, err = scrape_wikipedia(5)
+
+        assert vocab == set()
+        assert "status code 403" in err
+        assert mock_get.call_count == 3
 
     @patch("app.tasks.job_scrape.requests.get")
     def test_parse_vocab(self, mock_get):

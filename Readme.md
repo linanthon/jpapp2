@@ -34,7 +34,7 @@ TODO frontend
 Run each in separate command prompt:
 * minio server minio-data/
 * memurai
-* taskiq worker app.taskiq_broker:broker app.tasks.job_books --workers 3
+* taskiq worker app.taskiq_broker:broker app.tasks --workers 3
 * python -m app.main
 
 App will auto load jlpt level data if existed in DB, otherwise call /v1/jlpt/scrape/bg/{source_id} to scrape and load data, currently only allow `source_id=1`.
