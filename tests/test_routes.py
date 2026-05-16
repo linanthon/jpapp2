@@ -602,7 +602,8 @@ class TestDeleteBook:
         mock_db.create_job_book_batch.return_value = ("batch-del-1", True)
         mock_db.create_job_book_batch_item = AsyncMock(return_value="item-del-1")
         mock_db.delete_book.return_value = True
-        with patch("app.handlers.view.delete_storage_file", return_value=True):
+        with patch("app.routes.process_delete_job_book.kiq", new_callable=AsyncMock), \
+             patch("app.handlers.view.delete_storage_file", return_value=True):
             resp = await client.post(
                 "/v1/del/book/bg/1",
                 headers=_auth_header(admin_token),

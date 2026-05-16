@@ -1,15 +1,19 @@
 """Tests for utils/data.py — data utility functions."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+
 from utils.data import (
     is_japanese_word,
     is_english_word,
     is_word_or_number,
     str_2_int,
     get_quiz_distractors,
-    scrape_all_jlpt,
-    JLPT_DICT,
-    STOP_WORDS,
+    bootstrap_stopwords_from_redis,
+    read_jlpt_from_db,
+    get_jlpt_level,
+    is_stop_word,
+    JLPT_REDIS_KEY,
+    STOPWORDS_REDIS_KEY,
 )
 
 
@@ -56,7 +60,83 @@ class TestStr2Int:
         assert str_2_int("") == DEFAULT_LIMIT
 
 
-# ── get_quiz_distractors ─────────────────────────────────────────────────────
+class TestRedisBackedHelpers:
+    @pytest.mark.asyncio
+    async def test_bootstrap_stopwords_seeds_when_missing(self, tmp_path):
+        f = tmp_path / "stopwords.txt"
+        f.write_text("の\nは\n", encoding="utf-8")
+
+        redis = AsyncMock()
+        redis.exists.return_value = 0
+
+        await bootstrap_stopwords_from_redis(redis, str(f))
+
+        redis.exists.assert_awaited_once_with(STOPWORDS_REDIS_KEY)
+        redis.sadd.assert_awaited_once_with(STOPWORDS_REDIS_KEY, "の", "は")
+
+    @pytest.mark.asyncio
+    async def test_bootstrap_stopwords_no_seed_if_exists(self, tmp_path):
+        f = tmp_path / "stopwords.txt"
+        f.write_text("の\nは\n", encoding="utf-8")
+
+        redis = AsyncMock()
+        redis.exists.return_value = 1
+
+        await bootstrap_stopwords_from_redis(redis, str(f))
+
+        redis.exists.assert_awaited_once_with(STOPWORDS_REDIS_KEY)
+        redis.sadd.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_read_jlpt_from_db_writes_redis_hash(self):
+        db = AsyncMock()
+        db.list_jlpt_levels.return_value = {"食べる": "N5", "走る": "N4"}
+
+        redis = MagicMock()
+        lock = AsyncMock()
+        lock.acquire.return_value = True
+        redis.lock.return_value = lock
+        pipeline = MagicMock()
+        pipeline.execute = AsyncMock()
+        redis.pipeline.return_value = pipeline
+
+        await read_jlpt_from_db(db, redis)
+
+        db.list_jlpt_levels.assert_awaited_once()
+        pipeline.delete.assert_called_once_with(JLPT_REDIS_KEY)
+        pipeline.hset.assert_called_once_with(JLPT_REDIS_KEY, mapping={"食べる": "N5", "走る": "N4"})
+        pipeline.execute.assert_awaited_once()
+        lock.release.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_get_jlpt_level_from_redis(self):
+        redis = AsyncMock()
+        redis.hget.return_value = "N3"
+
+        result = await get_jlpt_level("勉強", redis)
+
+        assert result == "N3"
+        redis.hget.assert_awaited_once_with(JLPT_REDIS_KEY, "勉強")
+
+    @pytest.mark.asyncio
+    async def test_get_jlpt_level_default_when_missing(self):
+        redis = AsyncMock()
+        redis.hget.return_value = None
+
+        result = await get_jlpt_level("未知語", redis)
+
+        assert result == "N0"
+
+    @pytest.mark.asyncio
+    async def test_is_stop_word_true_false(self):
+        redis = AsyncMock()
+        redis.sismember.side_effect = [1, 0]
+
+        assert await is_stop_word("の", redis) is True
+        assert await is_stop_word("食べる", redis) is False
+
+
+# -- get_quiz_distractors -----------------------------------------------------
 class TestGetQuizDistractors:
     @pytest.mark.asyncio
     async def test_no_word_returns_none(self):
@@ -79,7 +159,7 @@ class TestGetQuizDistractors:
     @pytest.mark.asyncio
     async def test_from_jamdict_fallback(self):
         mock_db = AsyncMock()
-        mock_db.get_distractors.return_value = []  # not enough from DB
+        mock_db.get_distractors.return_value = []
         mock_pdata = MagicMock()
 
         mock_entry = MagicMock()
@@ -89,15 +169,12 @@ class TestGetQuizDistractors:
         mock_entry.senses = [mock_sense]
         mock_pdata.get_random_jamdict_entries.return_value = [mock_entry] * 3
 
-        result = await get_quiz_distractors(mock_pdata, mock_db, jp_word="食べる",
-                                            en_word="to eat", distractor_count=3)
+        result = await get_quiz_distractors(mock_pdata, mock_db, jp_word="食べる", en_word="to eat", distractor_count=3)
         assert len(result.jp) == 3
         assert result.jp[0] == "走る"
 
     @pytest.mark.asyncio
     async def test_from_jamdict_kana_only(self):
-        """When a Jamdict entry has no kanji forms, the distractor JP word
-        should fall back to the kana form (used in EN->JP quiz choices)."""
         mock_db = AsyncMock()
         mock_db.get_distractors.return_value = []
         mock_pdata = MagicMock()
@@ -110,9 +187,5 @@ class TestGetQuizDistractors:
         mock_entry.senses = [mock_sense]
         mock_pdata.get_random_jamdict_entries.return_value = [mock_entry]
 
-        # jp_word/en_word are the correct-answer words being excluded from distractors
-        result = await get_quiz_distractors(mock_pdata, mock_db, jp_word="食べる",
-                                            en_word="to eat", distractor_count=1)
-        # distractor JP word should be the kana form, not kanji
+        result = await get_quiz_distractors(mock_pdata, mock_db, jp_word="食べる", en_word="to eat", distractor_count=1)
         assert result.jp[0] == "ビール"
-
