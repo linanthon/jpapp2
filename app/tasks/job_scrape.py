@@ -1,17 +1,40 @@
 from enum import Enum
 from typing import Dict, Tuple
+import time
 
 import redis.asyncio as aioredis
 import requests
 from bs4 import BeautifulSoup
 
 from app.taskiq_broker import broker
+from app.config import JLPT_CACHE_RELOAD_STREAM, JLPT_CACHE_RELOAD_STREAM_MAXLEN
 from app.tasks.helpers import bootstrap_runtime, cleanup_runtime
 from utils.db import DBHandling
 from utils.logger import get_logger
 
 
 log = get_logger(__name__)
+
+
+async def _publish_jlpt_cache_reload(redis: aioredis.Redis | None, job_id: str, source: str) -> None:
+    """Notify API process(es) to reload in-memory JLPT cache from DB (Redis Stream event)."""
+    if redis is None:
+        return
+    try:
+        await redis.xadd(
+            JLPT_CACHE_RELOAD_STREAM,
+            {
+                "event": "jlpt_cache_reload",
+                "job_id": job_id,
+                "source": source,
+                "ts": str(int(time.time())),
+            },
+            maxlen=max(JLPT_CACHE_RELOAD_STREAM_MAXLEN, 1),
+            approximate=True,
+        )
+    except Exception as e:
+        # Do not fail the job on cache-notify problems.
+        log.warning(f"Failed to publish JLPT cache reload signal: {e}")
 
 
 class ScrapeSources(str, Enum):
@@ -140,6 +163,7 @@ async def process_scrape_jlpt_job(job_id: str, source: str) -> None:
             raise RuntimeError("failed to update words.jlpt_level")
 
         await db.update_job_scrape_status(job_id, "FINISHED")
+        await _publish_jlpt_cache_reload(redis, job_id, source_enum.value)
 
     except Exception as e:
         if db is not None:
@@ -171,6 +195,7 @@ async def process_update_words_from_jlpt_job(job_id: str) -> None:
             raise RuntimeError("failed to update words.jlpt_level")
 
         await db.update_job_scrape_status(job_id, "FINISHED")
+        await _publish_jlpt_cache_reload(redis, job_id, "jlpt_levels")
 
     except Exception as e:
         if db is not None:

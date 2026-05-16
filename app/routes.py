@@ -1122,7 +1122,9 @@ async def scrape_jlpt_bg(
     db: DBHandling = Depends(get_db),
     current_admin_user: dict = Depends(get_current_admin_user)
 ):
-    """Scrape JLPT level from external websites"""
+    """Scrape JLPT level from external websites, replace current jlpt_levels table values,
+    update jlpt level for existing words. Then publish a message to Redis to read jlpt level
+    mapping into memory."""
     idem_key = request.headers.get("Idempotency-Key", "")
     if not idem_key:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing Idempotency-Key header")
@@ -1215,10 +1217,11 @@ async def update_words_jlpt_bg(
 @router.post("/jlpt/reload-cache")
 async def reload_jlpt_cache(
     db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     current_admin_user: dict = Depends(get_current_admin_user)
 ):
     """Reload in-memory JLPT cache from jlpt_levels table without restarting API."""
-    await read_jlpt_from_db(db)
+    await read_jlpt_from_db(db, redis)
     return JSONResponse(
         status_code=HTTPStatus.OK,
         content={

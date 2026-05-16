@@ -1280,6 +1280,14 @@ class DBHandling:
         )
         return bool(result) and self._get_rowcount(result) > 0
 
+    async def get_job_scrape_status(self, job_id: str) -> str:
+        """Get scrape job status by ID. Returns empty string if not found."""
+        row = await self._fetchrow(
+            f"SELECT status FROM {TABLE_JOB_SCRAPE} WHERE id = $1::uuid;",
+            job_id,
+        )
+        return str(row["status"]) if row and row.get("status") else ""
+
     async def replace_jlpt_levels(self, jlpt_levels: Dict[str, str]) -> bool:
         """Replace JLPT mapping table with a freshly scraped snapshot.
 
@@ -1350,6 +1358,12 @@ class DBHandling:
             res[row["word"]] = row["jlpt_level"]
         return res
 
+    async def count_jlpt_levels(self) -> int:
+        """Return number of rows in jlpt_levels table."""
+        row = await self._fetchrow(
+            f"SELECT COUNT(*) AS count FROM {TABLE_JLPT};"
+        )
+        return int(row["count"]) if row else 0
 
     # =======================================================================================
 

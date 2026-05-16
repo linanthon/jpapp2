@@ -200,17 +200,35 @@ def read_jlpt(dirname: str = JLPT_DIR) -> None:
                 log.error(f"Failed to read JLPT file {filename}: {e}")
 
 
-async def read_jlpt_from_db(db: "DBHandling") -> None:
-    """Read word JLPT mapping from database and refresh in-memory JLPT_DICT."""
+async def read_jlpt_from_db(db: "DBHandling", redis=None) -> None:
+    """Read word JLPT mapping from database and refresh in-memory JLPT_DICT.
+
+    If a Redis client is provided, this function uses a distributed lock to avoid
+    duplicated concurrent reloads across API workers/endpoints.
+    """
     if db is None:
         log.error("read_jlpt_from_db requires a db instance")
         return
 
+    lock = None
     try:
+        if redis is not None:
+            lock = redis.lock("lock:jlpt_cache_reload", timeout=30, blocking_timeout=1)
+            acquired = await lock.acquire()
+            if not acquired:
+                log.info("Skip JLPT cache reload because another reload is in progress")
+                return
+
         mapping = await db.list_jlpt_levels()
     except Exception as e:
         log.error(f"Failed to load JLPT from DB: {e}")
         return
+    finally:
+        if lock is not None:
+            try:
+                await lock.release()
+            except Exception:
+                pass
 
     JLPT_DICT.clear()
     JLPT_DICT.update(mapping)

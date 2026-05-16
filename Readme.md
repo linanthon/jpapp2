@@ -17,6 +17,8 @@ TODO backend:
 - ~~Update sentence example when view word, avoid short/no meaning sentences~~
 - ~~Search by kana, romaji, EN~~
 - ~~API now is concurrent, insert will meet `process_data` bottle neck --> move to background job~~
+- ~~Move jlpt level data scraping into bg job~~
+- ~~Auto read jlpt level at start (after scrape)~~
 - Can insert multiple files
 - Redis LRU words
 
@@ -34,3 +36,5 @@ Run each in separate command prompt:
 * memurai
 * taskiq worker app.taskiq_broker:broker app.tasks.job_books --workers 3
 * python -m app.main
+
+App will auto load jlpt level data if existed in DB, otherwise call /v1/jlpt/scrape/bg/{source_id} to scrape and load data, currently only allow `source_id=1`.
