@@ -15,7 +15,8 @@ from typing import List, TYPE_CHECKING
 if TYPE_CHECKING:
     from fastapi import UploadFile
     from utils.db import DBHandling
-from utils.data import JLPT_DICT, STOP_WORDS, ROMAJI_MAP, is_japanese_word
+from utils.data import (JLPT_DICT, STOP_WORDS, ROMAJI_MAP, is_japanese_word,
+                        get_jlpt_level, is_stop_word, get_romaji_for_kana)
 from utils.logger import get_logger
 from utils.text_extractor import TxtExtractor, DocxExtractor, PdfExtractor
 from schemas.constants import DEFAULT_DISTRACTOR_COUNT
@@ -58,7 +59,7 @@ class ProcessData():
             return match.end()  # idx+1
         return -1
 
-    async def process_sentence(self, sentence: str, db: "DBHandling") -> List[Word]:
+    async def process_sentence(self, sentence: str, db: "DBHandling", redis=None) -> List[Word]:
         """
         Tokenize the sentence into words -> ignore non Japanese words
         -> get their info into a dict -> return the list of them.
@@ -67,6 +68,7 @@ class ProcessData():
         Input:
         - sentence: the sentence to process
         - db: the DBHandling object that connected to DB.
+        - redis: Redis instance, use to check stop word, jlpt level and romaji mappings
 
         Output: a list of word dicts, the keys include: word, forms, spelling,
         senses, occurrence, jlpt_level, audio
@@ -78,7 +80,7 @@ class ProcessData():
             if not is_japanese_word(word.surface):
                 continue
 
-            row = await self._get_jamdict_info(word, db)
+            row = await self._get_jamdict_info(word, db, redis)
             if row:
                 # Save borrow English words for potential wasei-eigo
                 if row.eigo:
@@ -88,7 +90,7 @@ class ProcessData():
         # Handle possible Wasei-eigo combinations
         potential_wasei_eigo = self._get_waseieigo_combs(eigo)
         for wasei_eigo in potential_wasei_eigo:
-            row = await self._get_jamdict_info(wasei_eigo, db)
+            row = await self._get_jamdict_info(wasei_eigo, db, redis)
             if row:
                 words.append(row)
         return words
@@ -243,7 +245,7 @@ class ProcessData():
                     waseieigo.append(''.join(combo))
         return waseieigo
 
-    async def _get_jamdict_info(self, word: UnidicNode | str, db: "DBHandling") -> Word:
+    async def _get_jamdict_info(self, word: UnidicNode | str, db: "DBHandling", redis=None) -> Word:
         """
         Get the word's Jamdict entry via `self.get_word_entry()`, parse its info
         into the returning Word:
@@ -261,8 +263,11 @@ class ProcessData():
         and calculate new priority then return None
         """
         # Ignore if stop word
-        if (type(word) == UnidicNode and word.surface in STOP_WORDS) or \
-           (type(word) == str and word in STOP_WORDS):
+        target_word = word.surface if type(word) == UnidicNode else word
+        if redis is not None:
+            if await is_stop_word(target_word, redis):
+                return None
+        elif target_word in STOP_WORDS:
             return None
 
         # Ignore number, symbols and lookup jamdict entries[0]
@@ -301,13 +306,19 @@ class ProcessData():
         row.senses = row_senses[:-2] if row_senses else ""
 
         # Get word tier, can be None, use 'N0' instead
-        row.jlpt_level = JLPT_DICT.get(row.word, "N0")
+        if redis is not None:
+            row.jlpt_level = await get_jlpt_level(row.word, redis, "N0")
+        else:
+            row.jlpt_level = JLPT_DICT.get(row.word, "N0")
 
         # Search db and attach the IDs
-        row.audio_mapping = self._sep_mora_get_audio_mapping(row.spelling)
+        if redis is not None:
+            row.audio_mapping = await self._sep_mora_get_audio_mapping(row.spelling, redis)
+        else:
+            row.audio_mapping = self._sep_mora_get_audio_mapping(row.spelling)
         return row
     
-    def _sep_mora_get_audio_mapping(self, spelling: str) -> list:
+    async def _sep_mora_get_audio_mapping(self, spelling: str, redis) -> list:
         """
         Separate the spelling of a word (can be Higarana or Katakana)
         into a list of letters. Return a list of romaji mapping for the letters.
@@ -342,9 +353,14 @@ class ProcessData():
             elif i > 0 and kana in ["っ", "ッ"]:
                 # Use the word after small tsu to determine what kind it is, among k, s, t, p
                 if i < len(kana_list)-1:
-                    new_romaji = ROMAJI_MAP.get(kana + kana_list[i+1][0])
+                    lookup_key = kana + kana_list[i+1][0]
                 else:
-                    new_romaji = ROMAJI_MAP.get(kana + "た")    # if ends with sokuon, stitch any silent with it
+                    lookup_key = kana + "た"    # if ends with sokuon, stitch any silent with it
+
+                if redis:
+                    new_romaji = await get_romaji_for_kana(lookup_key, redis)
+                else: 
+                    new_romaji = ROMAJI_MAP.get(kana + kana_list[i+1][0])
 
                 # Approach #2: for more natural, requires more audio files
                 # i.e.: word = "学校" -> "ガ" "っ" "こ" -> "ga" "っ"... -> "ga" "k"... -> "gak" ...
@@ -355,7 +371,7 @@ class ProcessData():
                 #     prev_romaji = audio_romaji_list.pop() 
                 #     new_romaji = prev_romaji + temp_mapping
             else:
-                new_romaji = ROMAJI_MAP.get(kana)
+                new_romaji = await get_romaji_for_kana(kana, redis) if redis else ROMAJI_MAP.get(kana)
 
             if new_romaji:
                 audio_romaji_list.append(new_romaji)
