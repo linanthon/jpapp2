@@ -18,7 +18,21 @@ if TYPE_CHECKING:
 log = get_logger(__file__)
 
 JLPT_REDIS_KEY = "cache:jlpt:map"
-STOPWORDS_REDIS_KEY = "cache:stopwords:set"
+
+STOP_WORDS = ["あそこ","あちら","あっ","あの","あのかた","あの人","あり","あります","ある","あれ",
+              "い","いう","いない","います","いる","いわば","いわゆる","う","うち","え","ええ","お",
+              "および","おり","おります","か","かつて","から","が","き","ください","けれど","ここ",
+              "こちら","こと","この","これ","これら","さ","さらに","し","しかし","じゃ","じゃあ",
+              "する","ず","せ","せる","そこ","そして","そちら","その","その他","その後","それ",
+              "それぞれ","それで","た","ただし","たち","ため","たり","だ","だから","だっ","だった",
+              "だれ","つ","つまり","つまりは","つもり","て","で","である","でき","できる","でした",
+              "です","では","でも","と","という","といった","とき","ところ","として","とともに","とも",
+              "と共に","どう","どうして","どこ","どちら","どの","どれ","な","ない","なお","なかっ",
+              "ながら","なく","なさい","なぜ","なっ","など","なに","なら","なり","なる","なん","に",
+              "において","における","について","にて","によって","により","による","に対して","に対する",
+              "に関する","ね","ねえ","の","ので","のに","のみ","は","ば","へ","ほか","ほとんど","ほど",
+              "ます","また","または","まで","も","もの","ものの","や","よ","よう","より","ら","られ",
+              "られる","れ","れる","を","ん","何","及び","彼","彼女","我々","特に","私","私達","貴方","貴方方"]
 
 ROMAJI_MAP = {
     # Hiragana – Basic
@@ -241,44 +255,19 @@ async def get_jlpt_level(word: str, redis=None, default: str = "N0") -> str:
 
 
 async def is_stop_word(word: str, redis=None) -> bool:
-    """Check if word is a stopword from Redis shared set."""
+    """Check if word is a stopword from local in-memory set."""
     if not word:
         return False
-
-    if redis is None:
-        log.error("is_stop_word requires redis for Redis-backed stopword cache")
-        return False
-
-    try:
-        return bool(await redis.sismember(STOPWORDS_REDIS_KEY, word))
-    except Exception as e:
-        log.error(f"Failed to query stopword from Redis for '{word}': {e}")
-        return False
-
-async def bootstrap_stopwords_from_redis(redis, filename: str = STOPWORD_FILE) -> None:
-    """Ensure stopwords exist in Redis."""
-    if redis is None:
-        log.error("bootstrap_stopwords_from_redis requires redis")
-        return
-
-    try:
-        exists = await redis.exists(STOPWORDS_REDIS_KEY)
-        if not exists:
-            with open(filename, encoding="utf-8") as f:
-                values = [line.strip() for line in f if line.strip()]
-            if values:
-                await redis.sadd(STOPWORDS_REDIS_KEY, *values)
-    except Exception as e:
-        log.error(f"Failed to bootstrap stopwords from Redis: {e}")
+    return word in STOP_WORDS
 
 
 async def bootstrap_shared_dicts(redis, db: "DBHandling") -> None:
     """Initialize shared dictionaries with Redis as source of truth.
 
-    - STOP_WORDS and JLPT are Redis-backed.
+    - JLPT is Redis-backed.
+    - STOP_WORDS and ROMAJI map are local in-process constants.
     - ROMAJI map remains static in-process constant.
     """
-    await bootstrap_stopwords_from_redis(redis)
     await read_jlpt_from_db(db, redis)
 
 """Unavailable because failed to install miniaudio on Windows env"""

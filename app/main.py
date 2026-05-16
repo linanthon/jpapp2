@@ -9,7 +9,7 @@ import uuid
 
 from utils.db import DBHandling
 from utils.process_data import ProcessData
-from utils.data import read_jlpt_from_db, bootstrap_stopwords_from_redis
+from utils.data import read_jlpt_from_db
 from app.config import (DB_USER, DB_PASS, REDIS_URL, bpv1_url_prefix, JLPT_CACHE_RELOAD_STREAM,
                         JLPT_CACHE_RELOAD_GROUP, JLPT_CACHE_RELOAD_BLOCK_MS)
 from app.routes import router
@@ -76,9 +76,6 @@ async def lifespan(app: FastAPI):
 
     # Shoule be very light overhead but note that all API nodes will connect to Redis to consume the read jlpt task
     app.state.jlpt_listener_task = asyncio.create_task(_jlpt_cache_reload_listener(app))
-
-    # Shared dictionaries: stopwords use Redis as source of truth.
-    await bootstrap_stopwords_from_redis(app.state.redis)
 
     # Bootstrap JLPT mapping only when DB table is empty.
     # Startup only enqueues the scrape job and continues serving.
