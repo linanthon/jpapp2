@@ -15,8 +15,8 @@ from typing import List, TYPE_CHECKING
 if TYPE_CHECKING:
     from fastapi import UploadFile
     from utils.db import DBHandling
-from utils.data import (JLPT_DICT, STOP_WORDS, ROMAJI_MAP, is_japanese_word,
-                        get_jlpt_level, is_stop_word, get_romaji_for_kana)
+from utils.data import (ROMAJI_MAP, is_japanese_word,
+                        get_jlpt_level, is_stop_word)
 from utils.logger import get_logger
 from utils.text_extractor import TxtExtractor, DocxExtractor, PdfExtractor
 from schemas.constants import DEFAULT_DISTRACTOR_COUNT
@@ -264,10 +264,7 @@ class ProcessData():
         """
         # Ignore if stop word
         target_word = word.surface if type(word) == UnidicNode else word
-        if redis is not None:
-            if await is_stop_word(target_word, redis):
-                return None
-        elif target_word in STOP_WORDS:
+        if await is_stop_word(target_word, redis):
             return None
 
         # Ignore number, symbols and lookup jamdict entries[0]
@@ -305,17 +302,11 @@ class ProcessData():
             row_senses += f"{','.join(meaning)}, ({ele['pos']}); "
         row.senses = row_senses[:-2] if row_senses else ""
 
-        # Get word tier, can be None, use 'N0' instead
-        if redis is not None:
-            row.jlpt_level = await get_jlpt_level(row.word, redis, "N0")
-        else:
-            row.jlpt_level = JLPT_DICT.get(row.word, "N0")
+        # Get word tier from Redis cache, use 'N0' when missing.
+        row.jlpt_level = await get_jlpt_level(row.word, redis, "N0")
 
         # Search db and attach the IDs
-        if redis is not None:
-            row.audio_mapping = await self._sep_mora_get_audio_mapping(row.spelling, redis)
-        else:
-            row.audio_mapping = self._sep_mora_get_audio_mapping(row.spelling)
+        row.audio_mapping = await self._sep_mora_get_audio_mapping(row.spelling, redis)
         return row
     
     async def _sep_mora_get_audio_mapping(self, spelling: str, redis) -> list:
@@ -356,11 +347,7 @@ class ProcessData():
                     lookup_key = kana + kana_list[i+1][0]
                 else:
                     lookup_key = kana + "た"    # if ends with sokuon, stitch any silent with it
-
-                if redis:
-                    new_romaji = await get_romaji_for_kana(lookup_key, redis)
-                else: 
-                    new_romaji = ROMAJI_MAP.get(kana + kana_list[i+1][0])
+                new_romaji = ROMAJI_MAP.get(lookup_key)
 
                 # Approach #2: for more natural, requires more audio files
                 # i.e.: word = "学校" -> "ガ" "っ" "こ" -> "ga" "っ"... -> "ga" "k"... -> "gak" ...
@@ -371,7 +358,7 @@ class ProcessData():
                 #     prev_romaji = audio_romaji_list.pop() 
                 #     new_romaji = prev_romaji + temp_mapping
             else:
-                new_romaji = await get_romaji_for_kana(kana, redis) if redis else ROMAJI_MAP.get(kana)
+                new_romaji = ROMAJI_MAP.get(kana)
 
             if new_romaji:
                 audio_romaji_list.append(new_romaji)

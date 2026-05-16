@@ -24,7 +24,7 @@ FAILED_LOGIN_BLOCK_MINUTES = int(os.getenv("FAILED_LOGIN_BLOCK_MINUTES", 5))
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0") # 'localhost' is for dev at local only
 JLPT_CACHE_RELOAD_STREAM = os.getenv("JLPT_CACHE_RELOAD_STREAM", "jlpt_cache_reload_stream")
 JLPT_CACHE_RELOAD_GROUP = os.getenv("JLPT_CACHE_RELOAD_GROUP", "jlpt_cache_reload_group")
-JLPT_CACHE_RELOAD_BLOCK_MS = int(os.getenv("JLPT_CACHE_RELOAD_BLOCK_MS", 2000))
+JLPT_CACHE_RELOAD_BLOCK_MS = int(os.getenv("JLPT_CACHE_RELOAD_BLOCK_MS", 5000))
 JLPT_CACHE_RELOAD_STREAM_MAXLEN = int(os.getenv("JLPT_CACHE_RELOAD_STREAM_MAXLEN", 1000))
 
 # Taskiq

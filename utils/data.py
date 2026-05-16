@@ -17,12 +17,8 @@ if TYPE_CHECKING:
 
 log = get_logger(__file__)
 
-JLPT_DICT = {}
-STOP_WORDS = []
-
 JLPT_REDIS_KEY = "cache:jlpt:map"
 STOPWORDS_REDIS_KEY = "cache:stopwords:set"
-ROMAJI_REDIS_KEY = "cache:romaji:map"
 
 ROMAJI_MAP = {
     # Hiragana – Basic
@@ -174,9 +170,6 @@ ROMAJI_MAP = {
     "リャン": "ryan", "リュン": "ryun", "リョン": "ryon",
 }
 
-ROMAJI_MAP_DEFAULT = dict(ROMAJI_MAP)
-
-
 def is_japanese_word(word: str) -> bool:
     return bool(JP_WORD_PATTERN.fullmatch(word))
 
@@ -187,27 +180,8 @@ def is_word_or_number(input_str: str) -> bool:
     """Check if a string only contains letters, digits and underscore"""
     return bool(re.fullmatch(r"\w+", input_str))
 
-def read_stop_words(filename: str = STOPWORD_FILE) -> None:
-    """Read stop words from file"""
-    with open(filename, encoding="utf-8") as f:
-        STOP_WORDS.extend([line.strip() for line in f if line.strip()])
-
-def read_jlpt(dirname: str = JLPT_DIR) -> None:
-    """Read word JLPT from files"""
-    tier_list = ["N5", "N4", "N3", "N2", "N1"]
-    for tier in tier_list:
-        filename = f"{dirname}/{tier}.txt"
-        if os.path.exists(filename):
-            try:
-                with open(filename, "r", encoding="utf-8") as f:
-                    for word in f.readlines():
-                        JLPT_DICT[word.strip("\n")] = tier
-            except Exception as e:
-                log.error(f"Failed to read JLPT file {filename}: {e}")
-
-
 async def read_jlpt_from_db(db: "DBHandling", redis=None) -> None:
-    """Read word JLPT mapping from database and refresh in-memory JLPT_DICT.
+    """Read word JLPT mapping from database and refresh Redis JLPT cache.
 
     If a Redis client is provided, this function uses a distributed lock to avoid
     duplicated concurrent reloads across API workers/endpoints.
@@ -216,31 +190,31 @@ async def read_jlpt_from_db(db: "DBHandling", redis=None) -> None:
         log.error("read_jlpt_from_db requires a db instance")
         return
 
+    if redis is None:
+        log.error("read_jlpt_from_db requires redis for Redis-backed JLPT cache")
+        return
+
     lock = None
+    lock_acquired = False
     try:
-        if redis is not None:
-            lock = redis.lock("lock:jlpt_cache_reload", timeout=30, blocking_timeout=1)
-            acquired = await lock.acquire()
-            if not acquired:
-                log.info("Skip JLPT cache reload because another reload is in progress")
-                return
+        lock = redis.lock("lock:jlpt_cache_reload", timeout=30, blocking_timeout=1)
+        lock_acquired = await lock.acquire()
+        if not lock_acquired:
+            log.info("Skip JLPT cache reload because another reload is in progress")
+            return
 
         mapping = await db.list_jlpt_levels()
 
-        if redis is not None:
-            pipeline = redis.pipeline()
-            pipeline.delete(JLPT_REDIS_KEY)
-            if mapping:
-                pipeline.hset(JLPT_REDIS_KEY, mapping=mapping)
-            await pipeline.execute()
-
-        JLPT_DICT.clear()
-        JLPT_DICT.update(mapping)
+        pipeline = redis.pipeline()
+        pipeline.delete(JLPT_REDIS_KEY)
+        if mapping:
+            pipeline.hset(JLPT_REDIS_KEY, mapping=mapping)
+        await pipeline.execute()
     except Exception as e:
         log.error(f"Failed to load JLPT from DB: {e}")
         return
     finally:
-        if lock is not None:
+        if lock is not None and lock_acquired:
             try:
                 await lock.release()
             except Exception:
@@ -248,55 +222,43 @@ async def read_jlpt_from_db(db: "DBHandling", redis=None) -> None:
 
 
 async def get_jlpt_level(word: str, redis=None, default: str = "N0") -> str:
-    """Get JLPT level from Redis shared cache when available, fallback to in-memory dict."""
+    """Get JLPT level from Redis shared cache."""
     if not word:
         return default
 
-    if redis is not None:
-        try:
-            val = await redis.hget(JLPT_REDIS_KEY, word)
-            if val:
-                return val
-        except Exception as e:
-            log.error(f"Failed to query JLPT from Redis for '{word}': {e}")
+    if redis is None:
+        log.error("get_jlpt_level requires redis for Redis-backed JLPT cache")
+        return default
 
-    return JLPT_DICT.get(word, default)
+    try:
+        val = await redis.hget(JLPT_REDIS_KEY, word)
+        if val:
+            return val
+    except Exception as e:
+        log.error(f"Failed to query JLPT from Redis for '{word}': {e}")
+
+    return default
 
 
 async def is_stop_word(word: str, redis=None) -> bool:
-    """Check if word is a stopword from Redis shared set when available."""
+    """Check if word is a stopword from Redis shared set."""
     if not word:
         return False
 
-    if redis is not None:
-        try:
-            return bool(await redis.sismember(STOPWORDS_REDIS_KEY, word))
-        except Exception as e:
-            log.error(f"Failed to query stopword from Redis for '{word}': {e}")
+    if redis is None:
+        log.error("is_stop_word requires redis for Redis-backed stopword cache")
+        return False
 
-    return word in STOP_WORDS
-
-
-async def get_romaji_for_kana(kana: str, redis=None, default=None):
-    """Get romaji mapping for kana from Redis shared hash when available."""
-    if not kana:
-        return default
-
-    if redis is not None:
-        try:
-            val = await redis.hget(ROMAJI_REDIS_KEY, kana)
-            if val:
-                return val
-        except Exception as e:
-            log.error(f"Failed to query romaji map from Redis for '{kana}': {e}")
-
-    return ROMAJI_MAP.get(kana, default)
-
+    try:
+        return bool(await redis.sismember(STOPWORDS_REDIS_KEY, word))
+    except Exception as e:
+        log.error(f"Failed to query stopword from Redis for '{word}': {e}")
+        return False
 
 async def bootstrap_stopwords_from_redis(redis, filename: str = STOPWORD_FILE) -> None:
-    """Ensure stopwords exist in Redis, then refresh in-memory STOP_WORDS from Redis."""
+    """Ensure stopwords exist in Redis."""
     if redis is None:
-        read_stop_words(filename)
+        log.error("bootstrap_stopwords_from_redis requires redis")
         return
 
     try:
@@ -306,42 +268,17 @@ async def bootstrap_stopwords_from_redis(redis, filename: str = STOPWORD_FILE) -
                 values = [line.strip() for line in f if line.strip()]
             if values:
                 await redis.sadd(STOPWORDS_REDIS_KEY, *values)
-
-        members = await redis.smembers(STOPWORDS_REDIS_KEY)
-        STOP_WORDS.clear()
-        STOP_WORDS.extend(sorted(list(members)) if members else [])
     except Exception as e:
         log.error(f"Failed to bootstrap stopwords from Redis: {e}")
 
 
-async def bootstrap_romaji_map_from_redis(redis) -> None:
-    """Ensure ROMAJI map exists in Redis, then refresh in-memory ROMAJI_MAP from Redis."""
-    if redis is None:
-        ROMAJI_MAP.clear()
-        ROMAJI_MAP.update(ROMAJI_MAP_DEFAULT)
-        return
-
-    try:
-        exists = await redis.exists(ROMAJI_REDIS_KEY)
-        if not exists:
-            await redis.hset(ROMAJI_REDIS_KEY, mapping=ROMAJI_MAP_DEFAULT)
-
-        mapping = await redis.hgetall(ROMAJI_REDIS_KEY)
-        if mapping:
-            ROMAJI_MAP.clear()
-            ROMAJI_MAP.update(mapping)
-    except Exception as e:
-        log.error(f"Failed to bootstrap romaji map from Redis: {e}")
-
-
 async def bootstrap_shared_dicts(redis, db: "DBHandling") -> None:
-    """Initialize shared dictionaries with Redis as source of truth for multi-node API.
+    """Initialize shared dictionaries with Redis as source of truth.
 
-    - STOP_WORDS and ROMAJI_MAP are seeded once then loaded from Redis.
-    - JLPT mapping is synced from DB to Redis then loaded in-memory.
+    - STOP_WORDS and JLPT are Redis-backed.
+    - ROMAJI map remains static in-process constant.
     """
     await bootstrap_stopwords_from_redis(redis)
-    await bootstrap_romaji_map_from_redis(redis)
     await read_jlpt_from_db(db, redis)
 
 """Unavailable because failed to install miniaudio on Windows env"""

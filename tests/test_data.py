@@ -6,8 +6,6 @@ from utils.data import (
     is_english_word,
     is_word_or_number,
     str_2_int,
-    read_stop_words,
-    read_jlpt,
     get_quiz_distractors,
     scrape_all_jlpt,
     JLPT_DICT,
@@ -56,53 +54,6 @@ class TestStr2Int:
     def test_empty(self):
         from schemas.constants import DEFAULT_LIMIT
         assert str_2_int("") == DEFAULT_LIMIT
-
-
-# ── read_stop_words ───────────────────────────────────────────────────────────
-class TestReadStopWords:
-    @pytest.fixture(autouse=True)
-    def clear_stop_words(self):
-        STOP_WORDS.clear()
-        yield
-        STOP_WORDS.clear()
-
-    def test_reads_file(self, tmp_path):
-        assert len(STOP_WORDS) == 0
-        f = tmp_path / "stops.txt"
-        f.write_text("の\nは\nが\n", encoding="utf-8")
-        read_stop_words(str(f))
-        assert "の" in STOP_WORDS
-        assert "は" in STOP_WORDS
-        assert "が" in STOP_WORDS
-
-    def test_skips_empty_lines(self, tmp_path):
-        assert len(STOP_WORDS) == 0
-        f = tmp_path / "stops.txt"
-        f.write_text("の\n\nは\n\n", encoding="utf-8")
-        read_stop_words(str(f))
-        assert len(STOP_WORDS) == 2
-
-
-# ── read_jlpt ────────────────────────────────────────────────────────────────
-class TestReadJlpt:
-    @pytest.fixture(autouse=True)
-    def clear_jlpt_dict(self):
-        JLPT_DICT.clear()
-        yield
-        JLPT_DICT.clear()
-
-    def test_reads_jlpt_files(self, tmp_path):
-        for level in ["N5", "N4", "N3", "N2", "N1"]:
-            f = tmp_path / f"{level}.txt"
-            f.write_text(f"word_{level}\n", encoding="utf-8")
-        read_jlpt(str(tmp_path))
-        assert JLPT_DICT["word_N5"] == "N5"
-        assert JLPT_DICT["word_N1"] == "N1"
-
-    def test_missing_files_skipped(self, tmp_path):
-        # No files in tmp_path — should not crash
-        read_jlpt(str(tmp_path))
-        assert len(JLPT_DICT) == 0
 
 
 # ── get_quiz_distractors ─────────────────────────────────────────────────────

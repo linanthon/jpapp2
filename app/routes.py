@@ -31,7 +31,7 @@ from app.tasks.job_scrape import (
 from schemas.constants import DEFAULT_LIMIT, DEFAULT_SENTENCE_EXAMPLE_LIMIT, AUDIO_DIR
 from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, UserResponse
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
-from utils.data import read_jlpt_from_db, JLPT_DICT
+from utils.data import read_jlpt_from_db, JLPT_REDIS_KEY
 from utils.db import DBHandling
 from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
                            parse_bool_param, validate_star)
@@ -1226,7 +1226,7 @@ async def reload_jlpt_cache(
         status_code=HTTPStatus.OK,
         content={
             "message": "JLPT cache reloaded",
-            "count": len(JLPT_DICT),
+            "count": await redis.hlen(JLPT_REDIS_KEY),
         },
     )
 
