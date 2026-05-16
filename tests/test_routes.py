@@ -143,8 +143,9 @@ class TestInsertFileRoute:
         mock_redis.get.return_value = None
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.insert_book_init.return_value = (book_id, True)
-        mock_db.insert_book_uploaded.return_value = True
-        mock_db.create_job_book = AsyncMock(return_value="11111111-1111-1111-1111-111111111111")
+        mock_db.update_insert_book_status_uploaded.return_value = True
+        mock_db.create_job_book_batch.return_value = ("batch-sf-1", True)
+        mock_db.create_job_book_batch_item = AsyncMock(return_value="item-sf-1")
         with patch("app.routes.upload_file_to_minio", return_value="obj_abc") as upload_mock, \
             patch("app.routes.process_insert_file_job.kiq", new=AsyncMock()) as kiq_mock:
             resp = await client.post(
@@ -159,7 +160,9 @@ class TestInsertFileRoute:
         assert resp.status_code == 202
         upload_mock.assert_called_once()
         kiq_mock.assert_awaited_once()
-        mock_db.insert_book_uploaded.assert_awaited_once_with(book_id, "obj_abc")
+        mock_db.update_insert_book_status_uploaded.assert_awaited_once_with(book_id, "obj_abc")
+        assert resp.json()["job_id"] == "item-sf-1"
+        assert resp.json()["batch_id"] == "batch-sf-1"
 
     @pytest.mark.asyncio
     async def test_insert_file_duplicate_idempotency(self, client, mock_db, mock_redis, admin_token):
@@ -233,8 +236,9 @@ class TestInsertFileRoute:
         mock_redis.get.return_value = None
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.insert_book_init.return_value = (102, True)
-        mock_db.insert_book_uploaded.return_value = True
-        mock_db.create_job_book.return_value = "job-fail-enqueue"
+        mock_db.update_insert_book_status_uploaded.return_value = True
+        mock_db.create_job_book_batch.return_value = ("batch-sf-fail", True)
+        mock_db.create_job_book_batch_item = AsyncMock(return_value="item-sf-fail")
 
         with patch("app.routes.upload_file_to_minio", return_value="obj_abc"), \
              patch("app.routes.process_insert_file_job.kiq", new=AsyncMock(side_effect=RuntimeError("q down"))), \
@@ -252,14 +256,108 @@ class TestInsertFileRoute:
         compensate_mock.assert_awaited_once_with(mock_db, 102, "obj_abc")
 
 
+class TestInsertFilesRoute:
+    @pytest.mark.asyncio
+    async def test_insert_files_success(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.create_job_book_batch.return_value = ("batch-1", True)
+        mock_db.create_job_book_batch_item = AsyncMock(side_effect=["item-1", "item-2"])
+
+        with patch("app.routes.generate_presigned_upload_url", side_effect=["https://u1", "https://u2"]):
+            resp = await client.post(
+                "/v1/insert/files/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-batch-1",
+                },
+                json={
+                    "files": [
+                        {"filename": "book1.txt", "size": 1, "content_type": "text/plain"},
+                        {"filename": "book2.txt", "size": 2, "content_type": "text/plain"},
+                    ]
+                },
+            )
+
+        assert resp.status_code == HTTPStatus.ACCEPTED
+        data = resp.json()
+        assert data["batch_id"] == "batch-1"
+        assert data["item_count"] == 2
+        assert len(data["items"]) == 2
+        assert data["status"] == "UPLOADING"
+
+    @pytest.mark.asyncio
+    async def test_insert_files_duplicate_idempotency(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.create_job_book_batch.return_value = ("batch-2", False)
+        mock_db.get_job_book_batch_items.return_value = [{"id": "item-1", "status": "UPLOADING"}]
+
+        resp = await client.post(
+            "/v1/insert/files/bg",
+            headers={
+                **_auth_header(admin_token),
+                "Idempotency-Key": "idem-batch-dup",
+            },
+            json={"files": [{"filename": "book1.txt", "size": 1, "content_type": "text/plain"}]},
+        )
+
+        assert resp.status_code == HTTPStatus.OK
+        data = resp.json()
+        assert data["batch_id"] == "batch-2"
+        assert data["status"] == "DUPLICATE_REQUEST"
+
+    @pytest.mark.asyncio
+    async def test_insert_files_missing_idempotency_key(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+
+        resp = await client.post(
+            "/v1/insert/files/bg",
+            headers=_auth_header(admin_token),
+            json={"files": [{"filename": "book1.txt", "size": 1, "content_type": "text/plain"}]},
+        )
+
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+        assert "Missing Idempotency-Key" in resp.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_finalize_insert_files_success(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.get_job_book_batch.return_value = {"id": "batch-3", "user_id": ADMIN_USER["id"]}
+        mock_db.get_job_book_batch_item.return_value = {
+            "id": "item-1",
+            "batch_id": "batch-3",
+            "file_name": "book1.txt",
+            "file_size": 3,
+            "object_name": "uploads/1/batch-3/a_book1.txt",
+        }
+        mock_db.insert_book_init_uploaded = AsyncMock(return_value=333)
+        mock_db.update_job_book_batch_item_queued_process.return_value = True
+
+        with patch("app.routes.storage_object_exists", return_value=True), \
+             patch("app.routes.process_insert_file_job.kiq", new=AsyncMock()) as kiq_mock:
+            resp = await client.post(
+                "/v1/insert/files/bg/finalize",
+                headers=_auth_header(admin_token),
+                json={"batch_id": "batch-3", "item_ids": ["item-1"]},
+            )
+
+        assert resp.status_code == HTTPStatus.ACCEPTED
+        assert resp.json()["status"] == "QUEUED_PROCESS"
+        kiq_mock.assert_awaited_once()
+
+
 class TestInsertStringRoute:
     @pytest.mark.asyncio
     async def test_insert_str_success(self, client, mock_db, mock_redis, admin_token):
         mock_redis.get.return_value = None
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.insert_book_init.return_value = (201, True)
-        mock_db.insert_book_uploaded.return_value = True
-        mock_db.create_job_book.return_value = "22222222-2222-2222-2222-222222222222"
+        mock_db.update_insert_book_status_uploaded.return_value = True
+        mock_db.create_job_book_batch.return_value = ("batch-ss-1", True)
+        mock_db.create_job_book_batch_item = AsyncMock(return_value="item-ss-1")
 
         with patch("app.routes.upload_string_to_minio", return_value="obj_str"), \
             patch("app.routes.process_insert_str_job.kiq", new=AsyncMock()) as kiq_mock:
@@ -274,6 +372,8 @@ class TestInsertStringRoute:
 
         assert resp.status_code == 202
         kiq_mock.assert_awaited_once()
+        assert resp.json()["job_id"] == "item-ss-1"
+        assert resp.json()["batch_id"] == "batch-ss-1"
 
     @pytest.mark.asyncio
     async def test_insert_str_upload_failure_rolls_back_init(self, client, mock_db, mock_redis, admin_token):
@@ -294,6 +394,51 @@ class TestInsertStringRoute:
 
         assert resp.status_code == 500
         mock_db.rollback_insert_book.assert_awaited_once_with(202)
+
+    @pytest.mark.asyncio
+    async def test_insert_str_rejects_over_byte_limit(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+
+        # 4 Japanese chars => 12 UTF-8 bytes, greater than patched limit=10
+        with patch("app.routes.MAX_INSERT_STRING_BYTES", 10):
+            resp = await client.post(
+                "/v1/insert/str/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-str-too-large",
+                },
+                data={"stringName": "my-book", "stringBody": "あいうえあいうえ"},
+            )
+
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+        assert "max 10 bytes" in resp.json()["detail"]
+        mock_db.insert_book_init.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_insert_str_accepts_within_byte_limit(self, client, mock_db, mock_redis, admin_token):
+        mock_redis.get.return_value = None
+        mock_db.get_user_by_id.return_value = ADMIN_USER
+        mock_db.insert_book_init.return_value = (203, True)
+        mock_db.update_insert_book_status_uploaded.return_value = True
+        mock_db.create_job_book_batch.return_value = ("batch-ss-2", True)
+        mock_db.create_job_book_batch_item = AsyncMock(return_value="item-ss-2")
+
+        # 3 Japanese chars => 9 UTF-8 bytes, within patched limit=10
+        with patch("app.routes.MAX_INSERT_STRING_BYTES", 10), \
+             patch("app.routes.upload_string_to_minio", return_value="obj_str"), \
+             patch("app.routes.process_insert_str_job.kiq", new=AsyncMock()) as kiq_mock:
+            resp = await client.post(
+                "/v1/insert/str/bg",
+                headers={
+                    **_auth_header(admin_token),
+                    "Idempotency-Key": "idem-str-small",
+                },
+                data={"stringName": "my-book", "stringBody": "あいう"},
+            )
+
+        assert resp.status_code == HTTPStatus.ACCEPTED
+        kiq_mock.assert_awaited_once()
 
 
 # ── Search Word ───────────────────────────────────────────────────────────────
@@ -443,8 +588,7 @@ class TestDeleteBook:
         mock_redis.get.return_value = None
         mock_db.get_user_by_id.return_value = NORMAL_USER
         resp = await client.post(
-            "/v1/del/book",
-            json={"id": 1},
+            "/v1/del/book/bg/1",
             headers=_auth_header(user_token),
         )
         assert resp.status_code == 403
@@ -455,14 +599,16 @@ class TestDeleteBook:
         mock_redis.get.return_value = None
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.get_exact_book.return_value = {"book_id": 1, "object_name": "obj.pdf"}
+        mock_db.create_job_book_batch.return_value = ("batch-del-1", True)
+        mock_db.create_job_book_batch_item = AsyncMock(return_value="item-del-1")
         mock_db.delete_book.return_value = True
-        with patch("app.handlers.view.delete_storage_file", return_value=True):
+        with patch("app.routes.process_delete_job_book.kiq", new_callable=AsyncMock), \
+             patch("app.handlers.view.delete_storage_file", return_value=True):
             resp = await client.post(
-                "/v1/del/book",
-                json={"id": 1},
+                "/v1/del/book/bg/1",
                 headers=_auth_header(admin_token),
             )
-        assert resp.status_code == 204
+        assert resp.status_code == 202
 
     @pytest.mark.asyncio
     async def test_delete_not_found(self, client, mock_db, mock_redis, admin_token):
@@ -470,15 +616,14 @@ class TestDeleteBook:
         mock_db.get_user_by_id.return_value = ADMIN_USER
         mock_db.get_exact_book.return_value = None
         resp = await client.post(
-            "/v1/del/book",
-            json={"id": 999},
+            "/v1/del/book/bg/999",
             headers=_auth_header(admin_token),
         )
         assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_delete_no_auth(self, client):
-        resp = await client.post("/v1/del/book", json={"id": 1})
+        resp = await client.post("/v1/del/book/bg/1")
         assert resp.status_code == 401
 
 

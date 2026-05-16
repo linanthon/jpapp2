@@ -262,40 +262,45 @@ class TestSepMoraGetAudioMapping:
     def setup_method(self):
         self.pdata = ProcessData.__new__(ProcessData)
 
+    @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
-    def test_basic_mapping(self, mock_jamorasep):
+    async def test_basic_mapping(self, mock_jamorasep):
         mock_jamorasep.parse.return_value = ["た", "べ", "る"]
-        result = self.pdata._sep_mora_get_audio_mapping("たべる")
+        result = await self.pdata._sep_mora_get_audio_mapping("たべる", None)
         assert result == ["ta", "be", "ru"]
 
+    @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
-    def test_n_ending(self, mock_jamorasep):
+    async def test_n_ending(self, mock_jamorasep):
         """はん should map to 'han' not 'ha' + 'n'."""
         mock_jamorasep.parse.return_value = ["は", "ん"]
-        result = self.pdata._sep_mora_get_audio_mapping("はん")
+        result = await self.pdata._sep_mora_get_audio_mapping("はん", None)
         assert result == ["han"]
 
+    @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
-    def test_prolonged_sound(self, mock_jamorasep):
+    async def test_prolonged_sound(self, mock_jamorasep):
         mock_jamorasep.parse.return_value = ["ラ", "ー"]
-        result = self.pdata._sep_mora_get_audio_mapping("ラー")
+        result = await self.pdata._sep_mora_get_audio_mapping("ラー", None)
         assert result == ["ra", "a"]
 
+    @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
-    def test_sokuon(self, mock_jamorasep):
+    async def test_sokuon(self, mock_jamorasep):
         """Small tsu (っ) should combine with next kana's first char."""
         # jamorasep splits into individual mora; sokuon logic uses kana_list[i+1][0]
         mock_jamorasep.parse.return_value = ["が", "っ", "こ", "う"]
-        result = self.pdata._sep_mora_get_audio_mapping("がっこう")
+        result = await self.pdata._sep_mora_get_audio_mapping("がっこう", None)
         assert result[0] == "ga"
         assert result[1] == "k"  # sokuon maps っ+こ -> "k"
         assert result[2] == "ko"
 
+    @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
-    def test_unknown_kana_returns_empty(self, mock_jamorasep):
+    async def test_unknown_kana_returns_empty(self, mock_jamorasep):
         """If a kana has no ROMAJI_MAP entry, return empty list."""
         mock_jamorasep.parse.return_value = ["♪"]
-        result = self.pdata._sep_mora_get_audio_mapping("♪")
+        result = await self.pdata._sep_mora_get_audio_mapping("♪", None)
         assert result == []
 
 
@@ -374,12 +379,18 @@ class TestStreamThenProcess:
         self.mock_db = AsyncMock()
         # By default, word not yet in DB
         self.mock_db.update_word_occurrence = AsyncMock(return_value=False)
+        self.stop_word_patcher = patch("utils.process_data.is_stop_word", new_callable=AsyncMock, return_value=False)
+        self.jlpt_patcher = patch("utils.process_data.get_jlpt_level", new_callable=AsyncMock, return_value="N0")
+        self.mock_is_stop_word = self.stop_word_patcher.start()
+        self.mock_get_jlpt_level = self.jlpt_patcher.start()
+
+    def teardown_method(self):
+        self.stop_word_patcher.stop()
+        self.jlpt_patcher.stop()
 
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     @patch("utils.process_data.is_japanese_word", return_value=True)
-    @patch("utils.process_data.STOP_WORDS", [])
-    @patch("utils.process_data.JLPT_DICT", {"食べる": "N5"})
     async def test_single_sentence_yields_words(self, mock_is_jp, mock_jamorasep):
         """Stream a single sentence, process it, get Word objects back."""
         mock_jamorasep.parse.return_value = ["た", "べ", "る"]
@@ -392,6 +403,7 @@ class TestStreamThenProcess:
         sentences = list(self.pdata.stream_sentences_str("食べる。"))
         assert sentences == ["食べる。"]
 
+        self.mock_get_jlpt_level.return_value = "N5"
         words = await self.pdata.process_sentence(sentences[0], self.mock_db)
         assert len(words) == 1
         assert words[0].word == "食べる"
@@ -402,8 +414,6 @@ class TestStreamThenProcess:
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     @patch("utils.process_data.is_japanese_word", return_value=True)
-    @patch("utils.process_data.STOP_WORDS", [])
-    @patch("utils.process_data.JLPT_DICT", {"走る": "N4", "飲む": "N5"})
     async def test_multi_sentence_text(self, mock_is_jp, mock_jamorasep):
         """Stream multi-sentence text, process each, collect all words."""
         text = "走る。飲む。"
@@ -424,6 +434,7 @@ class TestStreamThenProcess:
         }
         mock_jamorasep.parse.side_effect = lambda s: list(s)  # char-by-char fallback
 
+        self.mock_get_jlpt_level.side_effect = lambda word, redis, default: "N4" if word == "走る" else "N5"
         all_words = []
         for sent in sentences:
             tagged = _make_tagged_word(sent.rstrip("。"), sent.rstrip("。"))
@@ -444,8 +455,6 @@ class TestStreamThenProcess:
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     @patch("utils.process_data.is_japanese_word", return_value=True)
-    @patch("utils.process_data.STOP_WORDS", [])
-    @patch("utils.process_data.JLPT_DICT", {"猫": "N4"})
     async def test_non_dictionary_words_filtered(self, mock_is_jp, mock_jamorasep):
         """Words with no Jamdict entry are filtered out of results."""
         mock_jamorasep.parse.return_value = ["ね", "こ"]
@@ -465,6 +474,7 @@ class TestStreamThenProcess:
         self.pdata._local.jam = MagicMock()
         self.pdata._local.jam.lookup.side_effect = lookup_side_effect
 
+        self.mock_get_jlpt_level.return_value = "N4"
         words = await self.pdata.process_sentence("猫の。", self.mock_db)
         assert len(words) == 1
         assert words[0].word == "猫"
@@ -472,8 +482,6 @@ class TestStreamThenProcess:
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     @patch("utils.process_data.is_japanese_word", return_value=True)
-    @patch("utils.process_data.STOP_WORDS", [])
-    @patch("utils.process_data.JLPT_DICT", {})
     async def test_existing_word_only_updates_occurrence(self, mock_is_jp, mock_jamorasep):
         """If word already exists in DB, update_word_occurrence returns True
         and _get_jamdict_info returns a Word with only `word` set."""
@@ -496,8 +504,6 @@ class TestStreamThenProcess:
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     @patch("utils.process_data.is_japanese_word", return_value=True)
-    @patch("utils.process_data.STOP_WORDS", [])
-    @patch("utils.process_data.JLPT_DICT", {})
     async def test_katakana_word_sets_eigo_flag(self, mock_is_jp, mock_jamorasep):
         """A katakana-only word (no kanji forms) should set eigo=True."""
         mock_jamorasep.parse.return_value = ["ビ", "ー", "ル"]
@@ -519,8 +525,6 @@ class TestStreamThenProcess:
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     @patch("utils.process_data.is_japanese_word", return_value=True)
-    @patch("utils.process_data.STOP_WORDS", [])
-    @patch("utils.process_data.JLPT_DICT", {})
     async def test_wasei_eigo_combination_processed(self, mock_is_jp, mock_jamorasep):
         """Two adjacent katakana words trigger wasei-eigo combination lookup."""
         mock_jamorasep.parse.side_effect = lambda s: list(s)
@@ -561,11 +565,10 @@ class TestStreamThenProcess:
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     @patch("utils.process_data.is_japanese_word", return_value=True)
-    @patch("utils.process_data.STOP_WORDS", [])
-    @patch("utils.process_data.JLPT_DICT", {"食べる": "N5"})
     async def test_file_stream_to_process(self, mock_is_jp, mock_jamorasep):
         """Full pipeline: read file → stream sentences → process each."""
         mock_jamorasep.parse.return_value = ["た", "べ", "る"]
+        self.mock_get_jlpt_level.return_value = "N5"
         upload = _make_mock_upload("input.txt", "食べる。飲む。".encode("utf-8"))
 
         entry_taberu = _make_jamdict_entry(kanji_text="食べる", kana_text="たべる")

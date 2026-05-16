@@ -4,7 +4,7 @@ import math
 from unittest.mock import AsyncMock
 from utils.db import DBHandling
 from schemas.constants import (DEFAULT_FORMULA_K, DEFAULT_MULTI_PENALTY, QUIZ_SOFT_CAP,
-                               DEFAULT_DISTRACTOR_COUNT, QUIZ_HARD_CAP)
+                               DEFAULT_DISTRACTOR_COUNT, QUIZ_HARD_CAP, DEFAULT_LIMIT)
 
 
 class TestPriorityFormulas:
@@ -449,13 +449,13 @@ class TestInsertBookUploaded:
     @pytest.mark.asyncio
     async def test_success(self):
         self.db._execute = AsyncMock(return_value="UPDATE 1")
-        result = await self.db.insert_book_uploaded(5, "minio/path/file.txt")
+        result = await self.db.update_insert_book_status_uploaded(5, "minio/path/file.txt")
         assert result is True
 
     @pytest.mark.asyncio
     async def test_failure(self):
         self.db._execute = AsyncMock(return_value=None)
-        result = await self.db.insert_book_uploaded(5, "minio/path/file.txt")
+        result = await self.db.update_insert_book_status_uploaded(5, "minio/path/file.txt")
         assert result is False
 
 
@@ -467,13 +467,13 @@ class TestInsertBookFinished:
     @pytest.mark.asyncio
     async def test_success(self):
         self.db._execute = AsyncMock(return_value="UPDATE 1")
-        result = await self.db.insert_book_finished(5)
+        result = await self.db.update_insert_book_status_finished(5)
         assert result is True
 
     @pytest.mark.asyncio
     async def test_failure(self):
         self.db._execute = AsyncMock(return_value=None)
-        result = await self.db.insert_book_finished(5)
+        result = await self.db.update_insert_book_status_finished(5)
         assert result is False
 
 
@@ -539,3 +539,55 @@ class TestQuerySearchWord:
         assert "word_similarity(" in sql
         # compact term is passed for similarity ranking.
         assert "学bi" in call_args
+
+
+# ── GetSentencesContainingWordById ───────────────────────────────────────────
+class TestGetSentencesContainingWordById:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+
+    @pytest.mark.asyncio
+    async def test_invalid_word_id_returns_empty(self):
+        self.db._fetch = AsyncMock()
+        result = await self.db.get_sentences_containing_word_by_id(word_id=None)
+        assert result == []
+        self.db._fetch.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_limit_falls_back_to_default_and_filters_empty_rows(self):
+        self.db._fetch = AsyncMock(return_value=[
+            {"sentence": "猫が好きです。"},
+            {"sentence": ""},
+            {"sentence": None},
+            {"sentence": "毎日日本語を勉強します。"},
+        ])
+
+        result = await self.db.get_sentences_containing_word_by_id(word_id=7, limit=0)
+
+        assert result == ["猫が好きです。", "毎日日本語を勉強します。"]
+        self.db._fetch.assert_awaited_once()
+        call_args = self.db._fetch.await_args.args
+        sql = call_args[0]
+        assert "WHERE ws.word_id = $1" in sql
+        assert "ORDER BY RANDOM() LIMIT $2" in sql
+        assert call_args[1] == 7
+        assert call_args[2] == DEFAULT_LIMIT
+
+    @pytest.mark.asyncio
+    async def test_with_word_adds_min_length_filter(self):
+        self.db._fetch = AsyncMock(return_value=[{"sentence": "文です。"}])
+
+        result = await self.db.get_sentences_containing_word_by_id(
+            word_id=3, limit=5, word="文",
+        )
+
+        assert result == ["文です。"]
+        self.db._fetch.assert_awaited_once()
+        call_args = self.db._fetch.await_args.args
+        sql = call_args[0]
+        assert "WHERE ws.word_id = $1" in sql
+        assert "CHAR_LENGTH(s.sentence) - CHAR_LENGTH($2) > 2" in sql
+        assert "ORDER BY RANDOM() LIMIT $3" in sql
+        assert call_args[1] == 3
+        assert call_args[2] == "文"
+        assert call_args[3] == 5

@@ -22,6 +22,10 @@ FAILED_LOGIN_BLOCK_MINUTES = int(os.getenv("FAILED_LOGIN_BLOCK_MINUTES", 5))
 
 # Redis
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0") # 'localhost' is for dev at local only
+JLPT_CACHE_RELOAD_STREAM = os.getenv("JLPT_CACHE_RELOAD_STREAM", "jlpt_cache_reload_stream")
+JLPT_CACHE_RELOAD_GROUP = os.getenv("JLPT_CACHE_RELOAD_GROUP", "jlpt_cache_reload_group")
+JLPT_CACHE_RELOAD_BLOCK_MS = int(os.getenv("JLPT_CACHE_RELOAD_BLOCK_MS", 5000))
+JLPT_CACHE_RELOAD_STREAM_MAXLEN = int(os.getenv("JLPT_CACHE_RELOAD_STREAM_MAXLEN", 1000))
 
 # Taskiq
 TASKIQ_BROKER_URL = os.getenv("TASKIQ_BROKER_URL", REDIS_URL)
@@ -39,6 +43,7 @@ MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "http://localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "miniouser")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "miniopass")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "jpapp-books")
+MAX_INSERT_STRING_BYTES = int(os.getenv("MAX_INSERT_STRING_BYTES", 15000))  # 15kb = 5k JP characters
 
 # Blueprint prefix
 bpv1_url_prefix = "/v1"

@@ -12,7 +12,8 @@ if TYPE_CHECKING:
 
 log = get_logger(__name__)
 
-async def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandling", sentence: str, book_id: int) -> None:
+async def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandling", sentence: str,
+                                            book_id: int, redis: "aioredis.Redis" = None) -> None:
     """
     Insert sentence, update occurrence if already in DB.
 
@@ -25,7 +26,7 @@ async def do_insert_word_sentence_book_2_db(pdata: "ProcessData", db: "DBHandlin
     sentence_id = await db.insert_update_sentence(sentence)
     
     # Insert words
-    words = await pdata.process_sentence(sentence, db)
+    words = await pdata.process_sentence(sentence, db, redis)
     for word in words:
         word_id = await db.insert_word(word)
 
@@ -42,7 +43,9 @@ async def _process_sentences(pdata: "ProcessData", db: "DBHandling", redis: "aio
     reset_view_word_count()
     progress = 0
     for sentence in sentences:
-        await do_insert_word_sentence_book_2_db(pdata, db, sentence.strip("\n").strip(), book_id)
+        await do_insert_word_sentence_book_2_db(
+            pdata, db, sentence.strip("\n").strip(), book_id, redis
+        )
         progress += len(sentence)
         await redis.set(f"book_progress:{book_id}", f"data: Processing... {((progress/content_len)*100):.2f}%\n\n")
 

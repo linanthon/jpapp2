@@ -116,19 +116,62 @@ def get_file_from_minio_as_stream(object_name: str) -> io.BytesIO:
     return file_stream
 
 @_retry()
-def get_file_download_link(object_name: str, expiry: int = PRESIGNED_URL_EXPIRY) -> str:
+def get_file_download_link(object_name: str, expiry: int = PRESIGNED_URL_EXPIRY,
+                           download_name: str = "", content_type: str = "") -> str:
     """Return a presigned download URL for the frontend.
     Backend won't have to store the file in memory."""
     try:
+        params = {"Bucket": MINIO_BUCKET, "Key": object_name}
+        if download_name:
+            # Force browser download dialog to use a clean user-facing filename.
+            params["ResponseContentDisposition"] = f'attachment; filename="{download_name}"'
+        if content_type:
+            params["ResponseContentType"] = content_type
+
         url = s3_client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": MINIO_BUCKET, "Key": object_name},
+            Params=params,
             ExpiresIn=expiry,
         )
         return url
     except ClientError as e:
         log.error(f"Failed to generate presigned URL: {e}")
         return ""
+
+
+@_retry()
+def generate_presigned_upload_url(object_name: str, expiry: int = PRESIGNED_URL_EXPIRY,
+                                  content_type: str = "application/octet-stream") -> str:
+    """Return a presigned PUT URL for files to be uploaded to MinIO/S3."""
+    try:
+        init_bucket()
+        params = {"Bucket": MINIO_BUCKET, "Key": object_name}
+        if content_type:
+            params["ContentType"] = content_type
+        return s3_client.generate_presigned_url(
+            "put_object",
+            Params=params,
+            ExpiresIn=expiry,
+        )
+    except ClientError as e:
+        log.error(f"Failed to generate presigned upload URL: {e}")
+        return ""
+
+
+@_retry()
+def storage_object_exists(object_name: str) -> bool:
+    """Check whether an object exists in MinIO/S3 bucket."""
+    if not object_name:
+        return False
+
+    try:
+        s3_client.head_object(Bucket=MINIO_BUCKET, Key=object_name)
+        return True
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code in {"404", "NoSuchKey", "NotFound"}:
+            return False
+        raise
 
 @_retry()
 def delete_storage_file(object_name) -> bool:

@@ -17,8 +17,22 @@ if TYPE_CHECKING:
 
 log = get_logger(__file__)
 
-JLPT_DICT = {}
-STOP_WORDS = []
+JLPT_REDIS_KEY = "cache:jlpt:map"
+
+STOP_WORDS = ["あそこ","あちら","あっ","あの","あのかた","あの人","あり","あります","ある","あれ",
+              "い","いう","いない","います","いる","いわば","いわゆる","う","うち","え","ええ","お",
+              "および","おり","おります","か","かつて","から","が","き","ください","けれど","ここ",
+              "こちら","こと","この","これ","これら","さ","さらに","し","しかし","じゃ","じゃあ",
+              "する","ず","せ","せる","そこ","そして","そちら","その","その他","その後","それ",
+              "それぞれ","それで","た","ただし","たち","ため","たり","だ","だから","だっ","だった",
+              "だれ","つ","つまり","つまりは","つもり","て","で","である","でき","できる","でした",
+              "です","では","でも","と","という","といった","とき","ところ","として","とともに","とも",
+              "と共に","どう","どうして","どこ","どちら","どの","どれ","な","ない","なお","なかっ",
+              "ながら","なく","なさい","なぜ","なっ","など","なに","なら","なり","なる","なん","に",
+              "において","における","について","にて","によって","により","による","に対して","に対する",
+              "に関する","ね","ねえ","の","ので","のに","のみ","は","ば","へ","ほか","ほとんど","ほど",
+              "ます","また","または","まで","も","もの","ものの","や","よ","よう","より","ら","られ",
+              "られる","れ","れる","を","ん","何","及び","彼","彼女","我々","特に","私","私達","貴方","貴方方"]
 
 ROMAJI_MAP = {
     # Hiragana – Basic
@@ -170,7 +184,6 @@ ROMAJI_MAP = {
     "リャン": "ryan", "リュン": "ryun", "リョン": "ryon",
 }
 
-
 def is_japanese_word(word: str) -> bool:
     return bool(JP_WORD_PATTERN.fullmatch(word))
 
@@ -181,23 +194,81 @@ def is_word_or_number(input_str: str) -> bool:
     """Check if a string only contains letters, digits and underscore"""
     return bool(re.fullmatch(r"\w+", input_str))
 
-def read_stop_words(filename: str = STOPWORD_FILE) -> None:
-    """Read stop words from file"""
-    with open(filename, encoding="utf-8") as f:
-        STOP_WORDS.extend([line.strip() for line in f if line.strip()])
+async def read_jlpt_from_db(db: "DBHandling", redis=None) -> None:
+    """Read word JLPT mapping from database and refresh Redis JLPT cache.
 
-def read_jlpt(dirname: str = JLPT_DIR) -> None:
-    """Read word JLPT from files"""
-    tier_list = ["N5", "N4", "N3", "N2", "N1"]
-    for tier in tier_list:
-        filename = f"{dirname}/{tier}.txt"
-        if os.path.exists(filename):
+    If a Redis client is provided, this function uses a distributed lock to avoid
+    duplicated concurrent reloads across API workers/endpoints.
+    """
+    if db is None:
+        log.error("read_jlpt_from_db requires a db instance")
+        return
+
+    if redis is None:
+        log.error("read_jlpt_from_db requires redis for Redis-backed JLPT cache")
+        return
+
+    lock = None
+    lock_acquired = False
+    try:
+        lock = redis.lock("lock:jlpt_cache_reload", timeout=30, blocking_timeout=1)
+        lock_acquired = await lock.acquire()
+        if not lock_acquired:
+            log.info("Skip JLPT cache reload because another reload is in progress")
+            return
+
+        mapping = await db.list_jlpt_levels()
+
+        pipeline = redis.pipeline()
+        pipeline.delete(JLPT_REDIS_KEY)
+        if mapping:
+            pipeline.hset(JLPT_REDIS_KEY, mapping=mapping)
+        await pipeline.execute()
+    except Exception as e:
+        log.error(f"Failed to load JLPT from DB: {e}")
+        return
+    finally:
+        if lock is not None and lock_acquired:
             try:
-                with open(filename, "r", encoding="utf-8") as f:
-                    for word in f.readlines():
-                        JLPT_DICT[word.strip("\n")] = tier
-            except Exception as e:
-                log.error(f"Failed to read JLPT file {filename}: {e}")
+                await lock.release()
+            except Exception:
+                pass
+
+
+async def get_jlpt_level(word: str, redis=None, default: str = "N0") -> str:
+    """Get JLPT level from Redis shared cache."""
+    if not word:
+        return default
+
+    if redis is None:
+        log.error("get_jlpt_level requires redis for Redis-backed JLPT cache")
+        return default
+
+    try:
+        val = await redis.hget(JLPT_REDIS_KEY, word)
+        if val:
+            return val
+    except Exception as e:
+        log.error(f"Failed to query JLPT from Redis for '{word}': {e}")
+
+    return default
+
+
+async def is_stop_word(word: str, redis=None) -> bool:
+    """Check if word is a stopword from local in-memory set."""
+    if not word:
+        return False
+    return word in STOP_WORDS
+
+
+async def bootstrap_shared_dicts(redis, db: "DBHandling") -> None:
+    """Initialize shared dictionaries with Redis as source of truth.
+
+    - JLPT is Redis-backed.
+    - STOP_WORDS and ROMAJI map are local in-process constants.
+    - ROMAJI map remains static in-process constant.
+    """
+    await read_jlpt_from_db(db, redis)
 
 """Unavailable because failed to install miniaudio on Windows env"""
 def play_audio(audio_mapping: List[str]) -> None:
@@ -271,141 +342,3 @@ async def get_quiz_distractors(pdata: "ProcessData", db: "DBHandling", jp_word: 
             res.en.append(en_choice)
     return res
 
-
-def scrape_all_jlpt(option: int = 0) -> str:
-    """Scrape for all 5 JLPT levels. Files are saved as './data/jlpt/n{level}.txt'.
-    Make sure folder has no JLPT files for this function to run.
-    Right now only has wikipedia version.
-    
-    Param:
-    - option:
-        + 0 (default): scrape wikipedia (5000 most common words, this comes with frequency)
-        + Todo: more option? (don't count on it)
-
-    Return: Error string. Empty string if no error.
-    """
-    if option < 0 or option > 2:
-        return "invalid option"
-    
-    # Check if files already existed
-    for level in range(5, 0, -1):
-        if os.path.exists(f"data/jlpt/n{level}.txt"):
-            return "JLPT file(s) already existed"
-    
-    err = ""
-    for level in range(5, 0, -1):
-        # Init the file
-        filename = f"data/jlpt/n{level}.txt"
-
-        # Do option
-        if option == 0:
-            vocab, err = scrape_wikipedia(level)
-        else:
-            # Currently option has wiki
-            pass
-        if err != "":
-            return err
-
-        # write to file
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write("\n".join(vocab))
-    log.info("Finish scraping JLPT levels data")
-    return err
-        
-def scrape_wikipedia(level: int) -> Tuple[set, str]:
-    """Calling https://en.wiktionary.org/wiki/Appendix:JLPT/N{level} to get all vocabs for a level.
-    Keep in mind that the site might not have the every Japanese words known today.
-
-    Param:
-    - level: The JLPT N?, range from 5 to 1
-
-    Return: A tuple containing
-    - a set of vocab scraped
-    - error
-    """
-    if level < 1 or level > 5:
-        return (list(), "invalid level")
-
-    vocab = set()
-    log.info(f"Scraping dict for JLPT N{level} vocab on Wikipedia...")
-    # Request
-    url = f"https://en.wiktionary.org/wiki/Appendix:JLPT/N{level}"
-    response = requests.get(url)
-    if response.status_code != 200:
-        return (vocab, f"Failed to request: status code {response.status_code}, error: {response.text}")
-
-    # Parse soup
-    try:
-        list_soup = BeautifulSoup(response.text, "html.parser")
-    except:
-        return (vocab, f"Failed to parse using BeautifulSoup")
-
-    # === Pattern for the word:
-    # <table class="wikitable ...">
-    #   ...
-    #   <body>
-    #       <tr>
-    #           <td> <span ...> <a ...> KANJI </a> </span> </td>
-    #           <td> <span ...> <a ...> FURIGANA </a> </span> </td>
-    #           <td> <span ...> <a ...> MEANING </a> </span> </td>
-    #           <td> FREQUENCY </td>
-    #       </tr>
-    #   </body>
-    #   ...
-    # </table>
-    # Important Some word has only Furigana form and no Kanji
-    tables = list_soup.find_all("table", attrs={"class": lambda x: x and "wikitable" in x})
-    for table in tables:
-        for tr in table.find_all("tr"):
-            tds = tr.find_all("td")
-            if len(tds) > 0:
-                kanji = tds[0].text.strip()
-                furigana = tds[1].text.strip()
-                vocab.add(kanji) if kanji != "" else vocab.add(furigana)
-    return (vocab, "")
-
-
-
-
-
-
-# Works, but too few words, not used. TODO: Remove
-def scrape_jlpt_sensei(level: int, filename: str):
-    """Calling https://jlptsensei.com/jlpt-n{level}-vocabulary-list/ to get all vocabs for a level.
-    Keep in mind that this site does not have the every Japanese words known today. And currently only N5 -> N2 are available
-    The vocabs are writen to '/data/jlpt/n{level}.txt' files.
-
-    Param:
-    - level: The JLPT N?, range from 5 to 1
-
-    Return:
-    - 0: success
-    - -1: invalid level
-    """
-    if level < 2 or level > 5:
-        return -1
-    if filename == "":
-        filename = f"data/jlpt/n{level}.txt"
-
-    log.info(f"Scraping dict for N{level} vocab...")
-    with open(filename, "a") as f:
-        page_num = 1
-        while True:
-            url = f"https://jlptsensei.com/jlpt-n{level}-vocabulary-list/"
-            # add 'page/{page_num}' if page count > 1
-            if page_num > 1:
-                url += f"page/count"
-            response = requests.get(url)
-            list_soup = BeautifulSoup(response.text, "html.parser")
-
-            # i.e.: <a target="_blank" class="jl-link jp" href="https://..." rel="bookmark" title="...">浴びる</a>
-            page_jobs = list_soup.find_all("a", class_="jl-link jp")
-            # End if page has content, we've reached the last page
-            if len(page_jobs) == 0:
-                break
-            
-            for page_job in page_jobs:
-                f.write(page_job.text + ",")
-            page_num += 1
-
-    return 0

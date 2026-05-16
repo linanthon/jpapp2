@@ -1,16 +1,17 @@
 """Tests for utils/data.py — data utility functions."""
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+
 from utils.data import (
     is_japanese_word,
     is_english_word,
     is_word_or_number,
     str_2_int,
-    read_stop_words,
-    read_jlpt,
     get_quiz_distractors,
-    scrape_all_jlpt,
-    JLPT_DICT,
+    read_jlpt_from_db,
+    get_jlpt_level,
+    is_stop_word,
+    JLPT_REDIS_KEY,
     STOP_WORDS,
 )
 
@@ -58,54 +59,54 @@ class TestStr2Int:
         assert str_2_int("") == DEFAULT_LIMIT
 
 
-# ── read_stop_words ───────────────────────────────────────────────────────────
-class TestReadStopWords:
-    @pytest.fixture(autouse=True)
-    def clear_stop_words(self):
-        STOP_WORDS.clear()
-        yield
-        STOP_WORDS.clear()
+class TestRedisBackedHelpers:
+    @pytest.mark.asyncio
+    async def test_read_jlpt_from_db_writes_redis_hash(self):
+        db = AsyncMock()
+        db.list_jlpt_levels.return_value = {"食べる": "N5", "走る": "N4"}
 
-    def test_reads_file(self, tmp_path):
-        assert len(STOP_WORDS) == 0
-        f = tmp_path / "stops.txt"
-        f.write_text("の\nは\nが\n", encoding="utf-8")
-        read_stop_words(str(f))
-        assert "の" in STOP_WORDS
-        assert "は" in STOP_WORDS
-        assert "が" in STOP_WORDS
+        redis = MagicMock()
+        lock = AsyncMock()
+        lock.acquire.return_value = True
+        redis.lock.return_value = lock
+        pipeline = MagicMock()
+        pipeline.execute = AsyncMock()
+        redis.pipeline.return_value = pipeline
 
-    def test_skips_empty_lines(self, tmp_path):
-        assert len(STOP_WORDS) == 0
-        f = tmp_path / "stops.txt"
-        f.write_text("の\n\nは\n\n", encoding="utf-8")
-        read_stop_words(str(f))
-        assert len(STOP_WORDS) == 2
+        await read_jlpt_from_db(db, redis)
+
+        db.list_jlpt_levels.assert_awaited_once()
+        pipeline.delete.assert_called_once_with(JLPT_REDIS_KEY)
+        pipeline.hset.assert_called_once_with(JLPT_REDIS_KEY, mapping={"食べる": "N5", "走る": "N4"})
+        pipeline.execute.assert_awaited_once()
+        lock.release.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_get_jlpt_level_from_redis(self):
+        redis = AsyncMock()
+        redis.hget.return_value = "N3"
+
+        result = await get_jlpt_level("勉強", redis)
+
+        assert result == "N3"
+        redis.hget.assert_awaited_once_with(JLPT_REDIS_KEY, "勉強")
+
+    @pytest.mark.asyncio
+    async def test_get_jlpt_level_default_when_missing(self):
+        redis = AsyncMock()
+        redis.hget.return_value = None
+
+        result = await get_jlpt_level("未知語", redis)
+
+        assert result == "N0"
+
+    @pytest.mark.asyncio
+    async def test_is_stop_word_local_lookup(self):
+        assert await is_stop_word("") is False
+        assert await is_stop_word("食べる") == ("食べる" in STOP_WORDS)
 
 
-# ── read_jlpt ────────────────────────────────────────────────────────────────
-class TestReadJlpt:
-    @pytest.fixture(autouse=True)
-    def clear_jlpt_dict(self):
-        JLPT_DICT.clear()
-        yield
-        JLPT_DICT.clear()
-
-    def test_reads_jlpt_files(self, tmp_path):
-        for level in ["N5", "N4", "N3", "N2", "N1"]:
-            f = tmp_path / f"{level}.txt"
-            f.write_text(f"word_{level}\n", encoding="utf-8")
-        read_jlpt(str(tmp_path))
-        assert JLPT_DICT["word_N5"] == "N5"
-        assert JLPT_DICT["word_N1"] == "N1"
-
-    def test_missing_files_skipped(self, tmp_path):
-        # No files in tmp_path — should not crash
-        read_jlpt(str(tmp_path))
-        assert len(JLPT_DICT) == 0
-
-
-# ── get_quiz_distractors ─────────────────────────────────────────────────────
+# -- get_quiz_distractors -----------------------------------------------------
 class TestGetQuizDistractors:
     @pytest.mark.asyncio
     async def test_no_word_returns_none(self):
@@ -128,7 +129,7 @@ class TestGetQuizDistractors:
     @pytest.mark.asyncio
     async def test_from_jamdict_fallback(self):
         mock_db = AsyncMock()
-        mock_db.get_distractors.return_value = []  # not enough from DB
+        mock_db.get_distractors.return_value = []
         mock_pdata = MagicMock()
 
         mock_entry = MagicMock()
@@ -138,15 +139,12 @@ class TestGetQuizDistractors:
         mock_entry.senses = [mock_sense]
         mock_pdata.get_random_jamdict_entries.return_value = [mock_entry] * 3
 
-        result = await get_quiz_distractors(mock_pdata, mock_db, jp_word="食べる",
-                                            en_word="to eat", distractor_count=3)
+        result = await get_quiz_distractors(mock_pdata, mock_db, jp_word="食べる", en_word="to eat", distractor_count=3)
         assert len(result.jp) == 3
         assert result.jp[0] == "走る"
 
     @pytest.mark.asyncio
     async def test_from_jamdict_kana_only(self):
-        """When a Jamdict entry has no kanji forms, the distractor JP word
-        should fall back to the kana form (used in EN->JP quiz choices)."""
         mock_db = AsyncMock()
         mock_db.get_distractors.return_value = []
         mock_pdata = MagicMock()
@@ -159,24 +157,5 @@ class TestGetQuizDistractors:
         mock_entry.senses = [mock_sense]
         mock_pdata.get_random_jamdict_entries.return_value = [mock_entry]
 
-        # jp_word/en_word are the correct-answer words being excluded from distractors
-        result = await get_quiz_distractors(mock_pdata, mock_db, jp_word="食べる",
-                                            en_word="to eat", distractor_count=1)
-        # distractor JP word should be the kana form, not kanji
+        result = await get_quiz_distractors(mock_pdata, mock_db, jp_word="食べる", en_word="to eat", distractor_count=1)
         assert result.jp[0] == "ビール"
-
-
-# ── scrape_all_jlpt ──────────────────────────────────────────────────────────
-class TestScrapeAllJlpt:
-    def test_invalid_option(self):
-        assert scrape_all_jlpt(option=-1) == "invalid option"
-        assert scrape_all_jlpt(option=5) == "invalid option"
-
-    def test_files_already_exist(self, tmp_path, monkeypatch):
-        # Create a file that makes the check fail
-        import os
-        monkeypatch.chdir(tmp_path)
-        os.makedirs("data/jlpt", exist_ok=True)
-        (tmp_path / "data" / "jlpt" / "n5.txt").write_text("word\n")
-        result = scrape_all_jlpt(option=0)
-        assert result == "JLPT file(s) already existed"

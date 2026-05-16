@@ -187,6 +187,20 @@ class TestGetFileDownloadLink:
             ExpiresIn=PRESIGNED_URL_EXPIRY,
         )
 
+    def test_with_download_name_and_content_type(self, mock_s3):
+        mock_s3.generate_presigned_url.return_value = "https://minio/bucket/obj?X-Amz-Signature=abc"
+        get_file_download_link("my_obj", download_name="book.txt", content_type="text/plain")
+        mock_s3.generate_presigned_url.assert_called_once_with(
+            "get_object",
+            Params={
+                "Bucket": "jpapp-books",
+                "Key": "my_obj",
+                "ResponseContentDisposition": 'attachment; filename="book.txt"',
+                "ResponseContentType": "text/plain",
+            },
+            ExpiresIn=PRESIGNED_URL_EXPIRY,
+        )
+
     def test_custom_expiry(self, mock_s3):
         mock_s3.generate_presigned_url.return_value = "https://url"
         get_file_download_link("obj", expiry=600)

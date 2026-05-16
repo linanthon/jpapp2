@@ -10,6 +10,7 @@ SQL_WORD_PRIO_SCRIPT = "data/sql/priority_view.sql"
 
 # --- Table names
 DB_NAME = "jpapp2"
+TABLE_JLPT = "jlpt_levels"
 TABLE_WORDS = "words"
 TABLE_BOOKS = "books"
 TABLE_SENTENCES = "sentences"
@@ -20,7 +21,9 @@ TABLE_USER = "users"
 TABLE_USER_WORD_PROGRESS = "user_word_progress"
 TABLE_USER_SENTENCE_PROGRESS = "user_sentence_progress"
 TABLE_USER_BOOK_STAR = "user_book_star"
-TABLE_JOB_BOOKS = "job_books"
+TABLE_JOB_BOOK_BATCHES = "job_book_batches"
+TABLE_JOB_BOOK_BATCH_ITEMS = "job_book_batch_items"
+TABLE_JOB_SCRAPE = "job_scrape"
 
 # --- Defaults
 DEFAULT_LIMIT: int = 10

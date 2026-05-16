@@ -196,7 +196,7 @@ class TestHandleViewSpecificBook:
             result = await handle_view_specific_book(mock_db, user_id=1, book_id=1)
         assert result["name"] == "Test Book"
         assert result["download_url"] == "https://signed"
-        link_mock.assert_called_once_with("abc.pdf")
+        link_mock.assert_called_once_with("abc.pdf", download_name="abc.pdf")
 
     @pytest.mark.asyncio
     async def test_returns_book_without_object_name(self, mock_db):
