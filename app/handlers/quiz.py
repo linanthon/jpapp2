@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Dict, Any
 
 from schemas.constants import DEFAULT_LIMIT
 from utils.data import get_quiz_distractors
+from utils.helpers import parse_bool_param
 
 if TYPE_CHECKING:
     from utils.process_data import ProcessData
@@ -46,11 +47,107 @@ async def build_quizes(mode: str, pdata: "ProcessData", db: "DBHandling", user_i
     return res
 
 async def update_word_prio_after_answering(db: "DBHandling", user_id: int = 0, word_id: int = 0,
-                                     is_correct: bool = False, quized: int = 0, occurrence: int = 0) -> bool:
+                                     is_correct: bool = False, quized: int = None, occurrence: int = None) -> bool:
     """Update answered quiz's word priority calculation.
     Return true if success, false otherwise"""
+    if not word_id:
+        return False
+
+    # Fallback to DB state when client did not send current values.
+    if occurrence is None or quized is None:
+        _, occurrence_db = await db.get_word_occurence(word_id=word_id)
+        if not occurrence_db:
+            return False
+        occurrence = occurrence_db
+        quized = await db.get_user_word_quized(user_id=user_id, word_id=word_id)
+
     new_quized = quized + 1 if is_correct else max(0, quized - 1)
     return await db.update_quized_prio_ts(user_id=user_id, word_id=word_id, occurrence=occurrence, quized=new_quized)
+
+
+async def update_word_prio_after_session(db: "DBHandling", user_id: int,
+                                         answers: list[dict[str, Any]]) -> dict[str, int]:
+    """Apply quiz priority updates in one request after a session.
+
+    `answers` expects items with at least:
+      - word_id: int
+      - is_correct: bool
+    Optional per item:
+      - occurrence: int
+      - quized: int
+
+    Multiple answers for the same word are aggregated into one DB update.
+    Returns stats: total, updated, failed.
+    """
+    if not answers:
+        return {"total": 0, "updated": 0, "failed": 0}
+
+    # word_id -> {delta, occurrence, quized}
+    # `delta` is for the same word showed up multiple times in 1 quiz
+    grouped: dict[int, dict[str, Any]] = {}
+    for answer in answers:
+        try:
+            word_id = int(answer.get("word_id", 0))
+        except Exception:
+            continue
+        if not word_id:
+            continue
+
+        is_correct = parse_bool_param(answer.get("is_correct", False))
+        delta = 1 if is_correct else -1
+
+        item = grouped.setdefault(word_id, {"delta": 0, "occurrence": None, "quized": None})
+        item["delta"] += delta
+
+        if answer.get("occurrence", None) is not None:
+            try:
+                item["occurrence"] = int(answer.get("occurrence"))
+            except Exception:
+                pass
+        if answer.get("quized", None) is not None:
+            try:
+                item["quized"] = int(answer.get("quized"))
+            except Exception:
+                pass
+
+    total = len(grouped)
+    updated = 0
+
+    # Collect words missing either occurrence or quized and fetch them in one DB query.
+    missing_word_ids = {
+        word_id for word_id, item in grouped.items()
+        if item["occurrence"] is None or item["quized"] is None
+    }
+    missing_word_data = {}
+    if missing_word_ids:
+        missing_word_data = await db.get_words_occurrence_quized_batch(
+            user_id=user_id,
+            word_ids=list(missing_word_ids),
+        )
+
+    for word_id, item in grouped.items():
+        occurrence = item["occurrence"]
+        current_quized = item["quized"]
+
+        if occurrence is None or current_quized is None:
+            meta = missing_word_data.get(word_id, {})
+            occurrence_db = meta.get("occurrence", 0)
+            if not occurrence_db:
+                continue
+            occurrence = occurrence_db
+            current_quized = meta.get("quized", 0)
+
+        new_quized = max(0, current_quized + item["delta"])
+        success = await db.update_quized_prio_ts(
+            user_id=user_id,
+            word_id=word_id,
+            occurrence=occurrence,
+            quized=new_quized,
+        )
+        if success:
+            updated += 1
+
+    return {"total": total, "updated": updated, "failed": max(0, total - updated)}
 
 async def change_word_prio_to_negative(db: "DBHandling", user_id: int = 0, word_id: int = 0) -> bool:
     """Update the word priority value to -1 (to fail the > 0.0 check when query for quiz).
@@ -63,7 +160,11 @@ async def reset_word_prio(db: "DBHandling", user_id: int = 0, word_id: int = 0,
     `quized` and `occurrence` are optional. Will query to get if they are None.
     Returns true if success, false otherwise"""
     if occurrence is None or quized is None:
-        occurrence, quized = await db.get_word_occurence(word_id=word_id)
+        _, occurrence_db = await db.get_word_occurence(word_id=word_id)
+        if not occurrence_db:
+            return False
+        occurrence = occurrence_db
+        quized = await db.get_user_word_quized(user_id=user_id, word_id=word_id)
     # quized can = 0 but not occurrence
     if not occurrence:
         return False

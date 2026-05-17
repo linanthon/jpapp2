@@ -628,6 +628,29 @@ class TestDeleteBook:
 
 
 # ── Word Priority (Quiz support) ──────────────────────────────────────────────
+class TestQuizRoutes:
+    @pytest.mark.asyncio
+    async def test_quiz_jp(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.get_quiz.return_value = []
+        resp = await client.get("/v1/quiz/jp", headers=_auth_header(user_token))
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_quiz_en(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.get_quiz.return_value = []
+        resp = await client.get("/v1/quiz/en", headers=_auth_header(user_token))
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_quiz_known(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.get_quiz.return_value = []
+        resp = await client.get("/v1/quiz/known", headers=_auth_header(user_token))
+        assert resp.status_code == 200
+
+
 class TestWordPrioRoute:
     @pytest.mark.asyncio
     async def test_update_prio(self, client, mock_db, mock_redis, user_token):
@@ -645,6 +668,72 @@ class TestWordPrioRoute:
     async def test_update_prio_no_auth(self, client):
         resp = await client.post("/v1/word/prio", json={"word_id": 1})
         assert resp.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_update_prio_missing_is_correct_returns_400(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        resp = await client.post(
+            "/v1/word/prio",
+            json={"word_id": 1, "quized": 5, "occurrence": 10},
+            headers=_auth_header(user_token),
+        )
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_update_prio_with_server_fallback_counts(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.get_word_occurence.return_value = (1, 10)
+        mock_db.get_user_word_quized.return_value = 3
+        mock_db.update_quized_prio_ts.return_value = True
+
+        resp = await client.post(
+            "/v1/word/prio",
+            json={"word_id": 1, "is_correct": True},
+            headers=_auth_header(user_token),
+        )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        mock_db.update_quized_prio_ts.assert_called_once_with(
+            user_id=2, word_id=1, occurrence=10, quized=4
+        )
+
+
+class TestWordPrioBatchRoute:
+    @pytest.mark.asyncio
+    async def test_update_prio_batch(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.get_words_occurrence_quized_batch.return_value = {
+            1: {"occurrence": 10, "quized": 5}
+        }
+        mock_db.update_quized_prio_ts.return_value = True
+
+        resp = await client.post(
+            "/v1/word/prio/batch",
+            json={
+                "answers": [
+                    {"word_id": 1, "is_correct": True},
+                    {"word_id": 1, "is_correct": False},
+                    {"word_id": 1, "is_correct": True},
+                ]
+            },
+            headers=_auth_header(user_token),
+        )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total"] == 1
+        assert data["updated"] == 1
+        assert data["failed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_update_prio_batch_invalid_answers_type(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        resp = await client.post(
+            "/v1/word/prio/batch",
+            json={"answers": {}},
+            headers=_auth_header(user_token),
+        )
+        assert resp.status_code == 400
 
 
 # ── Word Known (Quiz support) ─────────────────────────────────────────────────
@@ -665,6 +754,7 @@ class TestWordKnownRoute:
     async def test_reset_known(self, client, mock_db, mock_redis, user_token):
         mock_redis.get.return_value = None
         mock_db.get_word_occurence.return_value = (1, 10)
+        mock_db.get_user_word_quized.return_value = 5
         mock_db.update_quized_prio_ts.return_value = True
         resp = await client.post(
             "/v1/word/known",
@@ -672,6 +762,25 @@ class TestWordKnownRoute:
             headers=_auth_header(user_token),
         )
         assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_reset_known_with_missing_counts_uses_db(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        mock_db.get_word_occurence.return_value = (1, 10)
+        mock_db.get_user_word_quized.return_value = 6
+        mock_db.update_quized_prio_ts.return_value = True
+
+        resp = await client.post(
+            "/v1/word/known",
+            json={"word_id": 1, "update_to_known": False},
+            headers=_auth_header(user_token),
+        )
+
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        mock_db.update_quized_prio_ts.assert_called_once_with(
+            user_id=2, word_id=1, occurrence=10, quized=6
+        )
 
 
 # ── Progress (stub) ───────────────────────────────────────────────────────────

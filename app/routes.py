@@ -21,7 +21,7 @@ from app.dependencies import (
     rate_limiter
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
-                               change_word_prio_to_negative, reset_word_prio)
+                               update_word_prio_after_session, change_word_prio_to_negative, reset_word_prio)
 from app.tasks.job_books import process_insert_file_job, process_insert_str_job, process_delete_job_book
 from app.tasks.job_scrape import (
     process_scrape_jlpt_job,
@@ -1064,20 +1064,71 @@ async def update_word_prio(
         word_id = int(data.get("word_id", 0))
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `word_id`")
-    
-    is_correct = parse_bool_param(data.get("is_correct", None))
+
+    is_correct = parse_bool_param(data.get("is_correct", None), "is_correct")
+    quized, occurrence = None, None
     try:
-        quized = int(data.get("quized", 0))
+        quized = int(data.get("quized", None))
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `quized`")
-    
     try:
-        occurrence = int(data.get("occurrence", 0))
+        occurrence = int(data.get("occurrence", None))
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `occurrence`")
-    
+
     success = await update_word_prio_after_answering(db, current_user_id, word_id, is_correct, quized, occurrence)
     return {"success": success}
+
+
+@router.post("/word/prio/batch")
+async def update_word_prio_batch(
+    request: Request,
+    db: DBHandling = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
+):
+    """Update quiz priority for a whole session in one request.
+
+    Expects JSON:
+      {
+        "answers": [
+          {"word_id": int, "is_correct": bool, "quized": int?, "occurrence": int?},
+          ...
+        ]
+      }
+    """
+    data = await request.json()
+    answers = data.get("answers", [])
+    if not isinstance(answers, list) or not answers:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `answers`")
+
+    normalized: list[dict] = []
+    for item in answers:
+        if not isinstance(item, dict):
+            continue
+
+        try:
+            word_id = int(item.get("word_id", 0))
+        except Exception:
+            continue
+        if not word_id:
+            continue
+
+        is_correct = parse_bool_param(item.get("is_correct", None))
+        normalized_item = {"word_id": word_id, "is_correct": is_correct}
+        if item.get("quized", None) is not None:
+            try:
+                normalized_item["quized"] = int(item.get("quized"))
+            except Exception:
+                pass
+        if item.get("occurrence", None) is not None:
+            try:
+                normalized_item["occurrence"] = int(item.get("occurrence"))
+            except Exception:
+                pass
+        normalized.append(normalized_item)
+
+    stats = await update_word_prio_after_session(db, current_user_id, normalized)
+    return {"success": stats["updated"] > 0 or stats["total"] == 0, **stats}
 
 
 @router.post("/word/known")
@@ -1095,16 +1146,21 @@ async def toggle_word_known(
         word_id = int(data.get("word_id", 0))
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `word_id`")
-    
-    update_to_known = parse_bool_param(data.get("update_to_known", False))
-    occurrence, quized = 0, 0
+
+    update_to_known = parse_bool_param(data.get("update_to_known", None))
+    occurrence, quized = None, None
     if not update_to_known:
-        try:
-            occurrence = int(data.get("occurrence", 0))
-            quized = int(data.get("quized", 0))
-        except:
-            pass
-    
+        if data.get("occurrence", None) is not None:
+            try:
+                occurrence = int(data.get("occurrence"))
+            except:
+                raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid `occurrence`")
+        if data.get("quized", None) is not None:
+            try:
+                quized = int(data.get("quized"))
+            except:
+                raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid `quized`")
+
     if update_to_known:
         success = await change_word_prio_to_negative(db, current_user_id, word_id)
     else:

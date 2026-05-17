@@ -941,6 +941,36 @@ class DBHandling:
             return row["quized"]
         return 0
 
+    async def get_words_occurrence_quized_batch(self, user_id: int,
+                                                word_ids: List[int]) -> Dict[int, Dict[str, int]]:
+        """Get occurrence and quized for multiple words in a single query.
+
+        Output shape:
+        {
+            word_id: {"occurrence": int, "quized": int},
+            ...
+        }
+        """
+        if user_id is None or not word_ids:
+            return {}
+
+        rows = await self._fetch(
+            f"""SELECT w.id AS word_id, w.occurrence AS occurrence, COALESCE(up.quized, 0) AS quized
+                FROM {TABLE_WORDS} AS w
+                LEFT JOIN {TABLE_USER_WORD_PROGRESS} AS up ON up.word_id = w.id AND up.user_id = $1
+                WHERE w.id = ANY($2);""",
+            user_id,
+            word_ids,
+        )
+
+        res: Dict[int, Dict[str, int]] = {}
+        for row in rows:
+            res[row["word_id"]] = {
+                "occurrence": row["occurrence"],
+                "quized": row["quized"],
+            }
+        return res
+
     async def list_words(self, user_id: int = None, jlpt_level: str = "", star: bool = False,
                          limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
         """
