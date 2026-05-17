@@ -670,25 +670,35 @@ class TestWordPrioRoute:
         assert resp.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_update_prio_missing_is_correct_returns_400(self, client, mock_db, mock_redis, user_token):
+    async def test_update_prio_missing_is_correct_defaults_false(self, client, mock_db, mock_redis, user_token):
         mock_redis.get.return_value = None
+        mock_db.update_quized_prio_ts.return_value = True
         resp = await client.post(
             "/v1/word/prio",
             json={"word_id": 1, "quized": 5, "occurrence": 10},
             headers=_auth_header(user_token),
         )
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_update_prio_missing_counts_returns_400(self, client, mock_db, mock_redis, user_token):
+        mock_redis.get.return_value = None
+        resp = await client.post(
+            "/v1/word/prio",
+            json={"word_id": 1, "is_correct": True},
+            headers=_auth_header(user_token),
+        )
         assert resp.status_code == 400
 
     @pytest.mark.asyncio
-    async def test_update_prio_with_server_fallback_counts(self, client, mock_db, mock_redis, user_token):
+    async def test_update_prio_calls_db_with_payload_counts(self, client, mock_db, mock_redis, user_token):
         mock_redis.get.return_value = None
-        mock_db.get_word_occurence.return_value = (1, 10)
-        mock_db.get_user_word_quized.return_value = 3
         mock_db.update_quized_prio_ts.return_value = True
 
         resp = await client.post(
             "/v1/word/prio",
-            json={"word_id": 1, "is_correct": True},
+            json={"word_id": 1, "is_correct": True, "quized": 3, "occurrence": 10},
             headers=_auth_header(user_token),
         )
         assert resp.status_code == 200

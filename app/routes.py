@@ -1065,7 +1065,7 @@ async def update_word_prio(
     except:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid/Missing `word_id`")
 
-    is_correct = parse_bool_param(data.get("is_correct", None), "is_correct")
+    is_correct = parse_bool_param(data.get("is_correct", None))
     quized, occurrence = None, None
     try:
         quized = int(data.get("quized", None))
