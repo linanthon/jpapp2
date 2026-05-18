@@ -4,7 +4,6 @@ from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import os
 import io
-import json
 import redis.asyncio as aioredis
 import uuid
 
@@ -18,7 +17,7 @@ from app.handlers.view import (handle_search_word, handle_view_specific_word, ha
                                toggle_star_helper, delete_book_helper, get_all_book_name_and_id)
 from app.dependencies import (
     get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user,
-    rate_limiter
+    rate_limiter, redis_get_json, redis_set_json
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                update_word_prio_after_session, change_word_prio_to_negative, reset_word_prio)
@@ -710,22 +709,16 @@ async def api_search_word(
     """Search for a word, returns JSON results"""
     normalized_word = word.strip()
     cache_key = f"search_word:{normalized_word.lower()}"
-    value = await redis.get(cache_key)
+    value = await redis_get_json(redis, cache_key)
     if value is not None:
-        try:
-            if isinstance(value, (bytes, bytearray)):
-                value = value.decode("utf-8")
-            return JSONResponse(content=json.loads(value))
-        except (UnicodeDecodeError, TypeError, json.JSONDecodeError):
-            log.warning("Invalid cached search payload for key=%s", cache_key)
-            await redis.delete(cache_key)
+        return JSONResponse(content=value)
 
     response_data = await handle_search_word(db, word, limit, bpv1_url_prefix)
     if "error" in response_data:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=response_data["error"])
     
     expire_secs = SEARCH_WORD_EXPIRE_MINUTES*60
-    await redis.setex(cache_key, expire_secs, json.dumps(response_data, ensure_ascii=False))
+    await redis_set_json(redis, cache_key, response_data, expire_secs)
     return JSONResponse(content=response_data)
 
 
@@ -734,10 +727,13 @@ async def view_specific_word(
     word_id: int,
     sen_limit: int = DEFAULT_SENTENCE_EXAMPLE_LIMIT,
     db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     current_user_id: int = Depends(get_current_user_id)
 ):
     """View details info of 1 word"""
-    result, sentence_examples = await handle_view_specific_word(db, current_user_id, word_id, sen_limit)
+    result, sentence_examples = await handle_view_specific_word(
+        db, current_user_id, word_id, sen_limit, redis,
+    )
     return templates.TemplateResponse(
         "view/word/view_specific_word.html",
         {"request": {}, "word_details": result, "sen_ex": sentence_examples}
@@ -935,6 +931,7 @@ async def quiz_jp(
     use_priority: bool | str = None,
     get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     pdata: ProcessData = Depends(get_pdata),
     current_user_id: int = Depends(get_current_user_id)
 ):
@@ -954,7 +951,8 @@ async def quiz_jp(
         star=star_bool,
         book_id=book_id,
         use_priority=use_priority_bool,
-        get_distractors_from_db=get_distractors_bool
+        get_distractors_from_db=get_distractors_bool,
+        redis=redis,
     )
     return templates.TemplateResponse(
         "quiz/quiz_run.html",
@@ -972,6 +970,7 @@ async def quiz_known(
     limit: int = DEFAULT_LIMIT,
     get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     pdata: ProcessData = Depends(get_pdata),
     current_user_id: int = Depends(get_current_user_id)
 ):
@@ -991,7 +990,8 @@ async def quiz_known(
         book_id=book_id,
         use_priority=False,
         is_known=True,
-        get_distractors_from_db=get_distractors_bool
+        get_distractors_from_db=get_distractors_bool,
+        redis=redis,
     )
     return templates.TemplateResponse(
         "quiz/quiz_run.html",
@@ -1011,6 +1011,7 @@ async def quiz_en(
     use_priority: bool | str = None,
     get_distractors_from_db: bool | str = None,
     db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     pdata: ProcessData = Depends(get_pdata),
     current_user_id: int = Depends(get_current_user_id)
 ):
@@ -1030,7 +1031,8 @@ async def quiz_en(
         star=star_bool,
         book_id=book_id,
         use_priority=use_priority_bool,
-        get_distractors_from_db=get_distractors_bool
+        get_distractors_from_db=get_distractors_bool,
+        redis=redis,
     )
     return templates.TemplateResponse(
         "quiz/quiz_run.html",

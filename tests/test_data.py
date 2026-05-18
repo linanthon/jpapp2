@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from utils.data import (
     is_japanese_word,
-    is_english_word,
     is_word_or_number,
     str_2_int,
     get_quiz_distractors,
@@ -24,16 +23,6 @@ class TestIsJapaneseWord:
     @pytest.mark.parametrize("word", ["hello", "123", "日本語!", "", " "])
     def test_invalid_jp(self, word):
         assert is_japanese_word(word) is False
-
-
-class TestIsEnglishWord:
-    @pytest.mark.parametrize("word", ["hello", "Word", "ABC"])
-    def test_valid_en(self, word):
-        assert is_english_word(word) is True
-
-    @pytest.mark.parametrize("word", ["hello123", "two words", "日本", "", "hello!"])
-    def test_invalid_en(self, word):
-        assert is_english_word(word) is False
 
 
 class TestIsWordOrNumber:

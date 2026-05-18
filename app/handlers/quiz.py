@@ -1,6 +1,9 @@
 import random
 from typing import TYPE_CHECKING, Dict, Any
 
+from app.config import WORD_CORE_CACHE_EXPIRE_SECONDS
+from app.dependencies import (word_core_cache_key,
+                        redis_get_json_sliding, redis_set_json, extract_word_core_payload)
 from schemas.constants import DEFAULT_LIMIT
 from utils.data import get_quiz_distractors
 from utils.helpers import parse_bool_param
@@ -8,11 +11,13 @@ from utils.helpers import parse_bool_param
 if TYPE_CHECKING:
     from utils.process_data import ProcessData
     from utils.db import DBHandling
+    import redis.asyncio as aioredis
 
 async def build_quizes(mode: str, pdata: "ProcessData", db: "DBHandling", user_id: int = None,
                        limit: int = DEFAULT_LIMIT, jlpt_level: str = None, star: bool = False,
                        book_id: int = None, use_priority: bool = True,
-                       is_known: bool = False, get_distractors_from_db: bool = True) -> Dict[int, Dict[str, Any]]:
+                       is_known: bool = False, get_distractors_from_db: bool = True,
+                       redis: "aioredis" = None) -> Dict[int, Dict[str, Any]]:
     """Quiz builder. `mode` is 'jp' (JP->EN) or 'en' (EN->JP).
 
     Returns a dict keyed by word_id, each value containing:
@@ -24,6 +29,17 @@ async def build_quizes(mode: str, pdata: "ProcessData", db: "DBHandling", user_i
     tests = await db.get_quiz(user_id=user_id, limit=limit, jlpt_filter=jlpt_level, star_only=star,
                         book_id=book_id, use_priority=use_priority, is_known=is_known)
     for test_case in tests:
+        if redis is not None:
+            core_key = word_core_cache_key(test_case["word_id"])
+            cached_core = await redis_get_json_sliding(redis, core_key, WORD_CORE_CACHE_EXPIRE_SECONDS)
+            if not cached_core:
+                core_from_db = await db.get_exact_word(word_id=test_case["word_id"])
+                core_payload = extract_word_core_payload(core_from_db)
+                if core_payload:
+                    await redis_set_json(
+                        redis, core_key, core_payload, WORD_CORE_CACHE_EXPIRE_SECONDS,
+                    )
+
         distractors = await get_quiz_distractors(pdata, db, test_case["jp"], test_case["en"], get_distractors_from_db)
         if mode == "jp":
             question, correct = test_case["jp"], test_case["en"]
