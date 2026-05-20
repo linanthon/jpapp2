@@ -31,10 +31,17 @@ TODO frontend
 - Quiz not starting
 - Unauthorize request goes to /v1/null
 
+## How to run
+
 Run each in separate command prompt:
 * minio server minio-data/
 * memurai
 * taskiq worker app.taskiq_broker:broker app.tasks --workers 3
+
+Uploads the audio files to MinIO (optional), check `scripts/Readme.md` for more details:
+`python scripts/upload_audio_to_storage.py`
+
+Start API server
 * python -m app.main
 
 App will auto load jlpt level data if existed in DB, otherwise call /v1/jlpt/scrape/bg/{source_id} to scrape and load data, currently only allow `source_id=1`.

@@ -772,7 +772,15 @@ async def toggle_star(
 def serve_audio(filename: str):
     """Serve audio files"""
     audio_dir = os.path.join(os.path.dirname(__file__), "..", AUDIO_DIR)
-    return FileResponse(os.path.join(audio_dir, filename), media_type='audio/wav')
+    cache_headers = {
+        # Audio fragments are effectively immutable; long-lived browser cache is safe.
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+    return FileResponse(
+        os.path.join(audio_dir, filename),
+        media_type='audio/wav',
+        headers=cache_headers,
+    )
 
 
 @router.get("/view/book")
