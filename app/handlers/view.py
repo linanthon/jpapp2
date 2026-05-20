@@ -1,12 +1,18 @@
 import math
 import re
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, TYPE_CHECKING
 
-from utils.data import is_japanese_word, is_english_word
-from utils.db import DBHandling
+from app.config import WORD_CORE_CACHE_EXPIRE_SECONDS, WORD_SENTENCE_EXPIRE_SECONDS
+from app.dependencies import (word_core_cache_key, word_sentence_cache_key,
+    redis_get_json, redis_get_json_sliding, redis_set_json, get_word_sentence_cache_version,
+    extract_word_core_payload)
 from utils.logger import get_logger
 from utils.storage import get_file_download_link, delete_storage_file
 from schemas.constants import DEFAULT_LIMIT
+
+if TYPE_CHECKING:
+    from utils.db import DBHandling
+    import redis.asyncio as aioredis 
 
 log = get_logger(__name__)
 
@@ -42,7 +48,7 @@ async def _paginated_query(cache_key: tuple, count_fn, list_fn,
     return await list_fn(limit, limit * (page - 1)), page_count
 
 
-async def toggle_star_helper(db: DBHandling, user_id: int, obj_id: int, obj_type: str, star: int) -> bool:
+async def toggle_star_helper(db: "DBHandling", user_id: int, obj_id: int, obj_type: str, star: int) -> bool:
     """Turn star on or off. Return true if success, false otherwise."""
     star_stt = True if star == 1 else False
     if obj_type == "word":
@@ -52,7 +58,7 @@ async def toggle_star_helper(db: DBHandling, user_id: int, obj_id: int, obj_type
     else:
         return False
 
-async def delete_book_helper(db: DBHandling, book_id: int, object_name: str = "") -> bool:
+async def delete_book_helper(db: "DBHandling", book_id: int, object_name: str = "") -> bool:
     """Delete DB record, if success then delete storage file.
     Return True if all success, False otherwise."""
     async with db.transaction():
@@ -71,7 +77,7 @@ async def delete_book_helper(db: DBHandling, book_id: int, object_name: str = ""
 
     return True
 
-async def get_all_book_name_and_id(db: DBHandling):
+async def get_all_book_name_and_id(db: "DBHandling"):
     """call db.list_books with no star, 0 offset, query all"""
     return await db.list_books(star=None, limit=None, offset=0)
 
@@ -91,13 +97,55 @@ async def handle_search_word(db: "DBHandling", word: str, limit: int, bp_prefix:
         w["senses"] = db.get_meanings(w["word"], w["senses"])[0]
     return {"results": res, "bpPrefix": bp_prefix}
 
-async def handle_view_specific_word(db: "DBHandling", user_id: int, word_id: int, sentence_limit: int) -> Tuple[dict, List[str]]:
+async def handle_view_specific_word(
+    db: "DBHandling",
+    user_id: int,
+    word_id: int,
+    sentence_limit: int,
+    redis: "aioredis" = None,
+) -> Tuple[dict, List[str]]:
     """
     Handle viewing a JP word with `sentence_limit` amount of sentence examples.
     """
-    res: dict = await db.get_exact_word(user_id=user_id, word_id=word_id)
+    res: dict | None = None
+
+    # Word core cache is shared across users and uses sliding expiration.
+    core_key = word_core_cache_key(word_id)
+    if redis is not None:
+        cached_core = await redis_get_json_sliding(redis, core_key, WORD_CORE_CACHE_EXPIRE_SECONDS)
+        if isinstance(cached_core, dict) and cached_core.get("word_id"):
+            res = cached_core
+
+    # If no cache, get from DB, purposely not getting user related info
+    if res is None:
+        res = await db.get_exact_word(word_id=word_id)
+        if redis is not None and res:
+            core_payload = extract_word_core_payload(res)
+            await redis_set_json(redis, core_key, core_payload, WORD_CORE_CACHE_EXPIRE_SECONDS)
+
+    if not res:
+        return {}, []
+
+    progress = await db.get_user_word_progress(user_id=user_id, word_id=word_id)
+    res.update(progress)
     res["meanings"] = [chunk.strip() for chunk in res["senses"].split(";") if chunk.strip()]
-    sentence_examples = await db.get_sentences_containing_word_by_id(res["word_id"], sentence_limit)
+
+    sentence_examples = []
+    if redis is not None:
+        version = await get_word_sentence_cache_version(redis)
+        sen_key = word_sentence_cache_key(res["word_id"], sentence_limit, version)
+        sentence_examples = await redis_get_json(redis, sen_key)
+        if not sentence_examples:
+            sentence_examples = await db.get_sentences_containing_word_by_id(
+                res["word_id"], sentence_limit, res["word"],
+            )
+            await redis_set_json(
+                redis, sen_key, sentence_examples, WORD_SENTENCE_EXPIRE_SECONDS,
+            )
+    else:
+        sentence_examples = await db.get_sentences_containing_word_by_id(
+            res["word_id"], sentence_limit, res["word"],
+        )
     return res, sentence_examples
 
 async def handle_view_words(db: "DBHandling" = None, user_id: int = None, jlpt_level: str = "", star: bool = False,

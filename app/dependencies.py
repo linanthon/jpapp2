@@ -1,11 +1,13 @@
 import asyncpg
+import json
 from fastapi import Request, Depends, HTTPException
 import redis.asyncio as aioredis
 
 from utils.db import DBHandling
 from utils.process_data import ProcessData
 from utils.auth import verify_token
-from app.config import bpv1_url_prefix
+from app.config import (bpv1_url_prefix, WORD_CORE_CACHE_EXPIRE_SECONDS,
+                    WORD_SENTENCE_EXPIRE_SECONDS, WORD_SENTENCE_VERSION_KEY)
 
 
 # ===== FastAPI Dependency Injection =====
@@ -105,6 +107,100 @@ def rate_limiter(max_calls: int, period_seconds: int):
                 detail=f"Too many requests. Limit: {max_calls} per {period_seconds}s."
             )
     return _check
+
+
+# ===== Redis cache helpers =====
+def word_core_cache_key(word_id: int) -> str:
+    """Make word ID cache key for storing to Redis.
+    The value should be the word value from DB, unrelated to user data."""
+    return f"word_core:{word_id}"
+
+def word_sentence_cache_key(word_id: int, sentence_limit: int, version: int) -> str:
+    """Make word's sentence example (shows in view feature) cache key
+    for storing to Redis, requires version for old ver to eventually die out
+    after inserting/deleting file/string/book."""
+    return f"word_sentence:v{version}:{word_id}:l{max(1, sentence_limit)}"
+
+
+def extract_word_core_payload(word_data: dict | None) -> dict:
+    """Return only cache-safe, user-agnostic fields from a word payload."""
+    if not isinstance(word_data, dict):
+        return {}
+    core_fields = (
+        "word_id",
+        "word",
+        "senses",
+        "spelling",
+        "forms",
+        "jlpt_level",
+        "audio_mapping",
+        "occurrence",
+    )
+    return {field: word_data.get(field) for field in core_fields}
+
+
+async def redis_get_json(redis: aioredis.Redis, key: str):
+    """Get JSON payload from Redis without modifying TTL."""
+    value = await redis.get(key)
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode("utf-8")
+        return json.loads(value)
+    except (UnicodeDecodeError, TypeError, json.JSONDecodeError):
+        await redis.delete(key)
+        return None
+
+async def redis_get_json_sliding(redis: aioredis.Redis, key: str, ttl_seconds: int):
+    """Get redis value by key and refresh its TTL"""
+    ttl_seconds = max(1, int(ttl_seconds))
+    try:
+        value = await redis.getex(key, ex=ttl_seconds)
+    except Exception:
+        value = await redis.get(key)
+        if value is not None:
+            await redis.expire(key, ttl_seconds)
+    if value is None:
+        return None
+    try:
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode("utf-8")
+        return json.loads(value)
+    except (UnicodeDecodeError, TypeError, json.JSONDecodeError):
+        await redis.delete(key)
+        return None
+
+
+async def redis_set_json(redis: aioredis.Redis, key: str, payload, ttl_seconds: int) -> None:
+    """Store `payload` as json value to Redis"""
+    await redis.setex(
+        key,
+        max(1, int(ttl_seconds)),
+        json.dumps(payload, ensure_ascii=False),
+    )
+
+async def get_word_sentence_cache_version(redis: aioredis.Redis) -> int:
+    """Manages word sentence example version. The version gets bumped
+    when insert/delete file/string/book."""
+    raw = await redis.get(WORD_SENTENCE_VERSION_KEY)
+    if raw is None:
+        await redis.set(WORD_SENTENCE_VERSION_KEY, 1)
+        return 1
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        await redis.set(WORD_SENTENCE_VERSION_KEY, 1)
+        return 1
+
+
+async def bump_word_sentence_cache_version(redis: aioredis.Redis) -> int:
+    """Bump sentence-example version when changes happened to books
+    (insert file, insert string, and delete book), so view requests
+    will add new sentence example of the words with the new version,
+    the old version will eventually be timed out
+    """
+    return int(await redis.incr(WORD_SENTENCE_VERSION_KEY))
 
 
 # ===== Template Helpers =====

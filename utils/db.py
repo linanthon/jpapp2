@@ -879,13 +879,14 @@ class DBHandling:
         )
         return status is not None
 
-    async def get_exact_word(self, user_id: int = None, word_id: int = None) -> dict | None:
+    async def get_exact_word(self, word_id: int = None, user_id: int = None) -> dict | None:
         """
-        Query a word by word ID and user ID (to get star) in DB.
+        Query a word by word ID and user ID in DB.
+        If no user ID, then won't get star and user progress.
 
         Input:
-        - user_id: the user ID.
-        - word_id: the word ID.
+        - word_id (required): the word ID.
+        - user_id (optional): the user ID.
         """
         if not word_id:
             return None
@@ -940,6 +941,56 @@ class DBHandling:
         if row:
             return row["quized"]
         return 0
+
+    async def get_user_word_progress(self, user_id: int, word_id: int) -> Dict[str, Any]:
+        """Get user progress (star/quized/priority) for a word.
+        Returns default values when there is no progress row yet.
+        Example output: {"star": False, "quized": 10, "priority": 0.9}
+        """
+        if user_id is None or not word_id:
+            return {"star": False, "quized": 0, "priority": 0}
+
+        row = await self._fetchrow(
+            f"SELECT star, quized, priority FROM {TABLE_USER_WORD_PROGRESS} WHERE user_id = $1 AND word_id = $2;",
+            user_id, word_id,
+        )
+        if not row:
+            return {"star": False, "quized": 0, "priority": 0}
+        return {
+            "star": bool(row["star"]),
+            "quized": row["quized"] if row["quized"] is not None else 0,
+            "priority": row["priority"] if row["priority"] is not None else 0,
+        }
+
+    async def get_words_occurrence_quized_batch(self, user_id: int,
+                                                word_ids: List[int]) -> Dict[int, Dict[str, int]]:
+        """Get occurrence and quized for multiple words in a single query.
+
+        Output shape:
+        {
+            word_id: {"occurrence": int, "quized": int},
+            ...
+        }
+        """
+        if user_id is None or not word_ids:
+            return {}
+
+        rows = await self._fetch(
+            f"""SELECT w.id AS word_id, w.occurrence AS occurrence, COALESCE(up.quized, 0) AS quized
+                FROM {TABLE_WORDS} AS w
+                LEFT JOIN {TABLE_USER_WORD_PROGRESS} AS up ON up.word_id = w.id AND up.user_id = $1
+                WHERE w.id = ANY($2);""",
+            user_id,
+            word_ids,
+        )
+
+        res: Dict[int, Dict[str, int]] = {}
+        for row in rows:
+            res[row["word_id"]] = {
+                "occurrence": row["occurrence"],
+                "quized": row["quized"],
+            }
+        return res
 
     async def list_words(self, user_id: int = None, jlpt_level: str = "", star: bool = False,
                          limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:

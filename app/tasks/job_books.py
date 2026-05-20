@@ -1,6 +1,7 @@
 import redis.asyncio as aioredis
 from fastapi import UploadFile
 
+from app.dependencies import bump_word_sentence_cache_version
 from app.handlers.insert import handle_insert_file_stream, handle_insert_str_stream
 from app.handlers.view import delete_book_helper
 from app.taskiq_broker import broker
@@ -60,6 +61,8 @@ async def process_insert_str_job(batch_item_id: str, book_id: int, data: str) ->
 
 		await handle_insert_str_stream(pdata, db, redis, book_id, data)
 		await db.update_insert_book_status_finished(book_id)
+		if redis is not None:
+			await bump_word_sentence_cache_version(redis)
 		await db.update_job_book_batch_item_status(batch_item_id, "FINISHED")
 
 	except Exception as e:
@@ -100,6 +103,8 @@ async def process_insert_file_job(batch_item_id: str, book_id: int, object_name:
 		upload = UploadFile(file=file_stream, filename=filename, size=file_size)
 		await handle_insert_file_stream(pdata, db, redis, book_id, upload)
 		await db.update_insert_book_status_finished(book_id)
+		if redis is not None:
+			await bump_word_sentence_cache_version(redis)
 		await db.update_job_book_batch_item_status(batch_item_id, "FINISHED")
 
 	except Exception as e:
@@ -141,6 +146,8 @@ async def process_delete_job_book(job_id: str, book_id: int, object_name: str = 
 			await db.update_job_book_batch_item_status(batch_item_id, "FAILED_PROCESS", error="Failed to delete book")
 			raise RuntimeError("Failed to delete book")
 
+		if redis is not None:
+			await bump_word_sentence_cache_version(redis)
 		await db.update_job_book_batch_item_status(batch_item_id, "FINISHED")
 	except Exception as e:
 		if db is not None:

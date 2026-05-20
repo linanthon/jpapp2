@@ -37,6 +37,7 @@ def mock_db():
         "update_words_known", "update_word_star",
         "query_search_word", "get_exact_word",
         "get_word_occurence", "get_user_word_quized",
+        "get_words_occurrence_quized_batch",
         "list_words", "count_words",
         "insert_update_sentence", "get_sentences_containing_word_by_id",
         "query_like_sentence", "query_random_sentences", "get_exact_sentence",

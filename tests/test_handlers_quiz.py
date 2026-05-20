@@ -4,6 +4,7 @@ from unittest.mock import patch
 from app.handlers.quiz import (
     build_quizes,
     update_word_prio_after_answering,
+    update_word_prio_after_session,
     change_word_prio_to_negative,
     reset_word_prio,
 )
@@ -42,6 +43,23 @@ class TestUpdateWordPrioAfterAnswering:
             user_id=1, word_id=10, occurrence=10, quized=0
         )
 
+    @pytest.mark.asyncio
+    async def test_fallback_to_db_values_when_missing_counts(self, mock_db):
+        mock_db.get_word_occurence.return_value = (10, 12)
+        mock_db.get_user_word_quized.return_value = 4
+        mock_db.update_quized_prio_ts.return_value = True
+
+        result = await update_word_prio_after_answering(
+            mock_db, user_id=1, word_id=10, is_correct=True
+        )
+
+        assert result is True
+        mock_db.get_word_occurence.assert_called_once_with(word_id=10)
+        mock_db.get_user_word_quized.assert_called_once_with(user_id=1, word_id=10)
+        mock_db.update_quized_prio_ts.assert_called_once_with(
+            user_id=1, word_id=10, occurrence=12, quized=5
+        )
+
 
 # ── change_word_prio_to_negative ──────────────────────────────────────────────
 class TestChangeWordPrioToNegative:
@@ -67,16 +85,71 @@ class TestResetWordPrio:
     @pytest.mark.asyncio
     async def test_queries_when_values_none(self, mock_db):
         mock_db.get_word_occurence.return_value = (5, 12)
+        mock_db.get_user_word_quized.return_value = 3
         mock_db.update_quized_prio_ts.return_value = True
         result = await reset_word_prio(mock_db, user_id=1, word_id=5)
         assert result is True
         mock_db.get_word_occurence.assert_called_once_with(word_id=5)
+        mock_db.get_user_word_quized.assert_called_once_with(user_id=1, word_id=5)
+        mock_db.update_quized_prio_ts.assert_called_once_with(
+            user_id=1, word_id=5, occurrence=12, quized=3
+        )
 
     @pytest.mark.asyncio
     async def test_returns_false_when_no_occurrence(self, mock_db):
         mock_db.get_word_occurence.return_value = (0, 0)
         result = await reset_word_prio(mock_db, user_id=1, word_id=5)
         assert result is False
+
+
+class TestUpdateWordPrioAfterSession:
+    @pytest.mark.asyncio
+    async def test_aggregates_same_word_and_updates_once(self, mock_db):
+        mock_db.get_words_occurrence_quized_batch.return_value = {
+            7: {"occurrence": 9, "quized": 4}
+        }
+        mock_db.update_quized_prio_ts.return_value = True
+
+        result = await update_word_prio_after_session(
+            mock_db,
+            user_id=1,
+            answers=[
+                {"word_id": 7, "is_correct": True},
+                {"word_id": 7, "is_correct": False},
+                {"word_id": 7, "is_correct": True},
+            ],
+        )
+
+        assert result == {"total": 1, "updated": 1, "failed": 0}
+        mock_db.get_words_occurrence_quized_batch.assert_called_once_with(
+            user_id=1, word_ids=[7]
+        )
+        mock_db.update_quized_prio_ts.assert_called_once_with(
+            user_id=1, word_id=7, occurrence=9, quized=5
+        )
+
+    @pytest.mark.asyncio
+    async def test_fetches_all_missing_words_in_one_batch(self, mock_db):
+        mock_db.get_words_occurrence_quized_batch.return_value = {
+            7: {"occurrence": 9, "quized": 4},
+            8: {"occurrence": 12, "quized": 0},
+        }
+        mock_db.update_quized_prio_ts.return_value = True
+
+        result = await update_word_prio_after_session(
+            mock_db,
+            user_id=1,
+            answers=[
+                {"word_id": 7, "is_correct": True},
+                {"word_id": 8, "is_correct": False},
+            ],
+        )
+
+        assert result == {"total": 2, "updated": 2, "failed": 0}
+        mock_db.get_words_occurrence_quized_batch.assert_called_once()
+        args, kwargs = mock_db.get_words_occurrence_quized_batch.call_args
+        assert kwargs["user_id"] == 1
+        assert set(kwargs["word_ids"]) == {7, 8}
 
 
 # ── build_quizes ──────────────────────────────────────────────────────────────
