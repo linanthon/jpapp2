@@ -54,4 +54,4 @@ Prioritise TTS (non-AI)
 - JP: openjtalk python wrapper: https://pypi.org/project/pyopenjtalk-plus/ with Mei normal htsvoice and openjtalk utf-8 dictionary
 - EN: eSpeak NG model (no wrapper)
 
-Can disable TTS, will use pre-recorded audio of each character in that word's kana form. Worse in quality, built-in this app.
+Can disable TTS, will use pre-recorded audio of each character in that word's kana form. Worse in quality, built-in this app. This approach is called StaticA in source code.

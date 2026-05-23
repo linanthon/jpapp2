@@ -10,7 +10,8 @@ from utils.db import DBHandling
 from utils.process_data import ProcessData
 from utils.auth import verify_token
 from app.config import (bpv1_url_prefix, WORD_CORE_CACHE_EXPIRE_SECONDS,
-                    WORD_SENTENCE_EXPIRE_SECONDS, WORD_SENTENCE_VERSION_KEY)
+                    WORD_SENTENCE_EXPIRE_SECONDS, WORD_SENTENCE_VERSION_KEY,
+                    TTS_MAX_TEXT_LEN)
 
 
 # ===== FastAPI Dependency Injection =====
@@ -279,6 +280,11 @@ def validate_tts_request(body: dict):
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="Invalid text to speech request. 'text' must not be empty.",
+        )
+    if len(text) > TTS_MAX_TEXT_LEN:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail=f"Invalid text to speech request. EN 'text' must be <= {TTS_MAX_TEXT_LEN} characters. JP 'text' must be <= {TTS_MAX_TEXT_LEN/3} characters.",
         )
 
     # Allow phrases by stripping spaces and common punctuation before language validation.

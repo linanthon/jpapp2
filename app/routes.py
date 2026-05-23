@@ -38,10 +38,12 @@ from utils.logger import get_logger
 from utils.process_data import ProcessData
 from utils.storage import (upload_file_to_minio, upload_string_to_minio,
                            generate_presigned_upload_url, PRESIGNED_URL_EXPIRY, storage_object_exists)
+from utils.tts import TTSService, TTSAdapterError
 
 # Create router
 router = APIRouter()
 log = get_logger(__name__)
+tts_service = TTSService()
 
 # Setup templates (html files)
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
@@ -783,25 +785,40 @@ def serve_audio(filename: str):
     )
 
 
-@router.get("/tts")
-def text_to_speech(
-    request: Request,
+@router.post("/tts")
+async def text_to_speech(
+    body: dict = Body(...),
+    db: DBHandling = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    """Generate audio file for payload {'text': '...', 'lang': ...}."""
-    text, lang = validate_tts_request(request.body)
-    cache_headers = {
-        # Audio fragments are effectively immutable; long-lived browser cache is safe.
-        "Cache-Control": "public, max-age=31536000, immutable",
-    }
+    """Generate WAV bytes from payload {'text': '...', 'lang': 'jp'|'en'}.
 
-    cached = redis.get(f"{text}:{lang}")
-    if cached:
-        return FileResponse(
-            cached, media_type='audio/wav', headers=cache_headers,
-        )
-    
-    
+    The endpoint exposes one contract while routing to language-specific engines.
+    """
+    text, lang = validate_tts_request(body)
+
+    try:
+        result = await tts_service.synthesize(text, lang, redis)
+    except TTSAdapterError as exc:
+        fallback = await tts_service.build_statica_fallback(text, lang, str(exc), db)
+        if fallback:
+            return JSONResponse(status_code=HTTPStatus.OK, content=fallback)
+        raise HTTPException(
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+            detail={"source": "tts", "reason": str(exc), "lang": lang},
+        ) from exc
+
+    return Response(
+        content=result.wav_bytes,
+        media_type='audio/wav',
+        headers={
+            "Cache-Control": "private, max-age=120",
+            "X-TTS-Engine": result.engine,
+            "X-TTS-Lang": lang,
+            "X-TTS-Source": result.source,
+            "X-TTS-Object": result.object_name,
+        },
+    )
 
 
 @router.get("/view/book")
