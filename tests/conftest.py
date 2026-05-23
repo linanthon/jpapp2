@@ -33,10 +33,11 @@ def mock_db():
         "create_job_book_batch_item", "claim_job_book_batch_item_for_upload",
         "get_job_book_batch_item", "update_job_book_batch_item_queued_process",
         "update_job_book_batch_item_status", "update_job_book_batch_status",
+        "create_job_tts", "get_job_tts", "claim_job_tts", "update_job_tts_finished", "update_job_tts_failed",
         "insert_word", "update_word_occurrence", "update_word_jlpt",
         "update_words_known", "update_word_star",
         "query_search_word", "get_exact_word",
-        "get_word_occurence", "get_user_word_quized",
+        "get_word_occurence", "get_user_word_quized", "get_user_word_progress",
         "get_words_occurrence_quized_batch",
         "list_words", "count_words",
         "insert_update_sentence", "get_sentences_containing_word_by_id",
@@ -46,6 +47,9 @@ def mock_db():
         "get_meanings_from_db", "get_user_progress",
     ]:
         setattr(db, attr, AsyncMock())
+
+    # Helpful default payloads for async methods used as dict values.
+    db.get_user_word_progress.return_value = {"star": False, "quized": 0, "priority": 0}
 
     # Synchronous helpers
     db.get_meanings = MagicMock(return_value=["meaning1", "meaning2"])

@@ -186,6 +186,55 @@ class TestTTSRoute:
         resp = await client.post("/v1/tts", json={"text": "hello", "lang": "jp"})
         assert resp.status_code == HTTPStatus.BAD_REQUEST
 
+    @pytest.mark.asyncio
+    async def test_tts_bg_queues_job(self, client, mock_db):
+        mock_db.create_job_tts.return_value = "job-tts-1"
+        with patch(
+            "app.routes.tts_service.get_cached_for_request",
+            return_value=None,
+        ), patch(
+            "app.routes.process_tts_job.kiq",
+            new=AsyncMock(),
+        ) as kiq_mock:
+            resp = await client.post("/v1/tts/bg", json={"text": "こんにちは", "lang": "jp"})
+
+        assert resp.status_code == HTTPStatus.ACCEPTED
+        data = resp.json()
+        assert data["job_id"] == "job-tts-1"
+        assert data["status"] == "QUEUED"
+        kiq_mock.assert_awaited_once_with(job_id="job-tts-1")
+
+    @pytest.mark.asyncio
+    async def test_tts_bg_status_and_audio(self, client, mock_db):
+        job_payload = {
+            "id": "job-tts-2",
+            "status": "FINISHED",
+            "text": "こんにちは",
+            "lang": "jp",
+            "voice_options": {},
+        }
+        mock_db.get_job_tts.return_value = job_payload
+
+        status_resp = await client.get("/v1/tts/job/job-tts-2")
+        assert status_resp.status_code == HTTPStatus.OK
+        assert status_resp.json()["status"] == "FINISHED"
+
+        with patch(
+            "app.routes.tts_service.get_cached_for_request",
+            return_value=TTSAudio(
+                wav_bytes=b"RIFFdemo",
+                sample_rate=0,
+                engine="pyopenjtalk-plus",
+                source="redis",
+                object_name="audio/tts/jp/pyopenjtalk-plus/demo.wav",
+            ),
+        ):
+            audio_resp = await client.get("/v1/tts/job/job-tts-2/audio")
+
+        assert audio_resp.status_code == HTTPStatus.OK
+        assert audio_resp.headers.get("content-type", "").startswith("audio/wav")
+        assert audio_resp.headers.get("x-tts-job") == "job-tts-2"
+
 
 # ── Insert File ──────────────────────────────────────────────────────────────
 class TestInsertFileRoute:
