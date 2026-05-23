@@ -5,6 +5,12 @@ import os
 from dotenv import load_dotenv
 load_dotenv()
 
+def _env_bool(name: str, default: bool) -> bool:
+	raw = os.getenv(name)
+	if raw is None:
+		return default
+	return raw.strip().lower() in {"1", "true", "yes", "on"}
+
 # DB
 DB_USER = os.getenv("DB_USER", "")
 DB_PASS = os.getenv("DB_PASS", "")
@@ -47,6 +53,18 @@ MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "miniouser")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "miniopass")
 MINIO_BUCKET = os.getenv("MINIO_BUCKET", "jpapp-books")
 MAX_INSERT_STRING_BYTES = int(os.getenv("MAX_INSERT_STRING_BYTES", 15000))  # 15kb = 5k JP characters
+
+# Audio
+TTS_ENABLED = _env_bool("TTS_ENABLED", True)
+TTS_DEFAULT_JP_ENGINE = os.getenv("TTS_DEFAULT_JP_ENGINE", "openjtalk")
+TTS_DEFAULT_EN_ENGINE = os.getenv("TTS_DEFAULT_EN_ENGINE", "espeak")
+OPENJTALK_BIN = os.getenv("OPENJTALK_BIN", "open_jtalk")
+OPENJTALK_DIC_PATH = os.getenv("OPENJTALK_DIC_PATH", "tts/open_jtalk_dic_utf_8-1.11")
+OPENJTALK_VOICE_PATH = os.getenv("OPENJTALK_VOICE_PATH", "tts/mei_normal.htsvoice") # one voice only
+ESPEAK_BIN = os.getenv("ESPEAK_BIN", "espeak-ng")
+ESPEAK_EN_VOICE = os.getenv("ESPEAK_EN_VOICE", "en-us")
+TTS_TIMEOUT_MS = int(os.getenv("TTS_TIMEOUT_MS", 2000))
+TTS_MAX_TEXT_LEN = int(os.getenv("TTS_MAX_TEXT_LEN", 500))
 
 # Blueprint prefix
 bpv1_url_prefix = "/v1"

@@ -187,6 +187,9 @@ ROMAJI_MAP = {
 def is_japanese_word(word: str) -> bool:
     return bool(JP_WORD_PATTERN.fullmatch(word))
 
+def is_english_word(word: str) -> bool:
+    return bool(EN_WORD_PATTERN.fullmatch(word))
+
 def is_word_or_number(input_str: str) -> bool:
     """Check if a string only contains letters, digits and underscore"""
     return bool(re.fullmatch(r"\w+", input_str))

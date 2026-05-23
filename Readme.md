@@ -19,8 +19,9 @@ TODO backend:
 - ~~API now is concurrent, insert will meet `process_data` bottle neck --> move to background job~~
 - ~~Move jlpt level data scraping into bg job~~
 - ~~Auto read jlpt level at start (after scrape)~~
-- Can insert multiple files
-- Redis LRU words
+- ~~Can insert multiple files~~
+- ~~Redis LRU words + sentence examples~~
+- TTS
 
 TODO frontend
 - Quiz update to Redis in session, update to DB once at end
@@ -45,3 +46,12 @@ Start API server
 * python -m app.main
 
 App will auto load jlpt level data if existed in DB, otherwise call /v1/jlpt/scrape/bg/{source_id} to scrape and load data, currently only allow `source_id=1`.
+
+
+Audio
+
+Prioritise TTS (non-AI)
+- JP: openjtalk python wrapper: https://pypi.org/project/pyopenjtalk-plus/ with Mei normal htsvoice and openjtalk utf-8 dictionary
+- EN: eSpeak NG model (no wrapper)
+
+Can disable TTS, will use pre-recorded audio of each character in that word's kana form. Worse in quality, built-in this app.

@@ -17,7 +17,7 @@ from app.handlers.view import (handle_search_word, handle_view_specific_word, ha
                                toggle_star_helper, delete_book_helper, get_all_book_name_and_id)
 from app.dependencies import (
     get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user,
-    rate_limiter, redis_get_json, redis_set_json
+    rate_limiter, redis_get_json, redis_set_json, validate_tts_request
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                update_word_prio_after_session, change_word_prio_to_negative, reset_word_prio)
@@ -770,7 +770,7 @@ async def toggle_star(
 
 @router.get("/audio/{filename}")
 def serve_audio(filename: str):
-    """Serve audio files"""
+    """Serve audio files. This approach is called as 'StaticA'."""
     audio_dir = os.path.join(os.path.dirname(__file__), "..", AUDIO_DIR)
     cache_headers = {
         # Audio fragments are effectively immutable; long-lived browser cache is safe.
@@ -781,6 +781,27 @@ def serve_audio(filename: str):
         media_type='audio/wav',
         headers=cache_headers,
     )
+
+
+@router.get("/tts")
+def text_to_speech(
+    request: Request,
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Generate audio file for payload {'text': '...', 'lang': ...}."""
+    text, lang = validate_tts_request(request.body)
+    cache_headers = {
+        # Audio fragments are effectively immutable; long-lived browser cache is safe.
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+
+    cached = redis.get(f"{text}:{lang}")
+    if cached:
+        return FileResponse(
+            cached, media_type='audio/wav', headers=cache_headers,
+        )
+    
+    
 
 
 @router.get("/view/book")

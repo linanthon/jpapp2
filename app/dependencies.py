@@ -1,8 +1,11 @@
 import asyncpg
 import json
+import re
+from http import HTTPStatus
 from fastapi import Request, Depends, HTTPException
 import redis.asyncio as aioredis
 
+from utils.data import is_english_word, is_japanese_word
 from utils.db import DBHandling
 from utils.process_data import ProcessData
 from utils.auth import verify_token
@@ -37,18 +40,21 @@ async def get_current_user_id(
     # Get token from authorization header
     auth_header = request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid authorization header")
+        raise HTTPException(
+            status_code=HTTPStatus.UNAUTHORIZED,
+            detail="Missing or invalid authorization header",
+        )
     token = auth_header.split(" ")[1]
     
     # Check if token is blacklisted
     is_blacklisted = await redis.get(f"blacklist:{token}")
     if is_blacklisted:
-        raise HTTPException(status_code=401, detail="Token has been revoked")
+        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Token has been revoked")
     
     # Verify token and get user_id
     user_id = verify_token(token, token_type="access")
     if not user_id:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="Invalid or expired token")
     return user_id
 
 async def get_current_user(
@@ -66,7 +72,7 @@ async def get_current_user(
     user_id = await get_current_user_id(request, redis)
     user = await db.get_user_by_id(user_id)
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
+        raise HTTPException(status_code=HTTPStatus.UNAUTHORIZED, detail="User not found")
     return user
 
 async def get_current_admin_user(
@@ -79,7 +85,7 @@ async def get_current_admin_user(
     Output: dict containing id, username, email, is_admin, created_at
     """
     if not current_user['is_admin']:
-        raise HTTPException(status_code=403, detail="Admin access required")
+        raise HTTPException(status_code=HTTPStatus.FORBIDDEN, detail="Admin access required")
     return current_user
 
 def rate_limiter(max_calls: int, period_seconds: int):
@@ -103,7 +109,7 @@ def rate_limiter(max_calls: int, period_seconds: int):
             await redis.expire(key, period_seconds)
         if count > max_calls:
             raise HTTPException(
-                status_code=429,
+                status_code=HTTPStatus.TOO_MANY_REQUESTS,
                 detail=f"Too many requests. Limit: {max_calls} per {period_seconds}s."
             )
     return _check
@@ -256,3 +262,34 @@ def get_jinja_globals():
         return routes.get(endpoint, '#')
     
     return {'url': url, 'url_prefix': url_prefix}
+
+# ===== Others =====
+def validate_tts_request(body: dict):
+    text = body.get("text", "")
+    lang = body.get("lang", "").lower()
+
+    if not isinstance(text, str) or not isinstance(lang, str):
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail="Invalid text to speech request. 'lang' can only be either 'en' or 'jp', and 'text' must be in the specified language.",
+        )
+
+    text = text.strip()
+    if not text:
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail="Invalid text to speech request. 'text' must not be empty.",
+        )
+
+    # Allow phrases by stripping spaces and common punctuation before language validation.
+    normalized_text = re.sub(r"[\s\-_'\".,!?;:()\[\]{}]+", "", text)
+    normalized_text = normalized_text.replace("、", "").replace("。", "")
+
+    if (lang == "en" and is_english_word(normalized_text)) or \
+        (lang == "jp" and is_japanese_word(normalized_text)):
+        return text, lang
+
+    raise HTTPException(
+        status_code=HTTPStatus.BAD_REQUEST,
+        detail="Invalid text to speech request. 'lang' can only be either 'en' or 'jp', and 'text' must be in the specified language."
+    )
