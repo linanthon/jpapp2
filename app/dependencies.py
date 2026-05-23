@@ -299,3 +299,49 @@ def validate_tts_request(body: dict):
         status_code=HTTPStatus.BAD_REQUEST,
         detail="Invalid text to speech request. 'lang' can only be either 'en' or 'jp', and 'text' must be in the specified language."
     )
+
+def parse_tts_voice_options(body: dict, lang: str) -> dict:
+    """Parse optional voice controls for /tts request.
+
+    Supports:
+    - speed: float, allowed range [0.5, 2.0]
+    - pitch or half_tone: float, allowed range [-24, 24]
+    """
+    if lang != "jp":
+        return {}
+
+    voice_options: dict = {}
+
+    raw_speed = body.get("speed")
+    if raw_speed is not None:
+        try:
+            speed = float(raw_speed)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail="Invalid tts option: 'speed' must be a number in range [0.5, 2.0].",
+            )
+        if speed < 0.5 or speed > 2.0:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail="Invalid tts option: 'speed' must be in range [0.5, 2.0].",
+            )
+        voice_options["speed"] = speed
+
+    raw_half_tone = body.get("half_tone", body.get("pitch"))
+    if raw_half_tone is not None:
+        try:
+            half_tone = float(raw_half_tone)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail="Invalid tts option: 'pitch'/'half_tone' must be a number in range [-24, 24].",
+            )
+        if half_tone < -24 or half_tone > 24:
+            raise HTTPException(
+                status_code=HTTPStatus.BAD_REQUEST,
+                detail="Invalid tts option: 'pitch'/'half_tone' must be in range [-24, 24].",
+            )
+        voice_options["half_tone"] = half_tone
+
+    return voice_options

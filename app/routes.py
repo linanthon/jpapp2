@@ -14,10 +14,10 @@ from app.handlers.insert import compensate_insert_saga
 from app.handlers.progress import handle_progress
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                                handle_view_books, handle_view_specific_book,
-                               toggle_star_helper, delete_book_helper, get_all_book_name_and_id)
+                               toggle_star_helper, get_all_book_name_and_id)
 from app.dependencies import (
     get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user,
-    rate_limiter, redis_get_json, redis_set_json, validate_tts_request
+    rate_limiter, redis_get_json, redis_set_json, validate_tts_request, parse_tts_voice_options
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                update_word_prio_after_session, change_word_prio_to_negative, reset_word_prio)
@@ -792,13 +792,15 @@ async def text_to_speech(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     """Generate WAV bytes from payload {'text': '...', 'lang': 'jp'|'en'}.
+    Synchronous get/generate-upload audio. For async, use /tts/bg.
 
     The endpoint exposes one contract while routing to language-specific engines.
     """
     text, lang = validate_tts_request(body)
+    voice_options = parse_tts_voice_options(body, lang)
 
     try:
-        result = await tts_service.synthesize(text, lang, redis)
+        result = await tts_service.synthesize(text, lang, redis, voice_options=voice_options)
     except TTSAdapterError as exc:
         fallback = await tts_service.build_statica_fallback(text, lang, str(exc), db)
         if fallback:

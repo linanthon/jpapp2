@@ -4,13 +4,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import io
+import json
 from tempfile import NamedTemporaryFile
 import subprocess
 import wave
 import numpy as np
 from typing import TYPE_CHECKING
 
-from app.config import ESPEAK_BIN, ESPEAK_EN_VOICE, TTS_TIMEOUT_MS
+from app.config import (
+    ESPEAK_BIN, ESPEAK_EN_VOICE, TTS_TIMEOUT_MS,
+    TTS_JP_HALF_TONE_DEFAULT, TTS_JP_SPEED_DEFAULT,
+)
 from utils.process_data import sep_mora_get_audio_mapping
 from utils.storage import get_file_from_minio_as_stream, storage_object_exists, upload_file_to_minio
 
@@ -67,13 +71,21 @@ class JPAdapterPyOpenJTalk:
 
     engine_name = "pyopenjtalk-plus"
 
-    def synthesize(self, text: str) -> TTSAudio:
+    def __init__(self, speed_default: float = TTS_JP_SPEED_DEFAULT, half_tone_default: float = TTS_JP_HALF_TONE_DEFAULT):
+        """Configure default JP synthesis voice controls."""
+        self.speed_default = speed_default
+        self.half_tone_default = half_tone_default
+
+    def synthesize(self, text: str, speed: float = None, half_tone: float = None) -> TTSAudio:
         """Synthesize Japanese text into WAV bytes."""
         if pyopenjtalk is None:
             raise TTSAdapterError("pyopenjtalk is not available")
 
+        speed = self.speed_default if speed is None else float(speed)
+        half_tone = self.half_tone_default if half_tone is None else float(half_tone)
+
         try:
-            pcm, sample_rate = pyopenjtalk.tts(text)
+            pcm, sample_rate = pyopenjtalk.tts(text, speed=speed, half_tone=half_tone)
         except Exception as exc:
             raise TTSAdapterError(f"JP synthesis failed: {exc}") from exc
 
@@ -128,9 +140,12 @@ class TTSService:
         self.redis_ttl_sec = 60 * 60 * 24
 
     @staticmethod
-    def _cache_object_name(text: str, lang: str, engine: str) -> str:
+    def _cache_object_name(text: str, lang: str, engine: str, voice_options: dict | None = None) -> str:
         """Return object name for MinIO/S3 caching of generated audio."""
-        key = f"v1:{engine}:{lang}:{text}".encode("utf-8")
+        options_str = ""
+        if voice_options:
+            options_str = json.dumps(voice_options, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        key = f"v1:{engine}:{lang}:{text}:{options_str}".encode("utf-8")
         digest = hashlib.sha256(key).hexdigest()
         return f"audio/tts/{lang}/{engine}/{digest}.wav"
 
@@ -163,7 +178,8 @@ class TTSService:
         return None, None
 
     async def _cache_set(self, object_name: str, wav_bytes: bytes, redis: "aioredis.Redis" = None) -> None:
-        """Write-through audio cache to both Redis and MinIO, best-effort."""
+        """Write-through audio cache to both Redis and MinIO, best-effort
+        (no Redis-MinIO atomic all or nothing)."""
         if redis is not None:
             try:
                 await redis.setex(self._redis_cache_key(object_name), self.redis_ttl_sec, wav_bytes)
@@ -171,7 +187,8 @@ class TTSService:
                 pass
 
         try:
-            upload_file_to_minio(io.BytesIO(wav_bytes), object_name)
+            if not storage_object_exists(object_name):
+                upload_file_to_minio(io.BytesIO(wav_bytes), object_name)
         except Exception:
             # Cache write failures should not fail synthesis requests.
             pass
@@ -217,8 +234,9 @@ class TTSService:
             "audio_mapping": audio_mapping,
         }
 
-    async def synthesize(self, text: str, lang: str, redis: "aioredis.Redis" = None) -> TTSAudio:
+    async def synthesize(self, text: str, lang: str, redis: "aioredis.Redis" = None, voice_options: dict | None = None) -> TTSAudio:
         """Synthesize `text` in `lang` with Redis->MinIO->generate cache flow."""
+        voice_options = voice_options or {}
         if lang == "jp":
             adapter = self.jp_adapter
         elif lang == "en":
@@ -226,7 +244,7 @@ class TTSService:
         else:
             raise TTSAdapterError(f"Unsupported TTS language: {lang}")
 
-        object_name = self._cache_object_name(text, lang, adapter.engine_name)
+        object_name = self._cache_object_name(text, lang, adapter.engine_name, voice_options)
         cached_wav, cache_source = await self._cache_get(object_name, redis)
         if cached_wav is not None:
             return TTSAudio(
@@ -237,7 +255,14 @@ class TTSService:
                 object_name=object_name,
             )
 
-        result = adapter.synthesize(text)
+        if lang == "jp":
+            result = adapter.synthesize(
+                text,
+                speed=voice_options.get("speed"),
+                half_tone=voice_options.get("half_tone"),
+            )
+        else:
+            result = adapter.synthesize(text)
         result.object_name = object_name
         result.source = "generated"
         await self._cache_set(object_name, result.wav_bytes, redis)
