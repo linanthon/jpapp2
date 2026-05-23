@@ -2,6 +2,7 @@ from __future__ import annotations
 """TTS adapters and orchestration for JP/EN audio synthesis."""
 
 from dataclasses import dataclass
+import base64
 import hashlib
 import io
 import json
@@ -154,13 +155,33 @@ class TTSService:
         """Return Redis key for an object-storage audio cache path."""
         return f"cache:tts:{object_name}"
 
+    @staticmethod
+    def _encode_redis_audio(wav_bytes: bytes) -> str:
+        """Encode WAV bytes for Redis clients configured with decode_responses=True."""
+        return base64.b64encode(wav_bytes).decode("ascii")
+
+    @staticmethod
+    def _decode_redis_audio(value) -> bytes | None:
+        """Decode Redis audio value back to WAV bytes."""
+        if value is None:
+            return None
+        if isinstance(value, (bytes, bytearray)):
+            value = value.decode("utf-8", errors="strict")
+        if not isinstance(value, str) or value == "":
+            return None
+        try:
+            return base64.b64decode(value, validate=True)
+        except Exception:
+            return None
+
     async def _cache_get(self, object_name: str, redis: "aioredis.Redis" = None) -> tuple[bytes | None, str | None]:
         """Get cached audio bytes using Redis-first, then MinIO fallback."""
         if redis is not None:
             try:
                 val = await redis.get(self._redis_cache_key(object_name))
-                if val is not None:
-                    return val, "redis"
+                cached_wav = self._decode_redis_audio(val)
+                if cached_wav is not None:
+                    return cached_wav, "redis"
             except Exception:
                 pass
 
@@ -169,7 +190,11 @@ class TTSService:
                 wav_bytes = get_file_from_minio_as_stream(object_name).read()
                 if redis is not None and wav_bytes:
                     try:
-                        await redis.setex(self._redis_cache_key(object_name), self.redis_ttl_sec, wav_bytes)
+                        await redis.setex(
+                            self._redis_cache_key(object_name),
+                            self.redis_ttl_sec,
+                            self._encode_redis_audio(wav_bytes),
+                        )
                     except Exception:
                         pass
                 return wav_bytes, "minio"
@@ -182,7 +207,11 @@ class TTSService:
         (no Redis-MinIO atomic all or nothing)."""
         if redis is not None:
             try:
-                await redis.setex(self._redis_cache_key(object_name), self.redis_ttl_sec, wav_bytes)
+                await redis.setex(
+                    self._redis_cache_key(object_name),
+                    self.redis_ttl_sec,
+                    self._encode_redis_audio(wav_bytes),
+                )
             except Exception:
                 pass
 
@@ -267,3 +296,23 @@ class TTSService:
         result.source = "generated"
         await self._cache_set(object_name, result.wav_bytes, redis)
         return result
+
+    async def get_cached_for_request(self, text: str, lang: str, engine: str,
+                                     redis: "aioredis.Redis" = None,
+                                     voice_options: dict | None = None) -> TTSAudio | None:
+        """Return cached TTSAudio for an exact request key, without generating."""
+        object_name = self._cache_object_name(text, lang, engine, voice_options or {})
+        cached_wav, cache_source = await self._cache_get(object_name, redis)
+        if cached_wav is None:
+            return None
+        return TTSAudio(
+            wav_bytes=cached_wav,
+            sample_rate=0,
+            engine=engine,
+            source=cache_source or "cache",
+            object_name=object_name,
+        )
+
+    async def get_cached_by_object_name(self, object_name: str, redis: "aioredis.Redis" = None) -> tuple[bytes | None, str | None]:
+        """Return cached audio bytes by cache object name, without synthesis."""
+        return await self._cache_get(object_name, redis)

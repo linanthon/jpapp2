@@ -24,6 +24,7 @@ TABLE_USER_BOOK_STAR = "user_book_star"
 TABLE_JOB_BOOK_BATCHES = "job_book_batches"
 TABLE_JOB_BOOK_BATCH_ITEMS = "job_book_batch_items"
 TABLE_JOB_SCRAPE = "job_scrape"
+TABLE_JOB_TTS = "job_tts"
 
 # --- Defaults
 DEFAULT_LIMIT: int = 10

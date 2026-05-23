@@ -22,6 +22,7 @@ from app.dependencies import (
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                update_word_prio_after_session, change_word_prio_to_negative, reset_word_prio)
 from app.tasks.job_books import process_insert_file_job, process_insert_str_job, process_delete_job_book
+from app.tasks.job_tts import process_tts_job
 from app.tasks.job_scrape import (
     process_scrape_jlpt_job,
     process_update_words_from_jlpt_job,
@@ -819,6 +820,111 @@ async def text_to_speech(
             "X-TTS-Lang": lang,
             "X-TTS-Source": result.source,
             "X-TTS-Object": result.object_name,
+        },
+    )
+
+
+@router.post("/tts/bg")
+async def text_to_speech_bg(
+    body: dict = Body(...),
+    db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Queue text-to-speech generation as a background job.
+
+    If cache already has this exact request, returns audio immediately.
+    """
+    text, lang = validate_tts_request(body)
+    voice_options = parse_tts_voice_options(body, lang)
+
+    engine_name = tts_service.jp_adapter.engine_name if lang == "jp" else tts_service.en_adapter.engine_name
+    cached = await tts_service.get_cached_for_request(
+        text, lang, engine_name, redis, voice_options
+    )
+    if cached is not None:
+        return Response(
+            content=cached.wav_bytes,
+            media_type='audio/wav',
+            headers={
+                "Cache-Control": "private, max-age=120",
+                "X-TTS-Engine": cached.engine,
+                "X-TTS-Lang": lang,
+                "X-TTS-Source": cached.source,
+                "X-TTS-Object": cached.object_name,
+            },
+        )
+
+    job_id = await db.create_job_tts(text=text, lang=lang, voice_options=voice_options)
+    if not job_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to initialize tts background job",
+        )
+
+    try:
+        await process_tts_job.kiq(job_id=job_id)
+    except Exception as exc:
+        await db.update_job_tts_failed(job_id, error=str(exc))
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to enqueue tts background task",
+        ) from exc
+
+    return JSONResponse(
+        status_code=HTTPStatus.ACCEPTED,
+        content={
+            "job_id": job_id,
+            "status": "QUEUED",
+            "poll_url": f"{bpv1_url_prefix}/tts/job/{job_id}",
+            "message": "Background TTS generation queued",
+        },
+    )
+
+
+@router.get("/tts/job/{job_id}")
+async def get_tts_job_status(
+    job_id: str,
+    db: DBHandling = Depends(get_db),
+):
+    """Get status/details for one async TTS job."""
+    job = await db.get_job_tts(job_id)
+    if not job:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TTS job not found")
+
+    return JSONResponse(status_code=HTTPStatus.OK, content=job)
+
+
+@router.get("/tts/job/{job_id}/audio")
+async def get_tts_job_audio(
+    job_id: str,
+    db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Return WAV audio for a finished async TTS job."""
+    job = await db.get_job_tts(job_id)
+    if not job:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TTS job not found")
+    if job.get("status") != "FINISHED":
+        raise HTTPException(status_code=HTTPStatus.CONFLICT, detail="TTS job is not finished")
+
+    text = job.get("text", "")
+    lang = job.get("lang", "")
+    voice_options = job.get("voice_options", {}) or {}
+    engine_name = tts_service.jp_adapter.engine_name if lang == "jp" else tts_service.en_adapter.engine_name
+    cached = await tts_service.get_cached_for_request(text, lang, engine_name, redis, voice_options)
+    if cached is None:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TTS audio bytes not found in cache/storage")
+
+    return Response(
+        content=cached.wav_bytes,
+        media_type='audio/wav',
+        headers={
+            "Cache-Control": "private, max-age=120",
+            "X-TTS-Engine": cached.engine,
+            "X-TTS-Lang": lang,
+            "X-TTS-Source": cached.source,
+            "X-TTS-Object": cached.object_name,
+            "X-TTS-Job": job_id,
         },
     )
 

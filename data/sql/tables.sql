@@ -162,3 +162,19 @@ CREATE TABLE IF NOT EXISTS job_scrape (
 
     UNIQUE (user_id, idempotency_key)
 );
+
+-- Job info for async TTS generation
+CREATE TABLE IF NOT EXISTS job_tts (
+    id UUID PRIMARY KEY,
+    text TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    voice_options JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL,    -- QUEUED / PROCESSING / FINISHED / FAILED
+    error TEXT,
+    attempts INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 3,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    modified_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_tts_created_at ON job_tts(created_at DESC);

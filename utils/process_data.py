@@ -306,7 +306,7 @@ class ProcessData():
         row.jlpt_level = await get_jlpt_level(row.word, redis, "N0")
 
         # Search db and attach the IDs
-        row.audio_mapping = await sep_mora_get_audio_mapping(row.spelling, redis)
+        row.audio_mapping = await sep_mora_get_audio_mapping(row.spelling)
         return row
 
     def tag_sentence(self, sentence: str) -> List:

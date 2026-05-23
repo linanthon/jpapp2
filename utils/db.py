@@ -19,7 +19,8 @@ from schemas.constants import (TABLE_JLPT, TABLE_WORDS, TABLE_BOOKS, TABLE_SENTE
                               DEFAULT_FORMULA_K, DEFAULT_TIME_EXPODECAY, QUIZ_WORD_SORT_COLUMNS,
                               WORD_SENSES_REGEX, QUIZ_SOFT_CAP, QUIZ_HARD_CAP, DEFAULT_MULTI_PENALTY,
                               DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS, TABLE_USER_BOOK_STAR,
-                              TABLE_JOB_BOOK_BATCHES, TABLE_JOB_BOOK_BATCH_ITEMS, TABLE_JOB_SCRAPE)
+                              TABLE_JOB_BOOK_BATCHES, TABLE_JOB_BOOK_BATCH_ITEMS, TABLE_JOB_SCRAPE,
+                              TABLE_JOB_TTS)
 
 log = get_logger(__file__)
 
@@ -1271,6 +1272,77 @@ class DBHandling:
         )
 
         return status is not None
+    
+    # =======================================================================================
+
+
+    # Audio =================================================================================
+    async def create_job_tts(self, text: str, lang: str, voice_options: dict | None = None,
+                             max_attempts: int = TASKIQ_MAX_ATTEMPTS) -> str:
+        """Create one async TTS job row and return job ID."""
+        if not text or not lang:
+            return ""
+
+        job_id = str(uuid.uuid4())
+        row = await self._fetchrow(
+            f"""INSERT INTO {TABLE_JOB_TTS}
+            (id, text, lang, voice_options, status, attempts, max_attempts)
+            VALUES ($1::uuid, $2, $3, $4::jsonb, 'QUEUED', 0, $5)
+            RETURNING id;""",
+            job_id, text, lang, json.dumps(voice_options or {}, ensure_ascii=False), max_attempts,
+        )
+        return str(row["id"]) if row else ""
+
+    async def get_job_tts(self, job_id: str) -> dict | None:
+        """Get one async TTS job by ID."""
+        row = await self._fetchrow(
+            f"SELECT * FROM {TABLE_JOB_TTS} WHERE id = $1::uuid;",
+            job_id,
+        )
+        return self._parse_job_tts(row) if row else None
+
+    async def claim_job_tts(self, job_id: str) -> bool:
+        """Claim queued async TTS job for processing.
+
+        Returns True only for the first worker that transitions:
+        QUEUED -> PROCESSING and increments attempts by 1.
+        """
+        status = await self._execute(
+            f"""UPDATE {TABLE_JOB_TTS}
+            SET status = 'PROCESSING',
+                attempts = attempts + 1,
+                modified_at = NOW()
+            WHERE id = $1::uuid
+              AND status = 'QUEUED'
+              AND attempts < max_attempts;""",
+            job_id,
+        )
+        return bool(status) and self._get_rowcount(status) > 0
+
+    async def update_job_tts_finished(self, job_id: str) -> bool:
+        """Mark async TTS job as FINISHED."""
+        status = await self._execute(
+            f"""UPDATE {TABLE_JOB_TTS}
+            SET status = 'FINISHED',
+                error = '',
+                modified_at = NOW()
+            WHERE id = $1::uuid;""",
+            job_id,
+        )
+        return bool(status) and self._get_rowcount(status) > 0
+
+    async def update_job_tts_failed(self, job_id: str, error: str = "") -> bool:
+        """Mark async TTS job as FAILED with error detail."""
+        status = await self._execute(
+            f"""UPDATE {TABLE_JOB_TTS}
+            SET status = 'FAILED',
+                error = CASE WHEN $1 = '' THEN error ELSE $1 END,
+                modified_at = NOW()
+            WHERE id = $2::uuid;""",
+            error, job_id,
+        )
+        return bool(status) and self._get_rowcount(status) > 0
+
     # =======================================================================================
 
 
@@ -1922,6 +1994,22 @@ class DBHandling:
     def _parse_job_batch_item_list(self, rows) -> List[dict]:
         """Parse a list of multi-file request item records."""
         return [self._parse_job_batch_item(row) for row in rows]
+
+    def _parse_job_tts(self, row) -> dict:
+        """Build an async TTS job dict from a DB record."""
+        voice_options = row["voice_options"] if row["voice_options"] is not None else {}
+        return {
+            "id": str(row["id"]),
+            "text": row["text"],
+            "lang": row["lang"],
+            "voice_options": voice_options,
+            "status": row["status"],
+            "error": row["error"] or "",
+            "attempts": row["attempts"],
+            "max_attempts": row["max_attempts"],
+            "created_at": str(row["created_at"]),
+            "modified_at": str(row["modified_at"]),
+        }
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================
