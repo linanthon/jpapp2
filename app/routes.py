@@ -789,6 +789,7 @@ def serve_audio(filename: str):
 @router.post("/tts")
 async def text_to_speech(
     body: dict = Body(...),
+    use_model: bool | str = True,
     db: DBHandling = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
@@ -799,6 +800,21 @@ async def text_to_speech(
     """
     text, lang = validate_tts_request(body)
     voice_options = parse_tts_voice_options(body, lang)
+    use_model_bool = parse_bool_param(use_model)
+
+    # Use StaticA
+    if not use_model_bool:
+        fallback = await tts_service.build_statica_fallback(text, lang, "TTS model disabled by request", db)
+        if fallback:
+            return JSONResponse(status_code=HTTPStatus.OK, content=fallback)
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail={
+                "source": "statica",
+                "reason": "StaticA fallback is only available for Japanese text",
+                "lang": lang,
+            },
+        )
 
     try:
         result = await tts_service.synthesize(text, lang, redis, voice_options=voice_options)
@@ -827,6 +843,7 @@ async def text_to_speech(
 @router.post("/tts/bg")
 async def text_to_speech_bg(
     body: dict = Body(...),
+    use_model: bool | str = True,
     db: DBHandling = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
@@ -836,7 +853,23 @@ async def text_to_speech_bg(
     """
     text, lang = validate_tts_request(body)
     voice_options = parse_tts_voice_options(body, lang)
+    use_model_bool = parse_bool_param(use_model)
 
+    # Use StaticA
+    if not use_model_bool:
+        fallback = await tts_service.build_statica_fallback(text, lang, "TTS model disabled by request", db)
+        if fallback:
+            return JSONResponse(status_code=HTTPStatus.OK, content=fallback)
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail={
+                "source": "statica",
+                "reason": "StaticA fallback is only available for Japanese text",
+                "lang": lang,
+            },
+        )
+
+    # Check Redis
     engine_name = tts_service.jp_adapter.engine_name if lang == "jp" else tts_service.en_adapter.engine_name
     cached = await tts_service.get_cached_for_request(
         text, lang, engine_name, redis, voice_options
@@ -854,6 +887,7 @@ async def text_to_speech_bg(
             },
         )
 
+    # Create job - idempotent check
     job_id = await db.create_job_tts(text=text, lang=lang, voice_options=voice_options)
     if not job_id:
         raise HTTPException(

@@ -187,6 +187,39 @@ class TestTTSRoute:
         assert resp.status_code == HTTPStatus.BAD_REQUEST
 
     @pytest.mark.asyncio
+    async def test_tts_use_model_false_returns_statica(self, client):
+        with patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value={
+                "source": "statica",
+                "engine": "StaticA",
+                "reason": "TTS model disabled by request",
+                "lang": "jp",
+                "text": "こんにちは",
+                "audio_mapping": ["ko", "n", "ni", "chi", "wa"],
+            },
+        ) as fallback_mock, patch(
+            "app.routes.tts_service.synthesize",
+            new=AsyncMock(),
+        ) as synth_mock:
+            resp = await client.post("/v1/tts?use_model=false", json={"text": "こんにちは", "lang": "jp"})
+
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json()["source"] == "statica"
+        fallback_mock.assert_awaited_once()
+        synth_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tts_use_model_false_en_returns_400(self, client):
+        with patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value=None,
+        ):
+            resp = await client.post("/v1/tts?use_model=false", json={"text": "hello", "lang": "en"})
+
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+
+    @pytest.mark.asyncio
     async def test_tts_bg_queues_job(self, client, mock_db):
         mock_db.create_job_tts.return_value = "job-tts-1"
         with patch(
@@ -203,6 +236,40 @@ class TestTTSRoute:
         assert data["job_id"] == "job-tts-1"
         assert data["status"] == "QUEUED"
         kiq_mock.assert_awaited_once_with(job_id="job-tts-1")
+
+    @pytest.mark.asyncio
+    async def test_tts_bg_use_model_false_returns_statica_without_job(self, client, mock_db):
+        with patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value={
+                "source": "statica",
+                "engine": "StaticA",
+                "reason": "TTS model disabled by request",
+                "lang": "jp",
+                "text": "こんにちは",
+                "audio_mapping": ["ko", "n", "ni", "chi", "wa"],
+            },
+        ) as fallback_mock, patch(
+            "app.routes.process_tts_job.kiq",
+            new=AsyncMock(),
+        ) as kiq_mock:
+            resp = await client.post("/v1/tts/bg?use_model=false", json={"text": "こんにちは", "lang": "jp"})
+
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json()["source"] == "statica"
+        fallback_mock.assert_awaited_once()
+        kiq_mock.assert_not_awaited()
+        mock_db.create_job_tts.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tts_bg_use_model_false_en_returns_400(self, client):
+        with patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value=None,
+        ):
+            resp = await client.post("/v1/tts/bg?use_model=false", json={"text": "hello", "lang": "en"})
+
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
 
     @pytest.mark.asyncio
     async def test_tts_bg_status_and_audio(self, client, mock_db):
