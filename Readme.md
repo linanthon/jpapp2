@@ -34,6 +34,9 @@ TODO frontend
 
 ## How to run
 
+Install requirements:
+* pip install requirements.txt
+
 Run each in separate command prompt:
 * minio server minio-data/
 * memurai
@@ -48,10 +51,20 @@ Start API server
 App will auto load jlpt level data if existed in DB, otherwise call /v1/jlpt/scrape/bg/{source_id} to scrape and load data, currently only allow `source_id=1`.
 
 
-Audio
+## Audio
 
-Prioritise TTS (non-AI)
-- JP: openjtalk python wrapper: https://pypi.org/project/pyopenjtalk-plus/ with Mei normal htsvoice and openjtalk utf-8 dictionary
-- EN: eSpeak NG model (no wrapper)
+TTS setup (non-AI):
+- JP: `pyopenjtalk-plus` with OpenJTalk UTF-8 dictionary and an HTS voice (for example, Mei Normal).
+- EN: `eSpeak NG` (CLI model, no Python wrapper).
 
-Can disable TTS, will use pre-recorded audio of each character in that word's kana form. Worse in quality, built-in this app. This approach is called StaticA in source code.
+Audio generation uses TTS first. If TTS fails (or is disabled), the app falls back to built-in per-kana pre-recorded audio. This fallback is called `StaticA` in the source code.
+
+How to install:
+
+- OpenJTalk (JP)
+  - Core wrapper: included in `requirements.txt` (`pyopenjtalk-plus`).
+  - Dictionary: download from https://sourceforge.net/projects/open-jtalk/ (e.g.: `open_jtalk_dic_utf_8-1.11.tar.gz`), extract it, then set `OPENJTALK_DIC_PATH` in `app/config.py`.
+  - HTS voice: download M001 from https://sourceforge.net/projects/open-jtalk/files/HTS%20voice/ or a Mei voice from https://github.com/hecomi/node-openjtalk/tree/master/voice/mei, then set `OPENJTALK_VOICE_PATH` in `app/config.py`.
+
+- eSpeak NG (EN)
+  - Download the Windows `.msi` installer from https://github.com/espeak-ng/espeak-ng/releases and install it. If installation/user adds to PATH, keep `ESPEAK_BIN` in `app/config.py` as is. Otherwise, update it `ESPEAK_BIN` to your eSpeak location.

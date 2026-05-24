@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile
 import subprocess
 import wave
 import numpy as np
+from numpy.typing import NDArray
 from typing import TYPE_CHECKING
 
 from app.config import (
@@ -45,8 +46,19 @@ class TTSAdapterError(RuntimeError):
     """Raised when a TTS engine cannot synthesize audio."""
 
 
-def _pcm_to_wav_bytes(pcm_input, sample_rate: int) -> bytes:
-    """Convert mono PCM (float/int) into WAV bytes as int16."""
+def _pcm_to_wav_bytes(
+    pcm_input: NDArray[np.float64] | NDArray[np.int16] | list[float] | list[int] | tuple[float, ...] | tuple[int, ...] | float | int,
+    sample_rate: int,
+) -> bytes:
+    """Convert mono PCM input into WAV bytes (16-bit PCM). Why?
+    Bc browser can play PCM but not native like .mp3 or .wav,
+    and we can't upload it to storage.
+
+    Accepted `pcm_input` types:
+    - NumPy arrays (common from `pyopenjtalk.tts`): `ndarray[float64]`, `ndarray[int16]`
+    - Python sequences: `list`/`tuple` of numbers
+    - Numeric scalars: `float`/`int` (treated as a 1-sample waveform)
+    """
     pcm = np.asarray(pcm_input)
     if pcm.ndim != 1:
         pcm = pcm.reshape(-1)
@@ -59,6 +71,7 @@ def _pcm_to_wav_bytes(pcm_input, sample_rate: int) -> bytes:
 
     pcm = np.clip(pcm, -32768, 32767).astype(np.int16)
 
+    # Create a buffer - convert pcm to wav - store into buffer
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as wav:
         wav.setnchannels(1)
@@ -107,7 +120,9 @@ class ENAdapterESpeakCLI:
         self.timeout_sec = max(1, int(timeout_ms)) / 1000
 
     def synthesize(self, text: str) -> TTSAudio:
-        """Synthesize English text by invoking eSpeak NG executable."""
+        """Synthesize English text by invoking eSpeak NG executable 
+        (use subprocess calls cmd to generate a temp file). Get wav bytes
+        and delete the temp file."""
         with NamedTemporaryFile(suffix=".wav", delete=True) as tmp:
             cmd = [self.command, "-v", self.voice, "-w", tmp.name, text]
             try:
@@ -142,7 +157,7 @@ class TTSService:
         self.redis_ttl_sec = 60 * 60 * 24
 
     @staticmethod
-    def _cache_object_name(text: str, lang: str, engine: str, voice_options: dict | None = None) -> str:
+    def _get_cache_object_name(text: str, lang: str, engine: str, voice_options: dict | None = None) -> str:
         """Return object name for MinIO/S3 caching of generated audio."""
         options_str = ""
         if voice_options:
@@ -274,7 +289,7 @@ class TTSService:
         else:
             raise TTSAdapterError(f"Unsupported TTS language: {lang}")
 
-        object_name = self._cache_object_name(text, lang, adapter.engine_name, voice_options)
+        object_name = self._get_cache_object_name(text, lang, adapter.engine_name, voice_options)
         cached_wav, cache_source = await self._cache_get(object_name, redis)
         if cached_wav is not None:
             return TTSAudio(
@@ -303,7 +318,7 @@ class TTSService:
                                      voice_options: dict | None = None) -> TTSAudio | None:
         """Return cached TTSAudio for an exact request key, without generating."""
         voice_options = normalize_voice_options(voice_options)
-        object_name = self._cache_object_name(text, lang, engine, voice_options)
+        object_name = self._get_cache_object_name(text, lang, engine, voice_options)
         cached_wav, cache_source = await self._cache_get(object_name, redis)
         if cached_wav is None:
             return None
