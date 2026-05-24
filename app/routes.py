@@ -795,6 +795,10 @@ async def text_to_speech(
 ):
     """Generate WAV bytes from payload {'text': '...', 'lang': 'jp'|'en'}.
     Synchronous get/generate-upload audio. For async, use /tts/bg.
+    Query param `use_model` defaults to True, when is true, will apply
+    voice options from body:
+    - 'speed': [0.5, 2.0]
+    - 'pitch' or 'half_tone': [-24, 24]
 
     The endpoint exposes one contract while routing to language-specific engines.
     """
@@ -848,6 +852,10 @@ async def text_to_speech_bg(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     """Queue text-to-speech generation as a background job.
+    Query param `use_model` defaults to True, when is true, will apply
+    voice options from body:
+    - 'speed': [0.5, 2.0]
+    - 'pitch' or 'half_tone': [-24, 24]
 
     If cache already has this exact request, returns audio immediately.
     """
