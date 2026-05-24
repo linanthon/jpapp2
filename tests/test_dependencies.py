@@ -170,6 +170,16 @@ class TestValidateTTSRequest:
         assert text == "こんにちは、せかい。"
         assert lang == "jp"
 
+    def test_valid_english_phrase_with_many_symbols(self):
+        text, lang = validate_tts_request({"text": "hello @world %2026 ^_^", "lang": "en"})
+        assert text == "hello @world %2026 ^_^"
+        assert lang == "en"
+
+    def test_valid_japanese_phrase_with_many_symbols(self):
+        text, lang = validate_tts_request({"text": "今日はPythonで勉強します @2026 #go!", "lang": "jp"})
+        assert text == "今日はPythonで勉強します @2026 #go!"
+        assert lang == "jp"
+
     def test_invalid_language_raises_400(self):
         with pytest.raises(HTTPException) as exc_info:
             validate_tts_request({"text": "hello", "lang": "kr"})

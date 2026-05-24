@@ -20,7 +20,7 @@ services:
   taskiq-worker:
     build: .
     command: >
-      taskiq worker app.taskiq_broker:broker app.tasks.job_books
+      taskiq worker app.taskiq_broker:broker app.tasks.job_books app.tasks.job_tts app.tasks.job_scrape
       --workers ${TASKIQ_MAX_WORKERS:-4}
     environment:
       - DB_USER=${DB_USER}

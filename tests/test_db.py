@@ -117,6 +117,28 @@ class TestParseBook:
         assert result["content"] == ""
 
 
+class TestParseJobTTS:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+
+    def test_parse_job_tts_with_json_string_voice_options(self):
+        row = {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "text": "今日はテストです",
+            "lang": "jp",
+            "voice_options": '{"speed": 1.1, "half_tone": -1.0}',
+            "status": "QUEUED",
+            "error": "",
+            "attempts": 0,
+            "created_at": "2026-05-24 11:00:00",
+            "modified_at": "2026-05-24 11:00:00",
+        }
+
+        parsed = self.db._parse_job_tts(row)
+        assert isinstance(parsed["voice_options"], dict)
+        assert parsed["voice_options"]["speed"] == pytest.approx(1.1)
+
+
 class TestExtractMeanings:
     def setup_method(self):
         self.db = DBHandling.__new__(DBHandling)

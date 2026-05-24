@@ -25,7 +25,6 @@ def _make_runtime():
             "action": "INSERT_STR",
             "status": "FAILED",
             "attempts": 1,
-            "max_attempts": 3,
         }
     )
 
@@ -108,7 +107,6 @@ class TestJobBookTasks:
             "action": "INSERT_FILE",
             "status": "FAILED_ROLLBACK",
             "attempts": 3,
-            "max_attempts": 3,
         }
 
         with patch("app.tasks.job_books.bootstrap_runtime", new=AsyncMock(return_value=(db, redis, pdata))), \
