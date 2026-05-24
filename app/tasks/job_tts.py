@@ -2,6 +2,7 @@ import redis.asyncio as aioredis
 
 from app.taskiq_broker import broker
 from app.tasks.helpers import bootstrap_runtime, cleanup_runtime
+from utils.helpers import normalize_voice_options
 from utils.db import DBHandling
 from utils.tts import TTSService, TTSAdapterError
 
@@ -35,7 +36,7 @@ async def process_tts_job(job_id: str) -> None:
 
         text = job.get("text", "")
         lang = job.get("lang", "")
-        voice_options = job.get("voice_options", {}) or {}
+        voice_options = normalize_voice_options(job.get("voice_options", {}))
 
         try:
             await tts_service.synthesize(text, lang, redis, voice_options=voice_options)

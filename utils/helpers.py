@@ -1,4 +1,5 @@
 import os
+import json
 
 def get_filename_from_path(fullpath: str):
     """Get filename from full path, i.e.: c:/a/path/the_file.123.txt -> the_file.123"""
@@ -59,3 +60,21 @@ def parse_bool_param(val) -> bool:
         return False
     s = str(val).strip().lower()
     return s in ("1", "true", "t", "yes", "y", "on")
+
+
+def normalize_voice_options(voice_options) -> dict:
+    """Coerce voice options payload into a dict.
+
+    Accepts None/dict/JSON-string and returns {} for invalid inputs.
+    """
+    if voice_options is None:
+        return {}
+    if isinstance(voice_options, dict):
+        return voice_options
+    if isinstance(voice_options, str):
+        try:
+            parsed = json.loads(voice_options)
+            return parsed if isinstance(parsed, dict) else {}
+        except json.JSONDecodeError:
+            return {}
+    return {}

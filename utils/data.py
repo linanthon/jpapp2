@@ -184,8 +184,25 @@ ROMAJI_MAP = {
     "リャン": "ryan", "リュン": "ryun", "リョン": "ryon",
 }
 
-def is_japanese_word(word: str) -> bool:
-    return bool(JP_WORD_PATTERN.fullmatch(word))
+def is_japanese_word(word: str, allow_mixed_english: bool = False) -> bool:
+    """Validate Japanese text.
+
+    Default mode is strict JP-only full match (existing behavior).
+    If `allow_mixed_english=True`, allows ASCII letters mixed with JP,
+    but still requires at least one JP character.
+    """
+    if not word:
+        return False
+
+    if not allow_mixed_english:
+        return bool(JP_WORD_PATTERN.fullmatch(word))
+
+    has_japanese = any(bool(JP_WORD_PATTERN.fullmatch(ch)) for ch in word)
+    jp_en_only = all(
+        bool(JP_WORD_PATTERN.fullmatch(ch)) or bool(EN_WORD_PATTERN.fullmatch(ch))
+        for ch in word
+    )
+    return has_japanese and jp_en_only
 
 def is_english_word(word: str) -> bool:
     return bool(EN_WORD_PATTERN.fullmatch(word))

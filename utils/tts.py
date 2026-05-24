@@ -16,6 +16,7 @@ from app.config import (
     ESPEAK_BIN, ESPEAK_EN_VOICE, TTS_TIMEOUT_MS,
     TTS_JP_HALF_TONE_DEFAULT, TTS_JP_SPEED_DEFAULT,
 )
+from utils.helpers import normalize_voice_options
 from utils.process_data import sep_mora_get_audio_mapping
 from utils.storage import get_file_from_minio_as_stream, storage_object_exists, upload_file_to_minio
 
@@ -265,7 +266,7 @@ class TTSService:
 
     async def synthesize(self, text: str, lang: str, redis: "aioredis.Redis" = None, voice_options: dict | None = None) -> TTSAudio:
         """Synthesize `text` in `lang` with Redis->MinIO->generate cache flow."""
-        voice_options = voice_options or {}
+        voice_options = normalize_voice_options(voice_options)
         if lang == "jp":
             adapter = self.jp_adapter
         elif lang == "en":
@@ -301,7 +302,8 @@ class TTSService:
                                      redis: "aioredis.Redis" = None,
                                      voice_options: dict | None = None) -> TTSAudio | None:
         """Return cached TTSAudio for an exact request key, without generating."""
-        object_name = self._cache_object_name(text, lang, engine, voice_options or {})
+        voice_options = normalize_voice_options(voice_options)
+        object_name = self._cache_object_name(text, lang, engine, voice_options)
         cached_wav, cache_source = await self._cache_get(object_name, redis)
         if cached_wav is None:
             return None

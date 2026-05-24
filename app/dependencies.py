@@ -287,12 +287,13 @@ def validate_tts_request(body: dict):
             detail=f"Invalid text to speech request. EN 'text' must be <= {TTS_MAX_TEXT_LEN} characters. JP 'text' must be <= {TTS_MAX_TEXT_LEN/3} characters.",
         )
 
-    # Allow phrases by stripping spaces and common punctuation before language validation.
-    normalized_text = re.sub(r"[\s\-_'\".,!?;:()\[\]{}]+", "", text)
-    normalized_text = normalized_text.replace("、", "").replace("。", "")
+    # Keep only language-relevant letters for validation and ignore symbols/noise.
+    # Keep original `text` untouched for synthesis.
+    normalized_text = re.sub(r"[^A-Za-z\u3040-\u30FF\u4E00-\u9FFFー]+", "", text)
 
+    # EN stays strict. JP allows mixed JP+EN words, but must contain at least one JP character.
     if (lang == "en" and is_english_word(normalized_text)) or \
-        (lang == "jp" and is_japanese_word(normalized_text)):
+        (lang == "jp" and is_japanese_word(normalized_text, allow_mixed_english=True)):
         return text, lang
 
     raise HTTPException(

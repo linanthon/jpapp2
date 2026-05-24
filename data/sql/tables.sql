@@ -141,7 +141,6 @@ CREATE TABLE IF NOT EXISTS job_book_batch_items (
     status TEXT NOT NULL,   -- UPLOADING / QUEUED_PROCESS / PROCESSING / FINISHED / FAILED_UPLOAD / FAILED_PROCESS
     error TEXT,
     attempts INT NOT NULL DEFAULT 0,
-    max_attempts INT NOT NULL DEFAULT 3,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     modified_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -172,9 +171,6 @@ CREATE TABLE IF NOT EXISTS job_tts (
     status TEXT NOT NULL,    -- QUEUED / PROCESSING / FINISHED / FAILED
     error TEXT,
     attempts INT NOT NULL DEFAULT 0,
-    max_attempts INT NOT NULL DEFAULT 3,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     modified_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
-
-CREATE INDEX IF NOT EXISTS idx_job_tts_created_at ON job_tts(created_at DESC);
