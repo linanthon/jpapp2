@@ -14,14 +14,15 @@ from app.handlers.insert import compensate_insert_saga
 from app.handlers.progress import handle_progress
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
                                handle_view_books, handle_view_specific_book,
-                               toggle_star_helper, delete_book_helper, get_all_book_name_and_id)
+                               toggle_star_helper, get_all_book_name_and_id)
 from app.dependencies import (
     get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user,
-    rate_limiter, redis_get_json, redis_set_json
+    rate_limiter, redis_get_json, redis_set_json, validate_tts_request, parse_tts_voice_options
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
                                update_word_prio_after_session, change_word_prio_to_negative, reset_word_prio)
 from app.tasks.job_books import process_insert_file_job, process_insert_str_job, process_delete_job_book
+from app.tasks.job_tts import process_tts_job
 from app.tasks.job_scrape import (
     process_scrape_jlpt_job,
     process_update_words_from_jlpt_job,
@@ -38,10 +39,12 @@ from utils.logger import get_logger
 from utils.process_data import ProcessData
 from utils.storage import (upload_file_to_minio, upload_string_to_minio,
                            generate_presigned_upload_url, PRESIGNED_URL_EXPIRY, storage_object_exists)
+from utils.tts import TTSService, TTSAdapterError
 
 # Create router
 router = APIRouter()
 log = get_logger(__name__)
+tts_service = TTSService()
 
 # Setup templates (html files)
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
@@ -770,9 +773,202 @@ async def toggle_star(
 
 @router.get("/audio/{filename}")
 def serve_audio(filename: str):
-    """Serve audio files"""
+    """Serve audio files. This approach is called as 'StaticA'."""
     audio_dir = os.path.join(os.path.dirname(__file__), "..", AUDIO_DIR)
-    return FileResponse(os.path.join(audio_dir, filename), media_type='audio/wav')
+    cache_headers = {
+        # Audio fragments are effectively immutable; long-lived browser cache is safe.
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+    return FileResponse(
+        os.path.join(audio_dir, filename),
+        media_type='audio/wav',
+        headers=cache_headers,
+    )
+
+
+@router.post("/tts")
+async def text_to_speech(
+    body: dict = Body(...),
+    use_model: bool | str = True,
+    db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Generate WAV bytes from payload {'text': '...', 'lang': 'jp'|'en'}.
+    Synchronous get/generate-upload audio. For async, use /tts/bg.
+    Query param `use_model` defaults to True, when is true, will apply
+    voice options from body:
+    - 'speed': [0.5, 2.0]
+    - 'pitch' or 'half_tone': [-24, 24]
+
+    The endpoint exposes one contract while routing to language-specific engines.
+    """
+    text, lang = validate_tts_request(body)
+    voice_options = parse_tts_voice_options(body, lang)
+    use_model_bool = parse_bool_param(use_model)
+
+    # Use StaticA
+    if not use_model_bool:
+        fallback = await tts_service.build_statica_fallback(text, lang, "TTS model disabled by request", db)
+        if fallback:
+            return JSONResponse(status_code=HTTPStatus.OK, content=fallback)
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail={
+                "source": "statica",
+                "reason": "StaticA fallback is only available for Japanese text",
+                "lang": lang,
+            },
+        )
+
+    try:
+        result = await tts_service.synthesize(text, lang, redis, voice_options=voice_options)
+    except TTSAdapterError as exc:
+        fallback = await tts_service.build_statica_fallback(text, lang, str(exc), db)
+        if fallback:
+            return JSONResponse(status_code=HTTPStatus.OK, content=fallback)
+        raise HTTPException(
+            status_code=HTTPStatus.SERVICE_UNAVAILABLE,
+            detail={"source": "tts", "reason": str(exc), "lang": lang},
+        ) from exc
+
+    return Response(
+        content=result.wav_bytes,
+        media_type='audio/wav',
+        headers={
+            "Cache-Control": "private, max-age=120",
+            "X-TTS-Engine": result.engine,
+            "X-TTS-Lang": lang,
+            "X-TTS-Source": result.source,
+            "X-TTS-Object": result.object_name,
+        },
+    )
+
+
+@router.post("/tts/bg")
+async def text_to_speech_bg(
+    body: dict = Body(...),
+    use_model: bool | str = True,
+    db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Queue text-to-speech generation as a background job.
+    Query param `use_model` defaults to True, when is true, will apply
+    voice options from body:
+    - 'speed': [0.5, 2.0]
+    - 'pitch' or 'half_tone': [-24, 24]
+
+    If cache already has this exact request, returns audio immediately.
+    """
+    text, lang = validate_tts_request(body)
+    voice_options = parse_tts_voice_options(body, lang)
+    use_model_bool = parse_bool_param(use_model)
+
+    # Use StaticA
+    if not use_model_bool:
+        fallback = await tts_service.build_statica_fallback(text, lang, "TTS model disabled by request", db)
+        if fallback:
+            return JSONResponse(status_code=HTTPStatus.OK, content=fallback)
+        raise HTTPException(
+            status_code=HTTPStatus.BAD_REQUEST,
+            detail={
+                "source": "statica",
+                "reason": "StaticA fallback is only available for Japanese text",
+                "lang": lang,
+            },
+        )
+
+    # Check Redis
+    engine_name = tts_service.jp_adapter.engine_name if lang == "jp" else tts_service.en_adapter.engine_name
+    cached = await tts_service.get_cached_for_request(
+        text, lang, engine_name, redis, voice_options
+    )
+    if cached is not None:
+        return Response(
+            content=cached.wav_bytes,
+            media_type='audio/wav',
+            headers={
+                "Cache-Control": "private, max-age=120",
+                "X-TTS-Engine": cached.engine,
+                "X-TTS-Lang": lang,
+                "X-TTS-Source": cached.source,
+                "X-TTS-Object": cached.object_name,
+            },
+        )
+
+    # Create job - idempotent check
+    job_id = await db.create_job_tts(text=text, lang=lang, voice_options=voice_options)
+    if not job_id:
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to initialize tts background job",
+        )
+
+    try:
+        await process_tts_job.kiq(job_id=job_id)
+    except Exception as exc:
+        await db.update_job_tts_failed(job_id, error=str(exc))
+        raise HTTPException(
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR,
+            detail="Failed to enqueue tts background task",
+        ) from exc
+
+    return JSONResponse(
+        status_code=HTTPStatus.ACCEPTED,
+        content={
+            "job_id": job_id,
+            "status": "QUEUED",
+            "poll_url": f"{bpv1_url_prefix}/tts/job/{job_id}",
+            "message": "Background TTS generation queued",
+        },
+    )
+
+
+@router.get("/tts/job/{job_id}")
+async def get_tts_job_status(
+    job_id: str,
+    db: DBHandling = Depends(get_db),
+):
+    """Get status/details for one async TTS job."""
+    job = await db.get_job_tts(job_id)
+    if not job:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TTS job not found")
+
+    return JSONResponse(status_code=HTTPStatus.OK, content=job)
+
+
+@router.get("/tts/job/{job_id}/audio")
+async def get_tts_job_audio(
+    job_id: str,
+    db: DBHandling = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Return WAV audio for a finished async TTS job."""
+    job = await db.get_job_tts(job_id)
+    if not job:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TTS job not found")
+    if job.get("status") != "FINISHED":
+        raise HTTPException(status_code=HTTPStatus.CONFLICT, detail="TTS job is not finished")
+
+    text = job.get("text", "")
+    lang = job.get("lang", "")
+    voice_options = job.get("voice_options", {}) or {}
+    engine_name = tts_service.jp_adapter.engine_name if lang == "jp" else tts_service.en_adapter.engine_name
+    cached = await tts_service.get_cached_for_request(text, lang, engine_name, redis, voice_options)
+    if cached is None:
+        raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TTS audio bytes not found in cache/storage")
+
+    return Response(
+        content=cached.wav_bytes,
+        media_type='audio/wav',
+        headers={
+            "Cache-Control": "private, max-age=120",
+            "X-TTS-Engine": cached.engine,
+            "X-TTS-Lang": lang,
+            "X-TTS-Source": cached.source,
+            "X-TTS-Object": cached.object_name,
+            "X-TTS-Job": job_id,
+        },
+    )
 
 
 @router.get("/view/book")

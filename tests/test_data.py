@@ -24,6 +24,14 @@ class TestIsJapaneseWord:
     def test_invalid_jp(self, word):
         assert is_japanese_word(word) is False
 
+    @pytest.mark.parametrize("word", ["今日はPython", "AI勉強中", "カタカナABC"])
+    def test_valid_jp_when_mixed_english_allowed(self, word):
+        assert is_japanese_word(word, allow_mixed_english=True) is True
+
+    @pytest.mark.parametrize("word", ["hello", "ABC", "123", "A1B2"])
+    def test_invalid_mixed_mode_without_any_japanese(self, word):
+        assert is_japanese_word(word, allow_mixed_english=True) is False
+
 
 class TestIsWordOrNumber:
     @pytest.mark.parametrize("inp", ["abc", "123", "abc123", "_underscore", "a_1"])

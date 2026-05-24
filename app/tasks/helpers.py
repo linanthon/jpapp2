@@ -3,7 +3,7 @@ import json
 import redis.asyncio as aioredis
 
 from app.config import (DB_USER, DB_PASS, REDIS_URL, TASKIQ_DLQ_STREAM,
-						TASKIQ_STREAM_MAXLEN_DLQ)
+						TASKIQ_MAX_ATTEMPTS, TASKIQ_STREAM_MAXLEN_DLQ)
 from utils.db import DBHandling
 from utils.process_data import ProcessData
 
@@ -67,8 +67,7 @@ async def maybe_publish_dlq(
 	error: str,
 	payload: dict,
 ):
-	"""Get batch item in DB by ID to check 'attempts' and 'max_attempts' values.
-	Publish to DLQ only when retry attemp reached maximum."""
+	"""Publish to DLQ only when retry attempts reach configured maximum."""
 	if redis is None:
 		return
 
@@ -77,6 +76,5 @@ async def maybe_publish_dlq(
 		return
 
 	attempts = int(item.get("attempts", 0) or 0)
-	max_attempts = int(item.get("max_attempts", 0) or 0)
-	if max_attempts > 0 and attempts >= max_attempts:
+	if TASKIQ_MAX_ATTEMPTS > 0 and attempts >= TASKIQ_MAX_ATTEMPTS:
 		await _publish_dlq_message(redis, item, task_name, error, payload)

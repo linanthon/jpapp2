@@ -306,71 +306,8 @@ class ProcessData():
         row.jlpt_level = await get_jlpt_level(row.word, redis, "N0")
 
         # Search db and attach the IDs
-        row.audio_mapping = await self._sep_mora_get_audio_mapping(row.spelling, redis)
+        row.audio_mapping = await sep_mora_get_audio_mapping(row.spelling)
         return row
-    
-    async def _sep_mora_get_audio_mapping(self, spelling: str, redis) -> list:
-        """
-        Separate the spelling of a word (can be Higarana or Katakana)
-        into a list of letters. Return a list of romaji mapping for the letters.
-
-        Handle problems
-        - "ん" ending: i.e. はん is read as ["han"], not ["ha", "n"].
-        When see "ん", remove the latest romaji ("ha") in list then add "n" ("han").
-        - TO BE CONTINUE:
-            + i, u ending: "saikou" = "sai" "kou. Might never update this and just read the "i" and "u" very fast.
-            + prolonged ending: "chiisai" = "chii" "sai". The "chii" is just "chi" but slightly longer, not reading "i".
-            The writing of this is a dash, not actual letter. Might update audio for this or just ignore it.
-        """
-        audio_romaji_list = []
-        kana_list: list = jamorasep.parse(spelling)
-        i = 0
-        while i < len(kana_list):
-            kana = kana_list[i]
-            new_romaji = None
-            # If kana split is "ん"/"ン"
-            if i > 0 and kana in ["ん", "ン"]:
-                # remove the previous audio mapping
-                # add the audio of "<previous romaji> + n"
-                prev_romaji = audio_romaji_list.pop()
-                new_romaji = prev_romaji + "n"
-            
-            # If is prolonged sound, currently just use the vowel in last sound
-            elif i > 0 and kana == "ー":
-                new_romaji = audio_romaji_list[-1][-1]
-                #TODO: if update prolonged .wav, need pop prev, new = prev + prev[-1] (i.e.: "chii" instead of "chi" "i")
-
-            # If is Sokuon (small tsu) 
-            elif i > 0 and kana in ["っ", "ッ"]:
-                # Use the word after small tsu to determine what kind it is, among k, s, t, p
-                if i < len(kana_list)-1:
-                    lookup_key = kana + kana_list[i+1][0]
-                else:
-                    lookup_key = kana + "た"    # if ends with sokuon, stitch any silent with it
-                new_romaji = ROMAJI_MAP.get(lookup_key)
-
-                # Approach #2: for more natural, requires more audio files
-                # i.e.: word = "学校" -> "ガ" "っ" "こ" -> "ga" "っ"... -> "ga" "k"... -> "gak" ...
-                # very important to only get the FIRST character of the next segment
-                # because ROMAJI_MAP does not have 'っぴょ'
-                # temp_mapping = ROMAJI_MAP.get(kana + kana_list[i+1][0])
-                # if temp_mapping:
-                #     prev_romaji = audio_romaji_list.pop() 
-                #     new_romaji = prev_romaji + temp_mapping
-            else:
-                new_romaji = ROMAJI_MAP.get(kana)
-
-            if new_romaji:
-                audio_romaji_list.append(new_romaji)
-            else:
-                log.error(f"""Failed to get audio mapping for word of spelling '{spelling}',
-                          not found for '{kana}'""")
-                return []
-            
-            i += 1
-
-        return audio_romaji_list
-
 
     def tag_sentence(self, sentence: str) -> List:
         return self.tagger(sentence)
@@ -420,3 +357,65 @@ class ProcessData():
                 if entry:
                     out.append(entry)
         return out
+
+async def sep_mora_get_audio_mapping(spelling: str) -> list:
+    """
+    Separate the spelling of a word (can be Higarana or Katakana)
+    into a list of letters. Return a list of romaji mapping for the letters.
+
+    Handle problems
+    - "ん" ending: i.e. はん is read as ["han"], not ["ha", "n"].
+    When see "ん", remove the latest romaji ("ha") in list then add "n" ("han").
+    - TO BE CONTINUE:
+        + i, u ending: "saikou" = "sai" "kou. Might never update this and just read the "i" and "u" very fast.
+        + prolonged ending: "chiisai" = "chii" "sai". The "chii" is just "chi" but slightly longer, not reading "i".
+        The writing of this is a dash, not actual letter. Might update audio for this or just ignore it.
+    """
+    audio_romaji_list = []
+    kana_list: list = jamorasep.parse(spelling)
+    i = 0
+    while i < len(kana_list):
+        kana = kana_list[i]
+        new_romaji = None
+        # If kana split is "ん"/"ン"
+        if i > 0 and kana in ["ん", "ン"]:
+            # remove the previous audio mapping
+            # add the audio of "<previous romaji> + n"
+            prev_romaji = audio_romaji_list.pop()
+            new_romaji = prev_romaji + "n"
+        
+        # If is prolonged sound, currently just use the vowel in last sound
+        elif i > 0 and kana == "ー":
+            new_romaji = audio_romaji_list[-1][-1]
+            #TODO: if update prolonged .wav, need pop prev, new = prev + prev[-1] (i.e.: "chii" instead of "chi" "i")
+
+        # If is Sokuon (small tsu) 
+        elif i > 0 and kana in ["っ", "ッ"]:
+            # Use the word after small tsu to determine what kind it is, among k, s, t, p
+            if i < len(kana_list)-1:
+                lookup_key = kana + kana_list[i+1][0]
+            else:
+                lookup_key = kana + "た"    # if ends with sokuon, stitch any silent with it
+            new_romaji = ROMAJI_MAP.get(lookup_key)
+
+            # Approach #2: for more natural, requires more audio files
+            # i.e.: word = "学校" -> "ガ" "っ" "こ" -> "ga" "っ"... -> "ga" "k"... -> "gak" ...
+            # very important to only get the FIRST character of the next segment
+            # because ROMAJI_MAP does not have 'っぴょ'
+            # temp_mapping = ROMAJI_MAP.get(kana + kana_list[i+1][0])
+            # if temp_mapping:
+            #     prev_romaji = audio_romaji_list.pop() 
+            #     new_romaji = prev_romaji + temp_mapping
+        else:
+            new_romaji = ROMAJI_MAP.get(kana)
+
+        if new_romaji:
+            audio_romaji_list.append(new_romaji)
+        else:
+            log.error(f"""Failed to get audio mapping for word of spelling '{spelling}',
+                        not found for '{kana}'""")
+            return []
+        
+        i += 1
+
+    return audio_romaji_list

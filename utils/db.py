@@ -13,13 +13,15 @@ if TYPE_CHECKING:
 
 from app.config import DB_HOST, DB_PORT, TASKIQ_MAX_ATTEMPTS
 from utils.logger import get_logger
+from utils.helpers import normalize_voice_options
 from schemas.constants import (TABLE_JLPT, TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,
                               TABLE_WORD_SENTENCE_REF, TABLE_SENTENCE_BOOK_REF, DB_NAME,
                               SQL_TABLE_SCRIPT, DEFAULT_LIMIT, SQL_WORD_PRIO_SCRIPT, TABLE_USER,
                               DEFAULT_FORMULA_K, DEFAULT_TIME_EXPODECAY, QUIZ_WORD_SORT_COLUMNS,
                               WORD_SENSES_REGEX, QUIZ_SOFT_CAP, QUIZ_HARD_CAP, DEFAULT_MULTI_PENALTY,
                               DEFAULT_DISTRACTOR_COUNT, TABLE_USER_WORD_PROGRESS, TABLE_USER_BOOK_STAR,
-                              TABLE_JOB_BOOK_BATCHES, TABLE_JOB_BOOK_BATCH_ITEMS, TABLE_JOB_SCRAPE)
+                              TABLE_JOB_BOOK_BATCHES, TABLE_JOB_BOOK_BATCH_ITEMS, TABLE_JOB_SCRAPE,
+                              TABLE_JOB_TTS)
 
 log = get_logger(__file__)
 
@@ -613,19 +615,18 @@ class DBHandling:
                                          file_size: int = 0, spool_path: str = "",
                                          object_name: str = "", status: str = "UPLOADING",
                                          action: str = "INSERT_FILE",
-                                         book_id: int = 0, process_job_id: str = "",
-                                         max_attempts: int = TASKIQ_MAX_ATTEMPTS) -> str:
+                                         book_id: int = 0, process_job_id: str = "") -> str:
         """Init row for 1 file in an insert file(s) request, to table `job_book_batch_items`.
         This is NOT idempotent check. Status is UPLOADING by default, it is expected
         that Frontend will do the upload after this."""
         item_id = str(uuid.uuid4())
         row = await self._fetchrow(
             f"""INSERT INTO {TABLE_JOB_BOOK_BATCH_ITEMS}
-            (id, batch_id, user_id, book_id, process_job_id, file_name, file_size, spool_path, object_name, action, status, max_attempts)
-            VALUES ($1::uuid, $2::uuid, $3, NULLIF($4, 0), NULLIF($5, '')::uuid, $6, $7, NULLIF($8, ''), NULLIF($9, ''), $10, $11, $12)
+            (id, batch_id, user_id, book_id, process_job_id, file_name, file_size, spool_path, object_name, action, status)
+            VALUES ($1::uuid, $2::uuid, $3, NULLIF($4, 0), NULLIF($5, '')::uuid, $6, $7, NULLIF($8, ''), NULLIF($9, ''), $10, $11)
             RETURNING id;""",
             item_id, batch_id, user_id, book_id, process_job_id, file_name, file_size,
-            spool_path, object_name, action, status, max_attempts,
+            spool_path, object_name, action, status,
         )
         if not row:
             return ""
@@ -647,9 +648,9 @@ class DBHandling:
                 modified_at = NOW()
             WHERE id = $1::uuid
               AND status = 'QUEUED_UPLOAD'
-              AND attempts < max_attempts
+                            AND attempts < $2
             RETURNING batch_id;""",
-            item_id,
+                        item_id, TASKIQ_MAX_ATTEMPTS,
         )
         if not row:
             return False
@@ -679,9 +680,9 @@ class DBHandling:
                 modified_at = NOW()
             WHERE id = $1::uuid
               AND status = 'QUEUED_PROCESS'
-              AND attempts < max_attempts
+                            AND attempts < $2
             RETURNING batch_id;""",
-            item_id,
+                        item_id, TASKIQ_MAX_ATTEMPTS,
         )
         if not row:
             return False
@@ -1271,6 +1272,75 @@ class DBHandling:
         )
 
         return status is not None
+    
+    # =======================================================================================
+
+
+    # Audio =================================================================================
+    async def create_job_tts(self, text: str, lang: str, voice_options: dict | None = None) -> str:
+        """Create one async TTS job row and return job ID."""
+        if not text or not lang:
+            return ""
+
+        job_id = str(uuid.uuid4())
+        row = await self._fetchrow(
+            f"""INSERT INTO {TABLE_JOB_TTS}
+            (id, text, lang, voice_options, status, attempts)
+            VALUES ($1::uuid, $2, $3, $4::jsonb, 'QUEUED', 0)
+            RETURNING id;""",
+            job_id, text, lang, json.dumps(voice_options or {}, ensure_ascii=False),
+        )
+        return str(row["id"]) if row else ""
+
+    async def get_job_tts(self, job_id: str) -> dict | None:
+        """Get one async TTS job by ID."""
+        row = await self._fetchrow(
+            f"SELECT * FROM {TABLE_JOB_TTS} WHERE id = $1::uuid;",
+            job_id,
+        )
+        return self._parse_job_tts(row) if row else None
+
+    async def claim_job_tts(self, job_id: str) -> bool:
+        """Claim queued async TTS job for processing.
+
+        Returns True only for the first worker that transitions:
+        QUEUED -> PROCESSING and increments attempts by 1.
+        """
+        status = await self._execute(
+            f"""UPDATE {TABLE_JOB_TTS}
+            SET status = 'PROCESSING',
+                attempts = attempts + 1,
+                modified_at = NOW()
+            WHERE id = $1::uuid
+                            AND status = 'QUEUED';""",
+            job_id,
+        )
+        return bool(status) and self._get_rowcount(status) > 0
+
+    async def update_job_tts_finished(self, job_id: str) -> bool:
+        """Mark async TTS job as FINISHED."""
+        status = await self._execute(
+            f"""UPDATE {TABLE_JOB_TTS}
+            SET status = 'FINISHED',
+                error = '',
+                modified_at = NOW()
+            WHERE id = $1::uuid;""",
+            job_id,
+        )
+        return bool(status) and self._get_rowcount(status) > 0
+
+    async def update_job_tts_failed(self, job_id: str, error: str = "") -> bool:
+        """Mark async TTS job as FAILED with error detail."""
+        status = await self._execute(
+            f"""UPDATE {TABLE_JOB_TTS}
+            SET status = 'FAILED',
+                error = CASE WHEN $1 = '' THEN error ELSE $1 END,
+                modified_at = NOW()
+            WHERE id = $2::uuid;""",
+            error, job_id,
+        )
+        return bool(status) and self._get_rowcount(status) > 0
+
     # =======================================================================================
 
 
@@ -1876,7 +1946,6 @@ class DBHandling:
             "action": job["action"],
             "status": job["status"],
             "attempts": job["attempts"],
-            "max_attempts": job["max_attempts"],
             "error": job["error"] or "",
             "created_at": str(job["created_at"]),
             "modified_at": str(job["modified_at"]),
@@ -1914,7 +1983,6 @@ class DBHandling:
             "status": row["status"],
             "error": row["error"] or "",
             "attempts": row["attempts"],
-            "max_attempts": row["max_attempts"],
             "created_at": str(row["created_at"]),
             "modified_at": str(row["modified_at"]),
         }
@@ -1922,6 +1990,21 @@ class DBHandling:
     def _parse_job_batch_item_list(self, rows) -> List[dict]:
         """Parse a list of multi-file request item records."""
         return [self._parse_job_batch_item(row) for row in rows]
+
+    def _parse_job_tts(self, row) -> dict:
+        """Build an async TTS job dict from a DB record."""
+        voice_options = normalize_voice_options(row["voice_options"])
+        return {
+            "id": str(row["id"]),
+            "text": row["text"],
+            "lang": row["lang"],
+            "voice_options": voice_options,
+            "status": row["status"],
+            "error": row["error"] or "",
+            "attempts": row["attempts"],
+            "created_at": str(row["created_at"]),
+            "modified_at": str(row["modified_at"]),
+        }
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================

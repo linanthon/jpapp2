@@ -11,6 +11,7 @@ from app.dependencies import (
     get_current_user,
     get_current_admin_user,
     get_jinja_globals,
+    validate_tts_request,
 )
 
 
@@ -155,3 +156,36 @@ class TestGetJinjaGlobals:
         result = get_jinja_globals()
         url = result["url"]
         assert url("static", "css/style.css") == "/static/css/style.css"
+
+
+# ── validate_tts_request ─────────────────────────────────────────────────────
+class TestValidateTTSRequest:
+    def test_valid_english_phrase(self):
+        text, lang = validate_tts_request({"text": "hello, world!", "lang": "en"})
+        assert text == "hello, world!"
+        assert lang == "en"
+
+    def test_valid_japanese_phrase(self):
+        text, lang = validate_tts_request({"text": "こんにちは、せかい。", "lang": "jp"})
+        assert text == "こんにちは、せかい。"
+        assert lang == "jp"
+
+    def test_valid_english_phrase_with_many_symbols(self):
+        text, lang = validate_tts_request({"text": "hello @world %2026 ^_^", "lang": "en"})
+        assert text == "hello @world %2026 ^_^"
+        assert lang == "en"
+
+    def test_valid_japanese_phrase_with_many_symbols(self):
+        text, lang = validate_tts_request({"text": "今日はPythonで勉強します @2026 #go!", "lang": "jp"})
+        assert text == "今日はPythonで勉強します @2026 #go!"
+        assert lang == "jp"
+
+    def test_invalid_language_raises_400(self):
+        with pytest.raises(HTTPException) as exc_info:
+            validate_tts_request({"text": "hello", "lang": "kr"})
+        assert exc_info.value.status_code == 400
+
+    def test_empty_text_raises_400(self):
+        with pytest.raises(HTTPException) as exc_info:
+            validate_tts_request({"text": "   ", "lang": "en"})
+        assert exc_info.value.status_code == 400

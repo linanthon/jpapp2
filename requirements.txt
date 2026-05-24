@@ -45,6 +45,9 @@ typeguard==4.4.4
 # soundfile==0.13.1     # requires numpy
 # scipy==1.16.0         # requires numpy
 
+# TTS
+pyopenjtalk-plus==0.4.1.post8   # support python 3.11 -> 3.14
+
 # Web
 fastapi==0.135.1
 Jinja2==3.1.6

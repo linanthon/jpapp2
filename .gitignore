@@ -16,3 +16,4 @@ dump.rdb
 z-test-local/
 minio/
 data/spool/
+tts/

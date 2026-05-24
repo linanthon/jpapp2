@@ -3,7 +3,7 @@ import io
 import pytest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
-from utils.process_data import ProcessData
+from utils.process_data import ProcessData, sep_mora_get_audio_mapping
 from utils.text_extractor import TxtExtractor
 
 
@@ -257,16 +257,13 @@ class TestGetWordEntry:
         assert result is first_entry
 
 
-# ── _sep_mora_get_audio_mapping ───────────────────────────────────────────────
+# ── sep_mora_get_audio_mapping ───────────────────────────────────────────────
 class TestSepMoraGetAudioMapping:
-    def setup_method(self):
-        self.pdata = ProcessData.__new__(ProcessData)
-
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     async def test_basic_mapping(self, mock_jamorasep):
         mock_jamorasep.parse.return_value = ["た", "べ", "る"]
-        result = await self.pdata._sep_mora_get_audio_mapping("たべる", None)
+        result = await sep_mora_get_audio_mapping("たべる")
         assert result == ["ta", "be", "ru"]
 
     @pytest.mark.asyncio
@@ -274,14 +271,14 @@ class TestSepMoraGetAudioMapping:
     async def test_n_ending(self, mock_jamorasep):
         """はん should map to 'han' not 'ha' + 'n'."""
         mock_jamorasep.parse.return_value = ["は", "ん"]
-        result = await self.pdata._sep_mora_get_audio_mapping("はん", None)
+        result = await sep_mora_get_audio_mapping("はん")
         assert result == ["han"]
 
     @pytest.mark.asyncio
     @patch("utils.process_data.jamorasep")
     async def test_prolonged_sound(self, mock_jamorasep):
         mock_jamorasep.parse.return_value = ["ラ", "ー"]
-        result = await self.pdata._sep_mora_get_audio_mapping("ラー", None)
+        result = await sep_mora_get_audio_mapping("ラー")
         assert result == ["ra", "a"]
 
     @pytest.mark.asyncio
@@ -290,7 +287,7 @@ class TestSepMoraGetAudioMapping:
         """Small tsu (っ) should combine with next kana's first char."""
         # jamorasep splits into individual mora; sokuon logic uses kana_list[i+1][0]
         mock_jamorasep.parse.return_value = ["が", "っ", "こ", "う"]
-        result = await self.pdata._sep_mora_get_audio_mapping("がっこう", None)
+        result = await sep_mora_get_audio_mapping("がっこう")
         assert result[0] == "ga"
         assert result[1] == "k"  # sokuon maps っ+こ -> "k"
         assert result[2] == "ko"
@@ -300,7 +297,7 @@ class TestSepMoraGetAudioMapping:
     async def test_unknown_kana_returns_empty(self, mock_jamorasep):
         """If a kana has no ROMAJI_MAP entry, return empty list."""
         mock_jamorasep.parse.return_value = ["♪"]
-        result = await self.pdata._sep_mora_get_audio_mapping("♪", None)
+        result = await sep_mora_get_audio_mapping("♪")
         assert result == []
 
 

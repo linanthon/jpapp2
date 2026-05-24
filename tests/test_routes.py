@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 from tests.conftest import ADMIN_USER, NORMAL_USER, _auth_header
 from utils.auth import hash_password, create_refresh_token
+from utils.tts import TTSAudio, TTSAdapterError
 
 
 # ── Auth: Register ────────────────────────────────────────────────────────────
@@ -133,6 +134,173 @@ class TestRefreshToken:
         mock_redis.get.return_value = None
         resp = await client.post("/v1/refresh", json={"refresh_token": "bad.token.here"})
         assert resp.status_code == 401
+
+
+# ── TTS ───────────────────────────────────────────────────────────────────────
+class TestTTSRoute:
+    @pytest.mark.asyncio
+    async def test_tts_success_returns_wav(self, client):
+        with patch(
+            "app.routes.tts_service.synthesize",
+            return_value=TTSAudio(
+                wav_bytes=b"RIFFdemo",
+                sample_rate=24000,
+                engine="pyopenjtalk-plus",
+                source="cache",
+                object_name="audio/tts/jp/pyopenjtalk-plus/demo.wav",
+            ),
+        ):
+            resp = await client.post("/v1/tts", json={"text": "こんにちは", "lang": "jp"})
+
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.headers.get("content-type", "").startswith("audio/wav")
+        assert resp.headers.get("x-tts-engine") == "pyopenjtalk-plus"
+        assert resp.headers.get("x-tts-source") == "cache"
+
+    @pytest.mark.asyncio
+    async def test_tts_fallback_to_statica_payload(self, client):
+        with patch(
+            "app.routes.tts_service.synthesize",
+            side_effect=TTSAdapterError("tts failed"),
+        ), patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value={
+                "source": "statica",
+                "engine": "StaticA",
+                "reason": "tts failed",
+                "lang": "jp",
+                "text": "こんにちは",
+                "audio_mapping": ["ko", "n", "ni", "chi", "wa"],
+            },
+        ):
+            resp = await client.post("/v1/tts", json={"text": "こんにちは", "lang": "jp"})
+
+        assert resp.status_code == HTTPStatus.OK
+        data = resp.json()
+        assert data["source"] == "statica"
+        assert data["engine"] == "StaticA"
+        assert isinstance(data["audio_mapping"], list)
+
+    @pytest.mark.asyncio
+    async def test_tts_invalid_payload_returns_400(self, client):
+        resp = await client.post("/v1/tts", json={"text": "hello", "lang": "jp"})
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+
+    @pytest.mark.asyncio
+    async def test_tts_use_model_false_returns_statica(self, client):
+        with patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value={
+                "source": "statica",
+                "engine": "StaticA",
+                "reason": "TTS model disabled by request",
+                "lang": "jp",
+                "text": "こんにちは",
+                "audio_mapping": ["ko", "n", "ni", "chi", "wa"],
+            },
+        ) as fallback_mock, patch(
+            "app.routes.tts_service.synthesize",
+            new=AsyncMock(),
+        ) as synth_mock:
+            resp = await client.post("/v1/tts?use_model=false", json={"text": "こんにちは", "lang": "jp"})
+
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json()["source"] == "statica"
+        fallback_mock.assert_awaited_once()
+        synth_mock.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tts_use_model_false_en_returns_400(self, client):
+        with patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value=None,
+        ):
+            resp = await client.post("/v1/tts?use_model=false", json={"text": "hello", "lang": "en"})
+
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+
+    @pytest.mark.asyncio
+    async def test_tts_bg_queues_job(self, client, mock_db):
+        mock_db.create_job_tts.return_value = "job-tts-1"
+        with patch(
+            "app.routes.tts_service.get_cached_for_request",
+            return_value=None,
+        ), patch(
+            "app.routes.process_tts_job.kiq",
+            new=AsyncMock(),
+        ) as kiq_mock:
+            resp = await client.post("/v1/tts/bg", json={"text": "こんにちは", "lang": "jp"})
+
+        assert resp.status_code == HTTPStatus.ACCEPTED
+        data = resp.json()
+        assert data["job_id"] == "job-tts-1"
+        assert data["status"] == "QUEUED"
+        kiq_mock.assert_awaited_once_with(job_id="job-tts-1")
+
+    @pytest.mark.asyncio
+    async def test_tts_bg_use_model_false_returns_statica_without_job(self, client, mock_db):
+        with patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value={
+                "source": "statica",
+                "engine": "StaticA",
+                "reason": "TTS model disabled by request",
+                "lang": "jp",
+                "text": "こんにちは",
+                "audio_mapping": ["ko", "n", "ni", "chi", "wa"],
+            },
+        ) as fallback_mock, patch(
+            "app.routes.process_tts_job.kiq",
+            new=AsyncMock(),
+        ) as kiq_mock:
+            resp = await client.post("/v1/tts/bg?use_model=false", json={"text": "こんにちは", "lang": "jp"})
+
+        assert resp.status_code == HTTPStatus.OK
+        assert resp.json()["source"] == "statica"
+        fallback_mock.assert_awaited_once()
+        kiq_mock.assert_not_awaited()
+        mock_db.create_job_tts.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_tts_bg_use_model_false_en_returns_400(self, client):
+        with patch(
+            "app.routes.tts_service.build_statica_fallback",
+            return_value=None,
+        ):
+            resp = await client.post("/v1/tts/bg?use_model=false", json={"text": "hello", "lang": "en"})
+
+        assert resp.status_code == HTTPStatus.BAD_REQUEST
+
+    @pytest.mark.asyncio
+    async def test_tts_bg_status_and_audio(self, client, mock_db):
+        job_payload = {
+            "id": "job-tts-2",
+            "status": "FINISHED",
+            "text": "こんにちは",
+            "lang": "jp",
+            "voice_options": {},
+        }
+        mock_db.get_job_tts.return_value = job_payload
+
+        status_resp = await client.get("/v1/tts/job/job-tts-2")
+        assert status_resp.status_code == HTTPStatus.OK
+        assert status_resp.json()["status"] == "FINISHED"
+
+        with patch(
+            "app.routes.tts_service.get_cached_for_request",
+            return_value=TTSAudio(
+                wav_bytes=b"RIFFdemo",
+                sample_rate=0,
+                engine="pyopenjtalk-plus",
+                source="redis",
+                object_name="audio/tts/jp/pyopenjtalk-plus/demo.wav",
+            ),
+        ):
+            audio_resp = await client.get("/v1/tts/job/job-tts-2/audio")
+
+        assert audio_resp.status_code == HTTPStatus.OK
+        assert audio_resp.headers.get("content-type", "").startswith("audio/wav")
+        assert audio_resp.headers.get("x-tts-job") == "job-tts-2"
 
 
 # ── Insert File ──────────────────────────────────────────────────────────────

@@ -141,7 +141,6 @@ CREATE TABLE IF NOT EXISTS job_book_batch_items (
     status TEXT NOT NULL,   -- UPLOADING / QUEUED_PROCESS / PROCESSING / FINISHED / FAILED_UPLOAD / FAILED_PROCESS
     error TEXT,
     attempts INT NOT NULL DEFAULT 0,
-    max_attempts INT NOT NULL DEFAULT 3,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     modified_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
@@ -161,4 +160,17 @@ CREATE TABLE IF NOT EXISTS job_scrape (
     modified_at TIMESTAMP NOT NULL DEFAULT NOW(),
 
     UNIQUE (user_id, idempotency_key)
+);
+
+-- Job info for async TTS generation
+CREATE TABLE IF NOT EXISTS job_tts (
+    id UUID PRIMARY KEY,
+    text TEXT NOT NULL,
+    lang TEXT NOT NULL,
+    voice_options JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status TEXT NOT NULL,    -- QUEUED / PROCESSING / FINISHED / FAILED
+    error TEXT,
+    attempts INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    modified_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
