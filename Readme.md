@@ -21,7 +21,7 @@ TODO backend:
 - ~~Auto read jlpt level at start (after scrape)~~
 - ~~Can insert multiple files~~
 - ~~Redis LRU words + sentence examples~~
-- TTS
+- ~~TTS~~
 
 TODO frontend
 - Quiz update to Redis in session, update to DB once at end
@@ -68,3 +68,6 @@ How to install:
 
 - eSpeak NG (EN)
   - Download the Windows `.msi` installer from https://github.com/espeak-ng/espeak-ng/releases and install it. If installation/user adds to PATH, keep `ESPEAK_BIN` in `app/config.py` as is. Otherwise, update it `ESPEAK_BIN` to your eSpeak location.
+
+
+npm create vite@latest frontend -- --template react-ts; cd frontend; npm install; npm install react-router-dom

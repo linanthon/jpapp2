@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import redis.asyncio as aioredis
 import asyncio
@@ -137,10 +136,6 @@ app = create_app()
 
 # Add the router with prefix
 app.include_router(router, prefix=bpv1_url_prefix)
-
-# Add static files
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
