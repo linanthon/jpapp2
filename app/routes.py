@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Response, Body
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
 from http import HTTPStatus
 import os
@@ -941,7 +942,9 @@ async def view_books(
     result, page_count = await handle_view_books(db, current_user, star_bool, limit, page)
     return JSONResponse(
         status_code=HTTPStatus.OK,
-        content={"book_list": result, "page_count": page_count, "page": page, "args": {"star": star}}
+        content=jsonable_encoder(
+            {"book_list": result, "page_count": page_count, "page": page, "args": {"star": star}}
+        )
     )
 
 
@@ -952,9 +955,11 @@ async def view_specific_book(
     current_user: dict = Depends(get_current_user_id)
 ):
     """View content of 1 book"""
-    return JSONResponse({
-        "book_details": await handle_view_specific_book(db, current_user, book_id)
-    })
+    return JSONResponse(
+        content=jsonable_encoder(
+            {"book_details": await handle_view_specific_book(db, current_user, book_id)}
+        )
+    )
 
 
 @router.post("/del/book/bg/{book_id}")
@@ -1049,11 +1054,20 @@ async def quiz(
 ):
     """Quiz home page"""
     all_books = await get_all_book_name_and_id(db)
-    return JSONResponse({
-        "all_books": all_books,
-        "args": {"jlpt_level": jlpt_level, "star": star, "select_book": select_book,
-                 "use_priority": use_priority, "get_distractors_from_db": get_distractors_from_db}
-    })
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "all_books": all_books,
+                "args": {
+                    "jlpt_level": jlpt_level,
+                    "star": star,
+                    "select_book": select_book,
+                    "use_priority": use_priority,
+                    "get_distractors_from_db": get_distractors_from_db,
+                },
+            }
+        )
+    )
 
 # ----- Quiz JP ---------
 @router.get("/quiz/jp")

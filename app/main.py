@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import redis.asyncio as aioredis
 import asyncio
@@ -16,6 +17,14 @@ from utils.logger import get_logger
 
 
 log = get_logger(__name__)
+
+
+def _build_cors_allow_origins() -> list[str]:
+    """Parse optional CORS_ALLOW_ORIGINS env var (comma-separated)."""
+    raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
 
 
 async def _jlpt_cache_reload_listener(app: FastAPI) -> None:
@@ -130,6 +139,17 @@ def create_app():
     Read stop words, JLPT levels / Scrape if no JLPT levels yet.
     """
     app = FastAPI(lifespan=lifespan)
+    allow_origins = _build_cors_allow_origins()
+    app.add_middleware(
+        CORSMiddleware,
+        # Cover local frontend dev/preview ports (5173, 4173, and any other local port)
+        # so preflight OPTIONS requests with Authorization/Idempotency-Key pass.
+        allow_origins=allow_origins,
+        allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     return app
 
 app = create_app()
