@@ -647,10 +647,16 @@ async def view_words(
     star_bool = parse_bool_param(star)
 
     result, page_count = await handle_view_words(db, current_user_id, jlpt_level, star_bool, limit, page)
-    return JSONResponse({
-        "word_list": result, "page_count": page_count, "page": page,
-        "args": {"jlpt_level": jlpt_level, "star": star}
-    })
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "word_list": result,
+                "page_count": page_count,
+                "page": page,
+                "args": {"jlpt_level": jlpt_level, "star": star},
+            }
+        )
+    )
 
 
 @router.get("/api/view/search-word", dependencies=[Depends(rate_limiter(60, 60))])
@@ -689,9 +695,11 @@ async def view_specific_word(
     result, sentence_examples = await handle_view_specific_word(
         db, current_user_id, word_id, sen_limit, redis,
     )
-    return JSONResponse({
-        "word_details": result, "sen_ex": sentence_examples
-    })
+    return JSONResponse(
+        content=jsonable_encoder(
+            {"word_details": result, "sen_ex": sentence_examples}
+        )
+    )
 
 
 @router.post("/toggle-star")
@@ -1102,11 +1110,20 @@ async def quiz_jp(
         get_distractors_from_db=get_distractors_bool,
         redis=redis,
     )
-    return JSONResponse({
-        "quizes": quizes, "mode": "jp",
-        "args": {"jlpt_level": jlpt_level, "star": star, "use_priority": use_priority,
-                 "get_distractors_from_db": get_distractors_from_db}
-    })
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "quizes": quizes,
+                "mode": "jp",
+                "args": {
+                    "jlpt_level": jlpt_level,
+                    "star": star,
+                    "use_priority": use_priority,
+                    "get_distractors_from_db": get_distractors_from_db,
+                },
+            }
+        )
+    )
 
 @router.get("/quiz/known")
 async def quiz_known(
@@ -1139,11 +1156,19 @@ async def quiz_known(
         get_distractors_from_db=get_distractors_bool,
         redis=redis,
     )
-    return JSONResponse({
-        "quizes": quizes, "mode": "known",
-        "args": {"jlpt_level": jlpt_level, "star": star,
-                 "get_distractors_from_db": get_distractors_from_db}
-    })
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "quizes": quizes,
+                "mode": "known",
+                "args": {
+                    "jlpt_level": jlpt_level,
+                    "star": star,
+                    "get_distractors_from_db": get_distractors_from_db,
+                },
+            }
+        )
+    )
 
 # ----- Quiz EN ---------
 @router.get("/quiz/en")
@@ -1178,11 +1203,20 @@ async def quiz_en(
         get_distractors_from_db=get_distractors_bool,
         redis=redis,
     )
-    return JSONResponse({
-        "quizes": quizes, "mode": "en",
-        "args": {"jlpt_level": jlpt_level, "star": star, "use_priority": use_priority,
-                 "get_distractors_from_db": get_distractors_from_db}
-    })
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "quizes": quizes,
+                "mode": "en",
+                "args": {
+                    "jlpt_level": jlpt_level,
+                    "star": star,
+                    "use_priority": use_priority,
+                    "get_distractors_from_db": get_distractors_from_db,
+                },
+            }
+        )
+    )
 
 
 # ----- Quiz Sentence (JP) --------- TODO: NOT IMPLEMENTED YET

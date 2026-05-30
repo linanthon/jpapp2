@@ -38,6 +38,9 @@ Install requirements:
 * pip install requirements.txt
 
 Run each in separate command prompt:
+$env:MINIO_ROOT_USER="miniouser"
+$env:MINIO_ROOT_PASSWORD="miniopass"
+./minio.exe server ./minio-data
 * minio server minio-data/
 * memurai
 * taskiq worker app.taskiq_broker:broker app.tasks --workers 3
@@ -71,3 +74,5 @@ How to install:
 
 
 npm create vite@latest frontend -- --template react-ts; cd frontend; npm install; npm install react-router-dom
+
+npm run dev

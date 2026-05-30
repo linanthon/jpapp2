@@ -1,3 +1,5 @@
+import { clearStoredTokens, getStoredTokens, setStoredTokens } from './auth'
+
 type JsonBody = Record<string, unknown> | Array<unknown> | null
 type RequestBody = JsonBody | FormData
 
@@ -15,10 +17,15 @@ function getApiUrl(path: string) {
   return `${API_ORIGIN}${API_PREFIX}${path}`
 }
 
+export function getApiAssetUrl(path: string) {
+  return getApiUrl(path)
+}
+
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: RequestBody
   token?: string | null
+  headers?: Record<string, string>
   signal?: AbortSignal
 }
 
@@ -55,6 +62,7 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: 'application/json',
+    ...(options.headers ?? {}),
   }
 
   const isFormData = options.body instanceof FormData
@@ -103,6 +111,48 @@ export async function apiRequest<T>(
   return (await response.json()) as T
 }
 
+let refreshInFlight: Promise<AuthTokens> | null = null
+
+async function refreshTokensWithLock(refreshToken: string): Promise<AuthTokens> {
+  if (!refreshInFlight) {
+    refreshInFlight = apiRequest<AuthTokens>('/refresh', {
+      method: 'POST',
+      body: { refresh_token: refreshToken },
+    }).finally(() => {
+      refreshInFlight = null
+    })
+  }
+  return refreshInFlight
+}
+
+async function apiRequestWithAutoRefresh<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
+  try {
+    return await apiRequest<T>(path, options)
+  } catch (error) {
+    if (!(error instanceof ApiError) || error.status !== 401 || !options.token) {
+      throw error
+    }
+
+    const tokens = getStoredTokens()
+    if (!tokens?.refresh_token) {
+      clearStoredTokens()
+      throw error
+    }
+
+    try {
+      const nextTokens = await refreshTokensWithLock(tokens.refresh_token)
+      setStoredTokens(nextTokens)
+      return await apiRequest<T>(path, { ...options, token: nextTokens.access_token })
+    } catch {
+      clearStoredTokens()
+      throw error
+    }
+  }
+}
+
 export type QuizHomeResponse = {
   all_books: Array<{ id: number; name: string }>
   args: Record<string, string | null>
@@ -145,7 +195,7 @@ export function loginUser(payload: { username: string; password: string }) {
 }
 
 export function logoutUser(token: string) {
-  return apiRequest<{ message: string }>('/logout', {
+  return apiRequestWithAutoRefresh<{ message: string }>('/logout', {
     method: 'POST',
     token,
   })
@@ -183,7 +233,7 @@ export function getQuizByMode(
   },
 ) {
   const path = withQuery(`/quiz/${mode}`, params)
-  return apiRequest<QuizResponse>(path, { token })
+  return apiRequestWithAutoRefresh<QuizResponse>(path, { token })
 }
 
 export function submitWordPriorityBatch(
@@ -195,7 +245,7 @@ export function submitWordPriorityBatch(
     occurrence?: number
   }>,
 ) {
-  return apiRequest<{ total: number; updated: number; failed: number }>('/word/prio/batch', {
+  return apiRequestWithAutoRefresh<{ total: number; updated: number; failed: number }>('/word/prio/batch', {
     method: 'POST',
     token,
     body: { answers },
@@ -205,42 +255,189 @@ export function submitWordPriorityBatch(
 export type ProgressResponse = Record<string, Record<string, number>>
 
 export function getProgress(token: string) {
-  return apiRequest<ProgressResponse>('/api/progress', { token })
+  return apiRequestWithAutoRefresh<ProgressResponse>('/api/progress', { token })
 }
 
 export type ViewWordsResponse = {
-  word_list: Array<Record<string, unknown>>
+  word_list: WordListItem[]
   page_count: number
   page: number
   args: Record<string, string | null>
 }
 
 export type ViewBooksResponse = {
-  book_list: Array<Record<string, unknown>>
+  book_list: BookListItem[]
   page_count: number
   page: number
   args: Record<string, string | null>
+}
+
+export type WordListItem = {
+  word_id: number
+  word: string
+  senses: string
+  spelling: string
+  jlpt_level: string
+  audio_mapping: string[]
+  occurrence: number
+  star: boolean
+  quized: number
+  priority: number
+}
+
+export type BookListItem = {
+  book_id: number
+  created_at: string
+  name: string
+  star: boolean
+  content?: string
+  object_name?: string
+  download_url?: string
+  download_name?: string
+}
+
+export type SearchWordsResponse = {
+  results: WordListItem[]
+  bpPrefix?: string
 }
 
 export function getWords(
   token: string,
   params?: { jlpt_level?: string; star?: boolean; page?: number; limit?: number },
 ) {
-  return apiRequest<ViewWordsResponse>(withQuery('/view/word', params), { token })
+  return apiRequestWithAutoRefresh<ViewWordsResponse>(withQuery('/view/word', params), { token })
 }
 
 export function getBooks(
   token: string,
   params?: { star?: boolean; page?: number; limit?: number },
 ) {
-  return apiRequest<ViewBooksResponse>(withQuery('/api/view/book', params), { token })
+  return apiRequestWithAutoRefresh<ViewBooksResponse>(withQuery('/api/view/book', params), { token })
 }
 
 export function searchWords(token: string, word: string, limit = 20) {
-  return apiRequest<{ results: Array<Record<string, unknown>> }>(
+  return apiRequestWithAutoRefresh<SearchWordsResponse>(
     withQuery('/api/view/search-word', { word, limit }),
     { token },
   )
+}
+
+export function toggleStar(
+  token: string,
+  payload: { id: number; objType: 'word' | 'book'; star: boolean },
+) {
+  return apiRequestWithAutoRefresh<{ success: boolean }>('/toggle-star', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+}
+
+export type ViewSpecificWordResponse = {
+  word_details: WordListItem & {
+    forms?: string
+    meanings?: string[]
+  }
+  sen_ex: string[]
+}
+
+export function getWordDetails(token: string, wordId: number, sentenceLimit?: number) {
+  return apiRequestWithAutoRefresh<ViewSpecificWordResponse>(
+    withQuery(`/view/word/${wordId}`, { sen_limit: sentenceLimit }),
+    { token },
+  )
+}
+
+export type ViewSpecificBookResponse = {
+  book_details: BookListItem
+}
+
+export function getBookDetails(token: string, bookId: number) {
+  return apiRequestWithAutoRefresh<ViewSpecificBookResponse>(`/view/book/${bookId}`, { token })
+}
+
+export function toggleWordKnown(
+  token: string,
+  payload: {
+    word_id: number
+    update_to_known: boolean
+    quized?: number
+    occurrence?: number
+  },
+) {
+  return apiRequestWithAutoRefresh<{ success: boolean }>('/word/known', {
+    method: 'POST',
+    token,
+    body: payload,
+  })
+}
+
+export function deleteBookInBackground(token: string, bookId: number, idempotencyKey: string) {
+  return apiRequestWithAutoRefresh<{
+    job_id: string
+    batch_id: string
+    book_id: number
+    status: string
+    message: string
+  }>(`/del/book/bg/${bookId}`, {
+    method: 'POST',
+    token,
+    headers: {
+      'Idempotency-Key': idempotencyKey,
+    },
+  })
+}
+
+export async function checkAdminAccess(token: string): Promise<boolean> {
+  const form = new FormData()
+  try {
+    await apiRequestWithAutoRefresh<InsertFileJobResponse>('/insert/file/bg', {
+      method: 'POST',
+      token,
+      headers: {
+        'Idempotency-Key': 'admin-check',
+      },
+      body: form,
+    })
+    return true
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      return false
+    }
+    return false
+  }
+}
+
+export type AudioRequestResult =
+  | { type: 'blob'; blob: Blob }
+  | { type: 'statica'; audio_mapping: string[] }
+
+export async function requestWordAudio(word: string, useModel: boolean): Promise<AudioRequestResult> {
+  const response = await fetch(getApiUrl(`/tts?use_model=${useModel ? 'true' : 'false'}`), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json, audio/wav',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ text: word, lang: 'jp' }),
+  })
+
+  if (!response.ok) {
+    const contentType = response.headers.get('content-type') ?? ''
+    if (contentType.includes('application/json')) {
+      const body = (await response.json()) as { detail?: string }
+      throw new ApiError(response.status, body.detail ?? 'Audio request failed')
+    }
+    throw new ApiError(response.status, await response.text())
+  }
+
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('audio/wav')) {
+    return { type: 'blob', blob: await response.blob() }
+  }
+
+  const payload = (await response.json()) as { audio_mapping?: string[] }
+  return { type: 'statica', audio_mapping: payload.audio_mapping ?? [] }
 }
 
 export type InsertStringJobResponse = {
@@ -260,23 +457,13 @@ export function queueInsertString(
   form.set('stringName', payload.stringName)
   form.set('stringBody', payload.stringBody)
 
-  return fetch(getApiUrl('/insert/str/bg'), {
+  return apiRequestWithAutoRefresh<InsertStringJobResponse>('/insert/str/bg', {
     method: 'POST',
+    token,
     headers: {
-      Authorization: `Bearer ${token}`,
       'Idempotency-Key': idempotencyKey,
     },
     body: form,
-  }).then(async (response) => {
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type') ?? ''
-      if (contentType.includes('application/json')) {
-        const body = (await response.json()) as { detail?: string }
-        throw new ApiError(response.status, body.detail ?? 'Insert failed')
-      }
-      throw new ApiError(response.status, await response.text())
-    }
-    return (await response.json()) as InsertStringJobResponse
   })
 }
 
@@ -292,26 +479,16 @@ export function queueInsertFile(token: string, file: File, idempotencyKey: strin
   const form = new FormData()
   form.set('submittedFile', file)
 
-  return fetch(getApiUrl('/insert/file/bg'), {
+  return apiRequestWithAutoRefresh<InsertFileJobResponse>('/insert/file/bg', {
     method: 'POST',
+    token,
     headers: {
-      Authorization: `Bearer ${token}`,
       'Idempotency-Key': idempotencyKey,
     },
     body: form,
-  }).then(async (response) => {
-    if (!response.ok) {
-      const contentType = response.headers.get('content-type') ?? ''
-      if (contentType.includes('application/json')) {
-        const body = (await response.json()) as { detail?: string }
-        throw new ApiError(response.status, body.detail ?? 'File upload failed')
-      }
-      throw new ApiError(response.status, await response.text())
-    }
-    return (await response.json()) as InsertFileJobResponse
   })
 }
 
 export function getInsertJob(token: string, jobId: string) {
-  return apiRequest<Record<string, unknown>>(`/api/job/${jobId}`, { token })
+  return apiRequestWithAutoRefresh<Record<string, unknown>>(`/api/job/${jobId}`, { token })
 }
