@@ -412,18 +412,18 @@ class DBHandling:
         if not book_id:
             return None
 
-        # Check if is starred by user
+        # Check whether this specific book is starred by user
         is_star = False
         row = await self._fetchrow(
-            f"SELECT book_id FROM {TABLE_USER_BOOK_STAR} WHERE user_id = $1 AND star = true;",
-            user_id
+            f"SELECT 1 FROM {TABLE_USER_BOOK_STAR} WHERE user_id = $1 AND book_id = $2 AND star = true;",
+            user_id, book_id
         )
         if row:
             is_star = True
 
         # get the book
         row = await self._fetchrow(
-            f"SELECT id, created_at, name, object_name FROM {TABLE_BOOKS} WHERE id = $1;",
+            f"SELECT id, created_at, name, content, object_name FROM {TABLE_BOOKS} WHERE id = $1;",
             book_id
         )
         if row:
@@ -433,7 +433,9 @@ class DBHandling:
     async def list_books(self, user_id: int = None, star: bool = False,
                          limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
         """
-        Query 'books' table to get a list of books
+        Query 'books' table to get a list of books.
+        If star=False/None, get books no condition. Otherwise, get based on user_id
+        and star=True conditions.
 
         Input:
         - user_id: the user ID
@@ -444,47 +446,80 @@ class DBHandling:
 
         Output: a list of books (id, name, star, created_at)
         """
-        book_star_ids = set()
-        if star:
-            if not user_id:
-                return []
+        if star and not user_id:
+            return []
+        if limit is not None and limit < 1:
+            limit = DEFAULT_LIMIT
 
-            star_rows = await self._fetch(
-                f"SELECT book_id FROM {TABLE_USER_BOOK_STAR} WHERE status != 'PENDING' AND user_id = $1 AND star = true;",
-                user_id
-            )
-            for instance in star_rows:
-                book_star_ids.add(instance["book_id"])
-
-        if limit is None:
-            rows = await self._fetch(
-                f"SELECT id, name, created_at FROM {TABLE_BOOKS} ORDER BY id OFFSET $1;",
-                offset
-            )
+        if star and user_id:
+            query = f"""SELECT b.id, b.name, b.created_at, true AS star
+                    FROM {TABLE_BOOKS} AS b
+                    JOIN {TABLE_USER_BOOK_STAR} AS s
+                     ON s.book_id = b.id
+                     AND s.user_id = $1
+                     AND s.star = true
+                    WHERE b.status != 'PENDING'
+                    ORDER BY b.id
+                    OFFSET $2"""
+            if limit is not None:
+                query += " LIMIT $3"
+                params = (user_id, offset, limit,)
+            else:
+                params = (user_id, offset,)
         else:
-            if limit < 1:
-                limit = DEFAULT_LIMIT
-            rows = await self._fetch(
-                f"SELECT id, name, created_at FROM {TABLE_BOOKS} ORDER BY id OFFSET $1 LIMIT $2;",
-                offset, limit
-            )
+            if user_id:
+                query = f"""SELECT b.id, b.name, b.created_at, COALESCE(s.star, false) AS star
+                            FROM {TABLE_BOOKS} AS b
+                            LEFT JOIN {TABLE_USER_BOOK_STAR} AS s
+                              ON s.book_id = b.id
+                             AND s.user_id = $1
+                             AND s.star = true
+                            WHERE b.status != 'PENDING'
+                            ORDER BY b.id
+                            OFFSET $2"""
+                if limit is not None:
+                    query += " LIMIT $3"
+                    params = (user_id, offset, limit,)
+                else:
+                    params = (user_id, offset,)
+            else:
+                query = f"""SELECT b.id, b.name, b.created_at, false AS star
+                            FROM {TABLE_BOOKS} AS b
+                            WHERE b.status != 'PENDING'
+                            ORDER BY b.id
+                            OFFSET $1"""
+                if limit is not None:
+                    query += " LIMIT $2"
+                    params = (offset, limit,)
+                else:
+                    params = (offset,)
+
+        query += ";"
+        rows = await self._fetch(query, *params)
 
         res = []
         for instance in rows:
-            res.append(self._parse_book(
-                instance, instance["id"] in book_star_ids
-            ))
+            res.append(self._parse_book(instance, bool(instance.get("star", False))))
         return res
 
-    async def count_books(self, star: bool = False) -> int:
+    async def count_books(self, user_id: int = None, star: bool = False) -> int:
         """Count books in table (with filters)"""
         if star:
+            if not user_id:
+                return 0
             row = await self._fetchrow(
-                f"SELECT COUNT(id) FROM {TABLE_BOOKS} WHERE star = true"
+                f"""SELECT COUNT(*)
+                FROM {TABLE_BOOKS} AS b
+                JOIN {TABLE_USER_BOOK_STAR} AS s
+                  ON s.book_id = b.id
+                 AND s.user_id = $1
+                 AND s.star = true
+                WHERE b.status != 'PENDING';""",
+                user_id,
             )
         else:
             row = await self._fetchrow(
-                f"SELECT COUNT(id) FROM {TABLE_BOOKS}"
+                f"SELECT COUNT(id) FROM {TABLE_BOOKS} WHERE status != 'PENDING'"
             )
         return row["count"] if row else 0
 
@@ -503,7 +538,15 @@ class DBHandling:
         )
         if status and self._get_rowcount(status) > 0:
             return True
-        return False
+        if status is None:
+            return False
+
+        # No existing row yet for this (user, book): create one.
+        status = await self._execute(
+            f"INSERT INTO {TABLE_USER_BOOK_STAR} (user_id, book_id, star) VALUES ($1, $2, $3);",
+            user_id, book_id, new_star_status,
+        )
+        return status is not None
 
     async def delete_book(self, book_id: int = None) -> bool:
         """Remove book by name (exact match) or id, will also remove all
@@ -1030,7 +1073,30 @@ class DBHandling:
                 "priority": instance["priority"]
             }
 
-        if jlpt_level:
+        if star:
+            if jlpt_level:
+                jlpt_level = jlpt_level.upper()
+                rows = await self._fetch(
+                    f"""SELECT a.* FROM {TABLE_WORDS} AS a
+                    JOIN {TABLE_USER_WORD_PROGRESS} AS b
+                      ON b.word_id = a.id
+                     AND b.user_id = $1
+                     AND b.star = true
+                    WHERE a.jlpt_level = $2
+                    ORDER BY a.id OFFSET $3 LIMIT $4;""",
+                    user_id, jlpt_level, offset, limit,
+                )
+            else:
+                rows = await self._fetch(
+                    f"""SELECT a.* FROM {TABLE_WORDS} AS a
+                    JOIN {TABLE_USER_WORD_PROGRESS} AS b
+                      ON b.word_id = a.id
+                     AND b.user_id = $1
+                     AND b.star = true
+                    ORDER BY a.id OFFSET $2 LIMIT $3;""",
+                    user_id, offset, limit,
+                )
+        elif jlpt_level:
             jlpt_level = jlpt_level.upper()
             rows = await self._fetch(
                 f"SELECT * FROM {TABLE_WORDS} WHERE jlpt_level = $1 ORDER BY id OFFSET $2 LIMIT $3;",

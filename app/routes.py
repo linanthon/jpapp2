@@ -16,7 +16,7 @@ from app.handlers.view import (handle_search_word, handle_view_specific_word, ha
                                handle_view_books, handle_view_specific_book,
                                toggle_star_helper, get_all_book_name_and_id)
 from app.dependencies import (
-    get_db, get_pdata, get_redis, get_current_user_id, get_current_admin_user,
+    get_db, get_pdata, get_redis, get_current_user_id, get_current_user, get_current_admin_user,
     rate_limiter, redis_get_json, redis_set_json, validate_tts_request, parse_tts_voice_options
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
@@ -186,6 +186,19 @@ async def refresh_token(
         access_token=access_token,
         refresh_token=new_refresh_token
     )
+
+
+@router.get("/me", response_model=UserResponse)
+async def get_current_profile(
+    current_user: dict = Depends(get_current_user),
+):
+    """Return current authenticated user's profile."""
+    return {
+        "id": current_user["id"],
+        "username": current_user["username"],
+        "email": current_user["email"],
+        "is_admin": current_user["is_admin"],
+    }
 
 
 # ===== INSERT ===================================================================

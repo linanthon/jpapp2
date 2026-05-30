@@ -57,11 +57,15 @@ export function BookDetailPage() {
 
     const nextStar = !bookPayload.book_details.star
     try {
-      await toggleStar(token, {
+      const response = await toggleStar(token, {
         id: bookPayload.book_details.book_id,
         objType: 'book',
         star: nextStar,
       })
+      if (!response.success) {
+        setErrorMessage('Failed to update book star.')
+        return
+      }
       setBookPayload({
         ...bookPayload,
         book_details: { ...bookPayload.book_details, star: nextStar },
@@ -107,8 +111,15 @@ export function BookDetailPage() {
 
   return (
     <section className="panel">
-      <p className="eyebrow">View</p>
-      <h2 className="panel-title">Book Details</h2>
+      <div className="panel-top-row">
+        <div>
+          <p className="eyebrow">View</p>
+          <h2 className="panel-title">Book Details</h2>
+        </div>
+        <button className="btn btn--ghost" type="button" onClick={onReturn}>
+          Return
+        </button>
+      </div>
       <p className="panel-copy">Inspect one book and manage star/delete actions.</p>
 
       {!token && (
@@ -158,12 +169,6 @@ export function BookDetailPage() {
               {deleteMessage && <p className="notice">{deleteMessage}</p>}
             </article>
           )}
-
-          <div className="inline-actions">
-            <button className="btn btn--ghost" type="button" onClick={onReturn}>
-              Return
-            </button>
-          </div>
         </>
       )}
     </section>

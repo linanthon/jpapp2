@@ -182,7 +182,7 @@ async def handle_view_books(db: "DBHandling" = None, user_id: int = None, star: 
     key = tuple(f"book::{star}")
     return await _paginated_query(
         key,
-        lambda: db.count_books(star),
+        lambda: db.count_books(user_id, star),
         lambda lim, off: db.list_books(user_id, star, lim, off),
         limit, page
     )

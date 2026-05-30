@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, MouseEventHandler } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ApiError,
@@ -153,7 +153,11 @@ export function ViewPage() {
     }
 
     try {
-      await toggleStar(token, { id: book.book_id, objType: 'book', star: nextStar })
+      const response = await toggleStar(token, { id: book.book_id, objType: 'book', star: nextStar })
+      if (!response.success) {
+        setErrorMessage('Failed to update book star.')
+        return
+      }
       setBookItems((prev) =>
         prev.map((item) => (item.book_id === book.book_id ? { ...item, star: nextStar } : item)),
       )
@@ -164,6 +168,10 @@ export function ViewPage() {
         setErrorMessage('Failed to update book star.')
       }
     }
+  }
+
+  const onPagerMouseDown: MouseEventHandler<HTMLButtonElement> = (event) => {
+    event.preventDefault()
   }
 
   const onSearch = async (event: FormEvent<HTMLFormElement>) => {
@@ -278,7 +286,14 @@ export function ViewPage() {
                           toggleWordStar(item, !(wordStarMap[item.word_id] ?? item.star))
                         }
                       >
-                        {wordStarMap[item.word_id] ?? item.star ? '★' : '☆'}
+                        {wordStarMap[item.word_id] ?? item.star ? (
+                          <span className="star-btn__label">
+                            <span className="star-btn__icon">★</span>
+                            <span className="star-btn__text">Starred</span>
+                          </span>
+                        ) : (
+                          '☆ Star'
+                        )}
                       </button>
                     </div>
                   </li>
@@ -292,6 +307,7 @@ export function ViewPage() {
                   type="button"
                   disabled={currentSearchPage <= 1}
                   onClick={() => setSearchPage((prev) => Math.max(1, prev - 1))}
+                  onMouseDown={onPagerMouseDown}
                 >
                   Previous
                 </button>
@@ -303,6 +319,7 @@ export function ViewPage() {
                   type="button"
                   disabled={currentSearchPage >= searchPageCount}
                   onClick={() => setSearchPage((prev) => Math.min(searchPageCount, prev + 1))}
+                  onMouseDown={onPagerMouseDown}
                 >
                   Next
                 </button>
@@ -322,7 +339,6 @@ export function ViewPage() {
                   className="field-input field-input--inline"
                   value={wordJlptFilter}
                   onChange={(event) => {
-                    setWordsStatus('loading')
                     setWordPage(1)
                     setWordJlptFilter(event.target.value)
                   }}
@@ -341,7 +357,6 @@ export function ViewPage() {
                     type="checkbox"
                     checked={wordStarOnly}
                     onChange={(event) => {
-                      setWordsStatus('loading')
                       setWordPage(1)
                       setWordStarOnly(event.target.checked)
                     }}
@@ -366,7 +381,14 @@ export function ViewPage() {
                           aria-pressed={item.star}
                           onClick={() => toggleWordStar(item, !item.star)}
                         >
-                          {item.star ? '★' : '☆'}
+                          {item.star ? (
+                            <span className="star-btn__label">
+                              <span className="star-btn__icon">★</span>
+                              <span className="star-btn__text">Starred</span>
+                            </span>
+                          ) : (
+                            '☆ Star'
+                          )}
                         </button>
                       </div>
                     </li>
@@ -380,9 +402,9 @@ export function ViewPage() {
                     type="button"
                     disabled={wordPage <= 1}
                     onClick={() => {
-                      setWordsStatus('loading')
                       setWordPage((prev) => Math.max(1, prev - 1))
                     }}
+                    onMouseDown={onPagerMouseDown}
                   >
                     Previous
                   </button>
@@ -394,9 +416,9 @@ export function ViewPage() {
                     type="button"
                     disabled={wordPage >= wordPageCount}
                     onClick={() => {
-                      setWordsStatus('loading')
                       setWordPage((prev) => Math.min(wordPageCount, prev + 1))
                     }}
+                    onMouseDown={onPagerMouseDown}
                   >
                     Next
                   </button>
@@ -413,7 +435,6 @@ export function ViewPage() {
                     type="checkbox"
                     checked={bookStarOnly}
                     onChange={(event) => {
-                      setBooksStatus('loading')
                       setBookPage(1)
                       setBookStarOnly(event.target.checked)
                     }}
@@ -438,7 +459,14 @@ export function ViewPage() {
                           aria-pressed={item.star}
                           onClick={() => toggleBookStar(item, !item.star)}
                         >
-                          {item.star ? '★' : '☆'}
+                          {item.star ? (
+                            <span className="star-btn__label">
+                              <span className="star-btn__icon">★</span>
+                              <span className="star-btn__text">Starred</span>
+                            </span>
+                          ) : (
+                            '☆ Star'
+                          )}
                         </button>
                       </div>
                     </li>
@@ -452,9 +480,9 @@ export function ViewPage() {
                     type="button"
                     disabled={bookPage <= 1}
                     onClick={() => {
-                      setBooksStatus('loading')
                       setBookPage((prev) => Math.max(1, prev - 1))
                     }}
+                    onMouseDown={onPagerMouseDown}
                   >
                     Previous
                   </button>
@@ -466,9 +494,9 @@ export function ViewPage() {
                     type="button"
                     disabled={bookPage >= bookPageCount}
                     onClick={() => {
-                      setBooksStatus('loading')
                       setBookPage((prev) => Math.min(bookPageCount, prev + 1))
                     }}
+                    onMouseDown={onPagerMouseDown}
                   >
                     Next
                   </button>

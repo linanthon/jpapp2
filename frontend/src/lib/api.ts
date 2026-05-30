@@ -175,6 +175,10 @@ export type UserResponse = {
   is_admin: boolean
 }
 
+export function getCurrentUser(token: string) {
+  return apiRequestWithAutoRefresh<UserResponse>('/me', { token })
+}
+
 export function registerUser(payload: {
   username: string
   email: string
@@ -389,17 +393,9 @@ export function deleteBookInBackground(token: string, bookId: number, idempotenc
 }
 
 export async function checkAdminAccess(token: string): Promise<boolean> {
-  const form = new FormData()
   try {
-    await apiRequestWithAutoRefresh<InsertFileJobResponse>('/insert/file/bg', {
-      method: 'POST',
-      token,
-      headers: {
-        'Idempotency-Key': 'admin-check',
-      },
-      body: form,
-    })
-    return true
+    const user = await getCurrentUser(token)
+    return Boolean(user.is_admin)
   } catch (error) {
     if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
       return false
