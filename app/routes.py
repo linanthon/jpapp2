@@ -35,7 +35,6 @@ from utils.data import read_jlpt_from_db, JLPT_REDIS_KEY
 from utils.db import DBHandling
 from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
                            parse_bool_param, validate_star)
-from utils.logger import get_logger
 from utils.process_data import ProcessData
 from utils.storage import (upload_file_to_minio, upload_string_to_minio,
                            generate_presigned_upload_url, PRESIGNED_URL_EXPIRY, storage_object_exists)
@@ -43,7 +42,6 @@ from utils.tts import TTSService, TTSAdapterError
 
 # Create router
 router = APIRouter()
-log = get_logger(__name__)
 tts_service = TTSService()
 
 # ===== AUTH ========================================================================
@@ -633,6 +631,109 @@ async def get_specific_job(
         status_code=HTTPStatus.OK,
         content=job
     )
+
+
+@router.get("/admin/jobs")
+async def get_admin_jobs(
+    page: int = 1,
+    limit: int = DEFAULT_LIMIT,
+    job_type: str = "all",
+    db: DBHandling = Depends(get_db),
+    _: dict = Depends(get_current_admin_user),
+):
+    """Admin-only paginated jobs list across sources: book_batch, tts, scrape."""
+    job_type_norm = (job_type or "all").strip().lower()
+    allowed = {"all", "book_batch", "tts", "scrape"}
+    if job_type_norm not in allowed:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid job_type")
+
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = DEFAULT_LIMIT
+    offset = (page - 1) * limit
+
+    jobs = await db.get_admin_jobs(job_type_norm, limit, offset)
+    total = await db.count_admin_jobs(job_type_norm)
+    page_count = (total + limit - 1) // limit if total else 0
+
+    return JSONResponse(
+        status_code=HTTPStatus.OK,
+        content=jsonable_encoder(
+            {
+                "jobs": jobs,
+                "page": page,
+                "page_count": page_count,
+                "total": total,
+                "limit": limit,
+                "job_type": job_type_norm,
+            }
+        ),
+    )
+
+
+@router.get("/admin/jobs/{job_type}/{job_id}")
+async def get_admin_job_detail(
+    job_type: str,
+    job_id: str,
+    db: DBHandling = Depends(get_db),
+    _: dict = Depends(get_current_admin_user),
+):
+    """Admin-only job detail endpoint.
+    - book_batch: returns batch + child items
+    - tts: returns one TTS job
+    - scrape: returns one scrape job
+    """
+    job_type_norm = (job_type or "").strip().lower()
+
+    if job_type_norm == "book_batch":
+        batch = await db.get_job_book_batch(job_id)
+        if not batch:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Book batch job not found")
+        items = await db.get_job_book_batch_items(job_id)
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content=jsonable_encoder(
+                {
+                    "job_type": "book_batch",
+                    "job_id": job_id,
+                    "batch": batch,
+                    "children": items,
+                }
+            ),
+        )
+
+    if job_type_norm == "tts":
+        tts_job = await db.get_job_tts(job_id)
+        if not tts_job:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TTS job not found")
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content=jsonable_encoder(
+                {
+                    "job_type": "tts",
+                    "job_id": job_id,
+                    "job": tts_job,
+                }
+            ),
+        )
+
+    if job_type_norm == "scrape":
+        scrape_job = await db.get_job_scrape(job_id)
+        if not scrape_job:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Scrape job not found")
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content=jsonable_encoder(
+                {
+                    "job_type": "scrape",
+                    "job_id": job_id,
+                    "job": scrape_job,
+                }
+            ),
+        )
+
+    raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid job_type")
 
 # =================================================================================
 

@@ -614,6 +614,13 @@ class DBHandling:
         )
         return self._parse_job_list(rows)
 
+    async def count_job_book_batches(self) -> int:
+        """Count all book job batches."""
+        row = await self._fetchrow(
+            f"SELECT COUNT(*) AS count FROM {TABLE_JOB_BOOK_BATCHES};"
+        )
+        return int(row["count"]) if row else 0
+
     async def create_job_book_batch(self, user_id: int, idempotency_key: str) -> Tuple[str, bool]:
         """Create or fetch a multi-file request batch by idempotency key, to table `job_book_batches`.
         Aka. this is to idempotent check the 'multi-file-submit' request.
@@ -1367,6 +1374,13 @@ class DBHandling:
         )
         return self._parse_job_tts(row) if row else None
 
+    async def count_job_tts(self) -> int:
+        """Count all async TTS jobs."""
+        row = await self._fetchrow(
+            f"SELECT COUNT(*) AS count FROM {TABLE_JOB_TTS};"
+        )
+        return int(row["count"]) if row else 0
+
     async def claim_job_tts(self, job_id: str) -> bool:
         """Claim queued async TTS job for processing.
 
@@ -1475,6 +1489,98 @@ class DBHandling:
             job_id,
         )
         return str(row["status"]) if row and row.get("status") else ""
+
+    async def get_job_scrape(self, job_id: str) -> dict | None:
+        """Get one scrape job by ID."""
+        row = await self._fetchrow(
+            f"SELECT * FROM {TABLE_JOB_SCRAPE} WHERE id = $1::uuid;",
+            job_id,
+        )
+        return self._parse_job_scrape(row) if row else None
+
+    async def count_job_scrape(self) -> int:
+        """Count all scrape jobs."""
+        row = await self._fetchrow(
+            f"SELECT COUNT(*) AS count FROM {TABLE_JOB_SCRAPE};"
+        )
+        return int(row["count"]) if row else 0
+
+    async def get_admin_jobs(self, job_type: str = "all", limit: int = DEFAULT_LIMIT,
+                             offset: int = 0) -> List[dict]:
+        """Get paginated admin jobs across sources (book_batch / tts / scrape)."""
+        if limit < 1:
+            limit = DEFAULT_LIMIT
+
+        if job_type == "book_batch":
+            rows = await self._fetch(
+                f"""SELECT id::text AS id, user_id, 'book_batch' AS job_type, status,
+                created_at, modified_at FROM {TABLE_JOB_BOOK_BATCHES}
+                ORDER BY created_at DESC OFFSET $1 LIMIT $2;""",
+                offset, limit,
+            )
+        elif job_type == "tts":
+            rows = await self._fetch(
+                f"""SELECT id::text AS id, NULL::int AS user_id, 'tts' AS job_type, status,
+                created_at, modified_at FROM {TABLE_JOB_TTS}
+                ORDER BY created_at DESC OFFSET $1 LIMIT $2;""",
+                offset, limit,
+            )
+        elif job_type == "scrape":
+            rows = await self._fetch(
+                f"""SELECT id::text AS id, user_id, 'scrape' AS job_type, status,
+                created_at, modified_at FROM {TABLE_JOB_SCRAPE}
+                ORDER BY created_at DESC OFFSET $1 LIMIT $2;""",
+                offset, limit,
+            )
+        else:
+            rows = await self._fetch(
+                f"""SELECT * FROM (
+                    SELECT id::text AS id, user_id, 'book_batch' AS job_type, status,
+                        created_at, modified_at
+                    FROM {TABLE_JOB_BOOK_BATCHES}
+                    UNION ALL
+                    SELECT id::text AS id, NULL::int AS user_id, 'tts' AS job_type, status,
+                        created_at, modified_at
+                    FROM {TABLE_JOB_TTS}
+                    UNION ALL
+                    SELECT id::text AS id, user_id, 'scrape' AS job_type, status,
+                        created_at, modified_at
+                    FROM {TABLE_JOB_SCRAPE}
+                ) AS jobs
+                ORDER BY created_at DESC
+                OFFSET $1 LIMIT $2;""",
+                offset, limit,
+            )
+
+        return [
+            {
+                "id": row["id"],
+                "user_id": row["user_id"],
+                "job_type": row["job_type"],
+                "status": row["status"],
+                "created_at": str(row["created_at"]),
+                "modified_at": str(row["modified_at"]),
+            }
+            for row in rows
+        ]
+
+    async def count_admin_jobs(self, job_type: str = "all") -> int:
+        """Count admin jobs across requested source(s)."""
+        if job_type == "book_batch":
+            return await self.count_job_book_batches()
+        if job_type == "tts":
+            return await self.count_job_tts()
+        if job_type == "scrape":
+            return await self.count_job_scrape()
+
+        row = await self._fetchrow(
+            f"""SELECT (
+                (SELECT COUNT(*) FROM {TABLE_JOB_BOOK_BATCHES}) +
+                (SELECT COUNT(*) FROM {TABLE_JOB_TTS}) +
+                (SELECT COUNT(*) FROM {TABLE_JOB_SCRAPE})
+            ) AS count;"""
+        )
+        return int(row["count"]) if row else 0
 
     async def replace_jlpt_levels(self, jlpt_levels: Dict[str, str]) -> bool:
         """Replace JLPT mapping table with a freshly scraped snapshot.
@@ -2072,6 +2178,21 @@ class DBHandling:
             "created_at": str(row["created_at"]),
             "modified_at": str(row["modified_at"]),
         }
+
+    def _parse_job_scrape(self, row) -> dict:
+        """Build a scrape job dict from a DB record."""
+        return {
+            "id": str(row["id"]),
+            "user_id": row["user_id"],
+            "idempotency_key": row["idempotency_key"],
+            "trigger_type": row["trigger_type"] or "",
+            "source": row["source"] or "",
+            "status": row["status"],
+            "error": row["error"] or "",
+            "created_at": str(row["created_at"]),
+            "modified_at": str(row["modified_at"]),
+        }
+
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================

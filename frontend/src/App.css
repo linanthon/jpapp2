@@ -430,6 +430,16 @@
   color: inherit;
 }
 
+.job-meta-line {
+  color: var(--muted);
+}
+
+.job-meta-sep {
+  color: var(--ink);
+  font-weight: 800;
+  margin: 0 8px;
+}
+
 .star-btn {
   border: 1px solid var(--surface-border);
   border-radius: 999px;

@@ -8,6 +8,8 @@ import { ProgressPage } from './pages/ProgressPage.tsx'
 import { QuizPage } from './pages/QuizPage.tsx'
 import { RegisterPage } from './pages/RegisterPage.tsx'
 import { BookDetailPage } from './pages/BookDetailPage.tsx'
+import { JobDetailPage } from './pages/JobDetailPage.tsx'
+import { JobPage } from './pages/JobPage.tsx'
 import { ViewPage } from './pages/ViewPage.tsx'
 import { WordDetailPage } from './pages/WordDetailPage.tsx'
 import './App.css'
@@ -22,6 +24,8 @@ function App() {
         <Route path="/view" element={<ViewPage />} />
         <Route path="/view/word/:wordId" element={<WordDetailPage />} />
         <Route path="/view/book/:bookId" element={<BookDetailPage />} />
+        <Route path="/jobs" element={<JobPage />} />
+        <Route path="/jobs/:jobType/:jobId" element={<JobDetailPage />} />
         <Route path="/quiz" element={<QuizPage />} />
         <Route path="/progress" element={<ProgressPage />} />
       </Route>

@@ -488,3 +488,57 @@ export function queueInsertFile(token: string, file: File, idempotencyKey: strin
 export function getInsertJob(token: string, jobId: string) {
   return apiRequestWithAutoRefresh<Record<string, unknown>>(`/api/job/${jobId}`, { token })
 }
+
+export type AdminJobType = 'all' | 'book_batch' | 'tts' | 'scrape'
+
+export type AdminJobListItem = {
+  id: string
+  user_id: number | null
+  job_type: Exclude<AdminJobType, 'all'>
+  status: string
+  created_at: string
+  modified_at: string
+}
+
+export type AdminJobsResponse = {
+  jobs: AdminJobListItem[]
+  page: number
+  page_count: number
+  total: number
+  limit: number
+  job_type: AdminJobType
+}
+
+export type AdminBookBatchJobDetail = {
+  job_type: 'book_batch'
+  job_id: string
+  batch: Record<string, unknown>
+  children: Array<Record<string, unknown>>
+}
+
+export type AdminSingleJobDetail = {
+  job_type: 'tts' | 'scrape'
+  job_id: string
+  job: Record<string, unknown>
+}
+
+export type AdminJobDetailResponse = AdminBookBatchJobDetail | AdminSingleJobDetail
+
+export function getAdminJobs(
+  token: string,
+  params: {
+    page?: number
+    limit?: number
+    job_type?: AdminJobType
+  } = {},
+) {
+  return apiRequestWithAutoRefresh<AdminJobsResponse>(withQuery('/admin/jobs', params), { token })
+}
+
+export function getAdminJobDetail(
+  token: string,
+  jobType: Exclude<AdminJobType, 'all'>,
+  jobId: string,
+) {
+  return apiRequestWithAutoRefresh<AdminJobDetailResponse>(`/admin/jobs/${jobType}/${jobId}`, { token })
+}
