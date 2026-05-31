@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ApiError,
@@ -10,6 +10,17 @@ import {
 import { getAccessToken } from '../lib/auth'
 
 const PAGE_SIZE = 10
+const STATUS_OPTIONS = [
+  'FINISHED',
+  'FAILED',
+  'QUEUED',
+  'RUNNING',
+  'PROCESSING',
+  'SCRAPING',
+  'UPLOADING',
+  'QUEUED_PROCESS',
+  'UPDATING_WORDS',
+] as const
 
 function formatTimestamp(value: string) {
   const date = new Date(value)
@@ -28,9 +39,16 @@ export function JobPage() {
   )
   const [errorMessage, setErrorMessage] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const hasLoadedOnceRef = useRef(false)
   const [jobs, setJobs] = useState<AdminJobListItem[]>([])
   const [pageCount, setPageCount] = useState(0)
   const [totalCount, setTotalCount] = useState(0)
+  const [filterStatusInput, setFilterStatusInput] = useState('')
+  const [filterUserInput, setFilterUserInput] = useState('')
+  const [appliedStatusFilter, setAppliedStatusFilter] = useState('')
+  const [appliedUserFilter, setAppliedUserFilter] = useState('')
 
   useEffect(() => {
     if (!token) {
@@ -38,7 +56,11 @@ export function JobPage() {
     }
 
     const loadJobs = async () => {
-      setStatus('loading')
+      if (hasLoadedOnceRef.current) {
+        setIsRefreshing(true)
+      } else {
+        setStatus('loading')
+      }
       setErrorMessage('')
 
       try {
@@ -49,6 +71,8 @@ export function JobPage() {
           setPageCount(0)
           setTotalCount(0)
           setStatus('ok')
+          setHasLoadedOnce(true)
+          hasLoadedOnceRef.current = true
           return
         }
 
@@ -57,11 +81,15 @@ export function JobPage() {
           page,
           limit: PAGE_SIZE,
           job_type: jobType,
+          status: appliedStatusFilter || undefined,
+          user: appliedUserFilter || undefined,
         })
         setJobs(payload.jobs)
         setPageCount(payload.page_count)
         setTotalCount(payload.total)
         setStatus('ok')
+        setHasLoadedOnce(true)
+        hasLoadedOnceRef.current = true
       } catch (error: unknown) {
         setStatus('error')
         if (error instanceof ApiError) {
@@ -69,11 +97,27 @@ export function JobPage() {
         } else {
           setErrorMessage('Failed to load jobs.')
         }
+      } finally {
+        setIsRefreshing(false)
       }
     }
 
     void loadJobs()
-  }, [token, page, jobType])
+  }, [token, page, jobType, appliedStatusFilter, appliedUserFilter])
+
+  const onApplyFilters = () => {
+    setPage(1)
+    setAppliedStatusFilter(filterStatusInput)
+    setAppliedUserFilter(filterUserInput.trim())
+  }
+
+  const onResetFilters = () => {
+    setPage(1)
+    setFilterStatusInput('')
+    setFilterUserInput('')
+    setAppliedStatusFilter('')
+    setAppliedUserFilter('')
+  }
 
   return (
     <section className="panel">
@@ -94,34 +138,78 @@ export function JobPage() {
         </div>
       )}
 
-      {token && status === 'loading' && <p className="notice">Loading jobs...</p>}
+      {token && status === 'loading' && !hasLoadedOnce && <p className="notice">Loading jobs...</p>}
       {token && status === 'error' && <p className="notice notice--error">{errorMessage}</p>}
 
-      {token && status === 'ok' && !isAdmin && (
+      {token && hasLoadedOnce && status === 'ok' && !isAdmin && (
         <p className="notice notice--error">Admin role is required to access this page.</p>
       )}
 
-      {token && status === 'ok' && isAdmin && (
+      {token && hasLoadedOnce && status === 'ok' && isAdmin && (
         <>
-          <div className="toolbar-row">
-            <label className="field-label" htmlFor="job-type-filter">
-              Job Type
-            </label>
-            <select
-              id="job-type-filter"
-              className="field-input field-input--inline"
-              value={jobType}
-              onChange={(event) => {
-                setPage(1)
-                setJobType(event.target.value as AdminJobType)
-              }}
-            >
-              <option value="all">All</option>
-              <option value="book_batch">Insert Book Batch</option>
-              <option value="tts">TTS</option>
-              <option value="scrape">Scrape</option>
-            </select>
-            <span className="field-inline">Total: {totalCount}</span>
+          <div className="toolbar-row job-filter-row">
+            <div className="job-filter-grid">
+              <label className="field-label" htmlFor="job-type-filter">
+                Job Type
+              </label>
+              <select
+                id="job-type-filter"
+                className="field-input field-input--inline"
+                value={jobType}
+                onChange={(event) => {
+                  setPage(1)
+                  setJobType(event.target.value as AdminJobType)
+                }}
+              >
+                <option value="all">All</option>
+                <option value="book_batch">Insert Book Batch</option>
+                <option value="tts">TTS</option>
+                <option value="scrape">Scrape</option>
+              </select>
+
+              <label className="field-label" htmlFor="job-status-filter">
+                Status
+              </label>
+              <select
+                id="job-status-filter"
+                className="field-input field-input--inline"
+                value={filterStatusInput}
+                onChange={(event) => setFilterStatusInput(event.target.value)}
+              >
+                <option value="">All Statuses</option>
+                {STATUS_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+
+              <label className="field-label" htmlFor="job-user-filter">
+                User
+              </label>
+              <input
+                id="job-user-filter"
+                className="field-input field-input--inline"
+                type="text"
+                placeholder="User id contains..."
+                value={filterUserInput}
+                onChange={(event) => setFilterUserInput(event.target.value)}
+              />
+
+              <span className="field-inline">
+                Total: {totalCount}
+                {isRefreshing ? ' (Refreshing...)' : ''}
+              </span>
+            </div>
+
+            <div className="job-filter-actions">
+              <button type="button" className="btn btn--ghost" onClick={onResetFilters}>
+                Reset Filters
+              </button>
+              <button type="button" className="btn" onClick={onApplyFilters}>
+                Apply Filters
+              </button>
+            </div>
           </div>
 
           <ul className="data-list">

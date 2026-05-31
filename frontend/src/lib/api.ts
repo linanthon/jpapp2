@@ -507,6 +507,8 @@ export type AdminJobsResponse = {
   total: number
   limit: number
   job_type: AdminJobType
+  status?: string
+  user?: string
 }
 
 export type AdminBookBatchJobDetail = {
@@ -530,6 +532,8 @@ export function getAdminJobs(
     page?: number
     limit?: number
     job_type?: AdminJobType
+    status?: string
+    user?: string
   } = {},
 ) {
   return apiRequestWithAutoRefresh<AdminJobsResponse>(withQuery('/admin/jobs', params), { token })

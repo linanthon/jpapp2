@@ -638,6 +638,8 @@ async def get_admin_jobs(
     page: int = 1,
     limit: int = DEFAULT_LIMIT,
     job_type: str = "all",
+    status: str = "",
+    user: str = "",
     db: DBHandling = Depends(get_db),
     _: dict = Depends(get_current_admin_user),
 ):
@@ -647,14 +649,24 @@ async def get_admin_jobs(
     if job_type_norm not in allowed:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid job_type")
 
+    status_norm = (status or "").strip().upper()
+    allowed_statuses = {
+        "FINISHED", "FAILED", "QUEUED", "RUNNING", "PROCESSING", "SCRAPING",
+        "UPLOADING", "QUEUED_PROCESS", "UPDATING_WORDS",
+    }
+    if status_norm and status_norm not in allowed_statuses:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid status filter")
+
+    user_norm = (user or "").strip()
+
     if page < 1:
         page = 1
     if limit < 1:
         limit = DEFAULT_LIMIT
     offset = (page - 1) * limit
 
-    jobs = await db.get_admin_jobs(job_type_norm, limit, offset)
-    total = await db.count_admin_jobs(job_type_norm)
+    jobs = await db.get_admin_jobs(job_type_norm, limit, offset, status_norm, user_norm)
+    total = await db.count_admin_jobs(job_type_norm, status_norm, user_norm)
     page_count = (total + limit - 1) // limit if total else 0
 
     return JSONResponse(
@@ -667,6 +679,8 @@ async def get_admin_jobs(
                 "total": total,
                 "limit": limit,
                 "job_type": job_type_norm,
+                "status": status_norm,
+                "user": user_norm,
             }
         ),
     )

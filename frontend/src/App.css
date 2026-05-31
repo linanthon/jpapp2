@@ -440,6 +440,30 @@
   margin: 0 8px;
 }
 
+.job-filter-row {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.job-filter-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  align-items: center;
+  flex: 1;
+}
+
+.job-filter-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.job-filter-actions .btn {
+  width: 160px;
+}
+
 .star-btn {
   border: 1px solid var(--surface-border);
   border-radius: 999px;
@@ -591,6 +615,19 @@
 
   .detail-top-grid {
     grid-template-columns: 1fr;
+  }
+
+  .job-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .job-filter-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .job-filter-actions .btn {
+    width: 100%;
   }
 }
 

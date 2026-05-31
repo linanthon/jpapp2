@@ -1506,51 +1506,54 @@ class DBHandling:
         return int(row["count"]) if row else 0
 
     async def get_admin_jobs(self, job_type: str = "all", limit: int = DEFAULT_LIMIT,
-                             offset: int = 0) -> List[dict]:
+                             offset: int = 0, status: str = "", user: str = "") -> List[dict]:
         """Get paginated admin jobs across sources (book_batch / tts / scrape)."""
         if limit < 1:
             limit = DEFAULT_LIMIT
 
-        if job_type == "book_batch":
-            rows = await self._fetch(
-                f"""SELECT id::text AS id, user_id, 'book_batch' AS job_type, status,
-                created_at, modified_at FROM {TABLE_JOB_BOOK_BATCHES}
-                ORDER BY created_at DESC OFFSET $1 LIMIT $2;""",
-                offset, limit,
-            )
-        elif job_type == "tts":
-            rows = await self._fetch(
-                f"""SELECT id::text AS id, NULL::int AS user_id, 'tts' AS job_type, status,
-                created_at, modified_at FROM {TABLE_JOB_TTS}
-                ORDER BY created_at DESC OFFSET $1 LIMIT $2;""",
-                offset, limit,
-            )
-        elif job_type == "scrape":
-            rows = await self._fetch(
-                f"""SELECT id::text AS id, user_id, 'scrape' AS job_type, status,
-                created_at, modified_at FROM {TABLE_JOB_SCRAPE}
-                ORDER BY created_at DESC OFFSET $1 LIMIT $2;""",
-                offset, limit,
-            )
-        else:
-            rows = await self._fetch(
-                f"""SELECT * FROM (
-                    SELECT id::text AS id, user_id, 'book_batch' AS job_type, status,
-                        created_at, modified_at
-                    FROM {TABLE_JOB_BOOK_BATCHES}
-                    UNION ALL
-                    SELECT id::text AS id, NULL::int AS user_id, 'tts' AS job_type, status,
-                        created_at, modified_at
-                    FROM {TABLE_JOB_TTS}
-                    UNION ALL
-                    SELECT id::text AS id, user_id, 'scrape' AS job_type, status,
-                        created_at, modified_at
-                    FROM {TABLE_JOB_SCRAPE}
-                ) AS jobs
-                ORDER BY created_at DESC
-                OFFSET $1 LIMIT $2;""",
-                offset, limit,
-            )
+        where_clauses = []
+        params = []
+        param_idx = 1
+
+        if job_type and job_type != "all":
+            where_clauses.append(f"job_type = ${param_idx}")
+            params.append(job_type)
+            param_idx += 1
+
+        if status:
+            where_clauses.append(f"status = ${param_idx}")
+            params.append(status)
+            param_idx += 1
+
+        if user:
+            where_clauses.append(f"COALESCE(user_id::text, '') ILIKE ${param_idx}")
+            params.append(f"%{user}%")
+            param_idx += 1
+
+        where_sql = ""
+        if where_clauses:
+            where_sql = " WHERE " + " AND ".join(where_clauses)
+
+        params.extend([offset, limit])
+        rows = await self._fetch(
+            f"""SELECT * FROM (
+                SELECT id::text AS id, user_id, 'book_batch' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_BOOK_BATCHES}
+                UNION ALL
+                SELECT id::text AS id, NULL::int AS user_id, 'tts' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_TTS}
+                UNION ALL
+                SELECT id::text AS id, user_id, 'scrape' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_SCRAPE}
+            ) AS jobs
+            {where_sql}
+            ORDER BY created_at DESC
+            OFFSET ${param_idx} LIMIT ${param_idx + 1};""",
+            *params,
+        )
 
         return [
             {
@@ -1564,21 +1567,46 @@ class DBHandling:
             for row in rows
         ]
 
-    async def count_admin_jobs(self, job_type: str = "all") -> int:
+    async def count_admin_jobs(self, job_type: str = "all", status: str = "", user: str = "") -> int:
         """Count admin jobs across requested source(s)."""
-        if job_type == "book_batch":
-            return await self.count_job_book_batches()
-        if job_type == "tts":
-            return await self.count_job_tts()
-        if job_type == "scrape":
-            return await self.count_job_scrape()
+        where_clauses = []
+        params = []
+        param_idx = 1
+
+        if job_type and job_type != "all":
+            where_clauses.append(f"job_type = ${param_idx}")
+            params.append(job_type)
+            param_idx += 1
+
+        if status:
+            where_clauses.append(f"status = ${param_idx}")
+            params.append(status)
+            param_idx += 1
+
+        if user:
+            where_clauses.append(f"COALESCE(user_id::text, '') ILIKE ${param_idx}")
+            params.append(f"%{user}%")
+
+        where_sql = ""
+        if where_clauses:
+            where_sql = " WHERE " + " AND ".join(where_clauses)
 
         row = await self._fetchrow(
-            f"""SELECT (
-                (SELECT COUNT(*) FROM {TABLE_JOB_BOOK_BATCHES}) +
-                (SELECT COUNT(*) FROM {TABLE_JOB_TTS}) +
-                (SELECT COUNT(*) FROM {TABLE_JOB_SCRAPE})
-            ) AS count;"""
+            f"""SELECT COUNT(*) AS count FROM (
+                SELECT id::text AS id, user_id, 'book_batch' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_BOOK_BATCHES}
+                UNION ALL
+                SELECT id::text AS id, NULL::int AS user_id, 'tts' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_TTS}
+                UNION ALL
+                SELECT id::text AS id, user_id, 'scrape' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_SCRAPE}
+            ) AS jobs
+            {where_sql};""",
+            *params,
         )
         return int(row["count"]) if row else 0
 
