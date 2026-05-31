@@ -521,6 +521,19 @@
   gap: 6px;
 }
 
+.book-content {
+  margin: 10px 0 0;
+  max-height: 52vh;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: #fbfbf7;
+  font: 0.95rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .inline-form {
   margin-top: 10px;
   display: flex;

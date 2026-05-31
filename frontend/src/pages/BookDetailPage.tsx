@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   ApiError,
@@ -28,6 +28,12 @@ export function BookDetailPage() {
   const [bookPayload, setBookPayload] = useState<ViewSpecificBookResponse | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const [deleteMessage, setDeleteMessage] = useState('')
+  const [bookTextResult, setBookTextResult] = useState<{
+    key: string
+    text: string
+    error: string
+    loaded: boolean
+  }>({ key: '', text: '', error: '', loaded: false })
 
   useEffect(() => {
     if (!token || !bookId) {
@@ -49,6 +55,76 @@ export function BookDetailPage() {
         }
       })
   }, [token, bookId])
+
+  const details = bookPayload?.book_details
+  const downloadUrl = details?.download_url ?? ''
+  const contentCacheKey = details?.object_name ? `book-content:${details.object_name}` : ''
+
+  const cachedBookText = useMemo(() => {
+    if (!contentCacheKey) {
+      return ''
+    }
+    try {
+      return sessionStorage.getItem(contentCacheKey) ?? ''
+    } catch {
+      return ''
+    }
+  }, [contentCacheKey])
+
+  useEffect(() => {
+    if (!downloadUrl || !contentCacheKey || cachedBookText) {
+      return
+    }
+
+    let isCancelled = false
+    const controller = new AbortController()
+
+    fetch(downloadUrl, {
+      method: 'GET',
+      cache: 'force-cache',
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Download failed with status ${response.status}`)
+        }
+        return response.text()
+      })
+      .then((text) => {
+        if (isCancelled) {
+          return
+        }
+        setBookTextResult({ key: contentCacheKey, text, error: '', loaded: true })
+        try {
+          sessionStorage.setItem(contentCacheKey, text)
+        } catch {
+          // Best-effort cache only.
+        }
+      })
+      .catch((error: unknown) => {
+        if (isCancelled || (error instanceof Error && error.name === 'AbortError')) {
+          return
+        }
+        setBookTextResult({
+          key: contentCacheKey,
+          text: '',
+          error: error instanceof Error ? error.message : 'Failed to download book content.',
+          loaded: false,
+        })
+      })
+
+    return () => {
+      isCancelled = true
+      controller.abort()
+    }
+  }, [downloadUrl, contentCacheKey, cachedBookText])
+
+  const resolvedBookText = cachedBookText || (bookTextResult.key === contentCacheKey ? bookTextResult.text : '')
+  const resolvedBookError =
+    !cachedBookText && bookTextResult.key === contentCacheKey ? bookTextResult.error : ''
+  const hasLoadedRemote =
+    !cachedBookText && bookTextResult.key === contentCacheKey && bookTextResult.loaded
+  const isBookTextLoading = Boolean(downloadUrl) && !cachedBookText && !resolvedBookError && !hasLoadedRemote
 
   const onToggleStar = async () => {
     if (!token || !bookPayload) {
@@ -156,6 +232,28 @@ export function BookDetailPage() {
               </button>
             </div>
             <p className="panel-copy">Created: {bookPayload.book_details.created_at}</p>
+            {bookPayload.book_details.download_url && (
+              <div className="inline-actions">
+                <a
+                  className="btn btn--ghost"
+                  href={bookPayload.book_details.download_url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Download Original
+                </a>
+              </div>
+            )}
+          </article>
+
+          <article className="subpanel subpanel--full">
+            <h3>Book Content</h3>
+            {!downloadUrl && <p className="notice">No downloadable content available.</p>}
+            {isBookTextLoading && <p className="notice">Loading book content...</p>}
+            {!!resolvedBookError && <p className="notice notice--error">{resolvedBookError}</p>}
+            {(cachedBookText || hasLoadedRemote) && (
+              <pre className="book-content">{resolvedBookText || 'Content is empty.'}</pre>
+            )}
           </article>
 
           {isAdmin && (

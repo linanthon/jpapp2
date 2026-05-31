@@ -406,7 +406,7 @@ class DBHandling:
 
     async def get_exact_book(self, user_id: int = None, book_id: int = None) -> dict | None:
         """
-        Query a book with the exact name or its ID.
+        Query a book with its ID.
         Returns the row of that book as dict, None if fail to get.
         """
         if not book_id:
@@ -414,17 +414,18 @@ class DBHandling:
 
         # Check whether this specific book is starred by user
         is_star = False
-        row = await self._fetchrow(
-            f"SELECT 1 FROM {TABLE_USER_BOOK_STAR} WHERE user_id = $1 AND book_id = $2 AND star = true;",
-            user_id, book_id
-        )
-        if row:
-            is_star = True
+        if user_id:
+            row = await self._fetchrow(
+                f"SELECT 1 FROM {TABLE_USER_BOOK_STAR} WHERE user_id = $1 AND book_id = $2 AND star = true;",
+                user_id, book_id,
+            )
+            if row:
+                is_star = True
 
         # get the book
         row = await self._fetchrow(
-            f"SELECT id, created_at, name, content, object_name FROM {TABLE_BOOKS} WHERE id = $1;",
-            book_id
+            f"SELECT id, created_at, name, object_name FROM {TABLE_BOOKS} WHERE id = $1 AND status = 'FINISHED';",
+            book_id,
         )
         if row:
             return self._parse_book(row, is_star)
@@ -458,7 +459,7 @@ class DBHandling:
                      ON s.book_id = b.id
                      AND s.user_id = $1
                      AND s.star = true
-                    WHERE b.status != 'PENDING'
+                    WHERE b.status = 'FINISHED'
                     ORDER BY b.id
                     OFFSET $2"""
             if limit is not None:
@@ -474,7 +475,7 @@ class DBHandling:
                               ON s.book_id = b.id
                              AND s.user_id = $1
                              AND s.star = true
-                            WHERE b.status != 'PENDING'
+                            WHERE b.status = 'FINISHED'
                             ORDER BY b.id
                             OFFSET $2"""
                 if limit is not None:
@@ -485,7 +486,7 @@ class DBHandling:
             else:
                 query = f"""SELECT b.id, b.name, b.created_at, false AS star
                             FROM {TABLE_BOOKS} AS b
-                            WHERE b.status != 'PENDING'
+                            WHERE b.status = 'FINISHED'
                             ORDER BY b.id
                             OFFSET $1"""
                 if limit is not None:
