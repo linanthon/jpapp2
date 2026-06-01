@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { Link } from 'react-router-dom'
-import { ApiError, getInsertJob, queueInsertFile, queueInsertString } from '../lib/api'
+import { ApiError, checkAdminAccess, getInsertJob, queueInsertFile, queueInsertString } from '../lib/api'
 import { getAccessToken } from '../lib/auth'
 
 function createIdempotencyKey() {
@@ -13,6 +13,10 @@ function createIdempotencyKey() {
 
 export function InsertPage() {
   const token = getAccessToken()
+  const [adminState, setAdminState] = useState<'idle' | 'checking' | 'allowed' | 'denied'>(
+    token ? 'checking' : 'idle',
+  )
+  const [adminMessage, setAdminMessage] = useState('')
   const [mode, setMode] = useState<'string' | 'file'>('string')
   const [stringName, setStringName] = useState('')
   const [stringBody, setStringBody] = useState('')
@@ -22,9 +26,34 @@ export function InsertPage() {
   const [jobStatus, setJobStatus] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
 
+  useEffect(() => {
+    if (!token) {
+      return
+    }
+
+    const validateAdmin = async () => {
+      setAdminState('checking')
+      setAdminMessage('')
+
+      try {
+        const isAdmin = await checkAdminAccess(token)
+        if (isAdmin) {
+          setAdminState('allowed')
+          return
+        }
+        setAdminState('denied')
+      } catch {
+        setAdminState('denied')
+        setAdminMessage('Failed to verify admin access.')
+      }
+    }
+
+    void validateAdmin()
+  }, [token])
+
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!token) {
+    if (!token || adminState !== 'allowed') {
       return
     }
 
@@ -64,7 +93,7 @@ export function InsertPage() {
   }
 
   const refreshJobStatus = async () => {
-    if (!token || !jobInfo) {
+    if (!token || adminState !== 'allowed' || !jobInfo) {
       return
     }
 
@@ -98,7 +127,15 @@ export function InsertPage() {
         </div>
       )}
 
-      {token && (
+      {token && adminState === 'checking' && <p className="notice">Checking admin access...</p>}
+
+      {token && adminState === 'denied' && (
+        <p className="notice notice--error">
+          {adminMessage || 'Admin role is required to access the insert page.'}
+        </p>
+      )}
+
+      {token && adminState === 'allowed' && (
         <>
           {status === 'error' && <p className="notice notice--error">{errorMessage}</p>}
 
