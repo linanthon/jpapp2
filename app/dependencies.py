@@ -210,60 +210,6 @@ async def bump_word_sentence_cache_version(redis: aioredis.Redis) -> int:
     return int(await redis.incr(WORD_SENTENCE_VERSION_KEY))
 
 
-# ===== Template Helpers =====
-def get_jinja_globals():
-    """Return URL helper function and url_prefix for Jinja2 templates.
-    
-    Usage in templates, example using /v1 url prefix:
-    - {{ url('static', 'css/style.css') }} -> /static/css/style.css
-    - {{ url('insert') }} -> /v1/insert
-    - {{ url_prefix }} -> /v1 (accessible as data attribute in HTML)
-    """
-    url_prefix = bpv1_url_prefix
-
-    def url(endpoint: str, filename: str = None) -> str:
-        """Generate URLs for templates."""
-        routes = {
-            'home': f'{url_prefix}/',
-            'login': f'{url_prefix}/login',
-            'register': f'{url_prefix}/register',
-            'refresh': f'{url_prefix}/refresh',
-            'logout': f'{url_prefix}/logout',
-            'insert': f'{url_prefix}/insert',
-            'upload_file_bg': f'{url_prefix}/insert/file/bg',
-            'upload_string_bg': f'{url_prefix}/insert/str/bg',
-            'view': f'{url_prefix}/view',
-            'search_word': f'{url_prefix}/view/search-word',
-            'api_search_word': f'{url_prefix}/api/view/search-word',
-            'view_words': f'{url_prefix}/view/word',
-            'view_specific_word': f'{url_prefix}/view/word/',
-            'toggle_star': f'{url_prefix}/toggle-star',
-            'serve_audio': f'{url_prefix}/audio/',
-            'view_books': f'{url_prefix}/view/book',
-            'api_view_books': f'{url_prefix}/api/view/book',
-            'view_specific_book': f'{url_prefix}/view/book/',
-            'delete_book_bg': f'{url_prefix}/del/book/bg',
-            'job_list': f'{url_prefix}/job',
-            'api_job_list': f'{url_prefix}/api/job',
-            'specific_job': f'{url_prefix}/job/',
-            'api_specific_job': f'{url_prefix}/api/job/',
-            'progress': f'{url_prefix}/progress',
-            'api_progress': f'{url_prefix}/api/progress',
-            'quiz': f'{url_prefix}/quiz',
-            'quiz_jp': f'{url_prefix}/quiz/jp',
-            'quiz_known': f'{url_prefix}/quiz/known',
-            'quiz_en': f'{url_prefix}/quiz/en',
-            'quiz_sentence': f'{url_prefix}/quiz/sentence',
-            'update_word_prio': f'{url_prefix}/word/prio',
-            'toggle_word_known': f'{url_prefix}/word/known',
-        }
-        
-        if endpoint == 'static':
-            return f'/static/{filename}'
-        return routes.get(endpoint, '#')
-    
-    return {'url': url, 'url_prefix': url_prefix}
-
 # ===== Others =====
 def validate_tts_request(body: dict):
     text = body.get("text", "")

@@ -279,7 +279,34 @@ class TTSService:
             "audio_mapping": audio_mapping,
         }
 
-    async def synthesize(self, text: str, lang: str, redis: "aioredis.Redis" = None, voice_options: dict | None = None) -> TTSAudio:
+    async def _resolve_jp_model_input(self, text: str, db: "DBHandling" = None) -> str:
+        """Prefer known kana spelling for exact JP word matches before model synthesis.
+
+        This reduces wrong kanji reading for ambiguous words (e.g. 一歩 -> いっぽ).
+        If no exact DB match is found, returns original input text unchanged.
+        """
+        if db is None or not text:
+            return text
+
+        exact = text.strip()
+        if not exact:
+            return text
+
+        try:
+            candidates = await db.query_search_word(exact, limit=5)
+            for item in candidates:
+                if item.get("word") == exact:
+                    spelling = (item.get("spelling") or "").strip()
+                    if spelling:
+                        return spelling
+        except Exception:
+            # Non-blocking: keep model input as original request text.
+            pass
+
+        return text
+
+    async def synthesize(self, text: str, lang: str, redis: "aioredis.Redis" = None,
+                         voice_options: dict | None = None, db: "DBHandling" = None) -> TTSAudio:
         """Synthesize `text` in `lang` with Redis->MinIO->generate cache flow."""
         voice_options = normalize_voice_options(voice_options)
         if lang == "jp":
@@ -301,8 +328,9 @@ class TTSService:
             )
 
         if lang == "jp":
+            model_input = await self._resolve_jp_model_input(text, db)
             result = adapter.synthesize(
-                text,
+                model_input,
                 speed=voice_options.get("speed"),
                 half_tone=voice_options.get("half_tone"),
             )

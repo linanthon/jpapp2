@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Request, File, UploadFile, Form, Depends, HTTPException, Response, Body
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
 from http import HTTPStatus
 import os
 import io
@@ -16,7 +16,7 @@ from app.handlers.view import (handle_search_word, handle_view_specific_word, ha
                                handle_view_books, handle_view_specific_book,
                                toggle_star_helper, get_all_book_name_and_id)
 from app.dependencies import (
-    get_db, get_pdata, get_jinja_globals, get_redis, get_current_user_id, get_current_admin_user,
+    get_db, get_pdata, get_redis, get_current_user_id, get_current_user, get_current_admin_user,
     rate_limiter, redis_get_json, redis_set_json, validate_tts_request, parse_tts_voice_options
 )
 from app.handlers.quiz import (build_quizes, update_word_prio_after_answering,
@@ -35,7 +35,6 @@ from utils.data import read_jlpt_from_db, JLPT_REDIS_KEY
 from utils.db import DBHandling
 from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
                            parse_bool_param, validate_star)
-from utils.logger import get_logger
 from utils.process_data import ProcessData
 from utils.storage import (upload_file_to_minio, upload_string_to_minio,
                            generate_presigned_upload_url, PRESIGNED_URL_EXPIRY, storage_object_exists)
@@ -43,32 +42,9 @@ from utils.tts import TTSService, TTSAdapterError
 
 # Create router
 router = APIRouter()
-log = get_logger(__name__)
 tts_service = TTSService()
 
-# Setup templates (html files)
-templates_dir = os.path.join(os.path.dirname(__file__), "templates")
-templates = Jinja2Templates(directory=templates_dir)
-templates.env.globals.update(get_jinja_globals())
-
-# ===== HOME ======================================================================
-@router.get("/")
-def home():
-    return templates.TemplateResponse("home.html", {"request": {}})
-
-
 # ===== AUTH ========================================================================
-@router.get("/login")
-def login_page():
-    """Serve login page"""
-    return templates.TemplateResponse("login.html", {"request": {}})
-
-@router.get("/register")
-def register_page():
-    """Serve register page"""
-    return templates.TemplateResponse("register.html", {"request": {}})
-
-
 @router.post("/register", response_model=UserResponse, dependencies=[Depends(rate_limiter(5, 60))])
 async def register(
     user_data: UserCreate,
@@ -210,13 +186,20 @@ async def refresh_token(
     )
 
 
+@router.get("/me", response_model=UserResponse)
+async def get_current_profile(
+    current_user: dict = Depends(get_current_user),
+):
+    """Return current authenticated user's profile."""
+    return {
+        "id": current_user["id"],
+        "username": current_user["username"],
+        "email": current_user["email"],
+        "is_admin": current_user["is_admin"],
+    }
+
+
 # ===== INSERT ===================================================================
-@router.get("/insert")
-def insert():
-    """Serve insert page"""
-    return templates.TemplateResponse("insert/insert.html", {"request": {}})
-
-
 @router.post("/insert/file/bg")
 async def upload_file_bg(
     request: Request,
@@ -619,10 +602,6 @@ async def upload_string_bg(
     )
 
 
-@router.get("/job")
-async def get_job_list_page(request: Request):
-    return templates.TemplateResponse("job/job_list.html", {"request": request})
-
 @router.get("/api/job")
 async def get_job_list(
     db: DBHandling = Depends(get_db),
@@ -634,10 +613,6 @@ async def get_job_list(
         content={"job_list": job_list}
     )
 
-
-@router.get("/job/{job_id}")
-async def get_specific_job_page(request: Request, job_id: str):
-    return templates.TemplateResponse("job/specific_job.html", {"request": request, "job_id": job_id})
 
 @router.get("/api/job/{job_id}")
 async def get_specific_job(
@@ -657,15 +632,127 @@ async def get_specific_job(
         content=job
     )
 
+
+@router.get("/admin/jobs")
+async def get_admin_jobs(
+    page: int = 1,
+    limit: int = DEFAULT_LIMIT,
+    job_type: str = "all",
+    status: str = "",
+    user: str = "",
+    db: DBHandling = Depends(get_db),
+    _: dict = Depends(get_current_admin_user),
+):
+    """Admin-only paginated jobs list across sources: book_batch, tts, scrape."""
+    job_type_norm = (job_type or "all").strip().lower()
+    allowed = {"all", "book_batch", "tts", "scrape"}
+    if job_type_norm not in allowed:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid job_type")
+
+    status_norm = (status or "").strip().upper()
+    allowed_statuses = {
+        "FINISHED", "FAILED", "QUEUED", "RUNNING", "PROCESSING", "SCRAPING",
+        "UPLOADING", "QUEUED_PROCESS", "UPDATING_WORDS",
+    }
+    if status_norm and status_norm not in allowed_statuses:
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid status filter")
+
+    user_norm = (user or "").strip()
+
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = DEFAULT_LIMIT
+    offset = (page - 1) * limit
+
+    jobs = await db.get_admin_jobs(job_type_norm, limit, offset, status_norm, user_norm)
+    total = await db.count_admin_jobs(job_type_norm, status_norm, user_norm)
+    page_count = (total + limit - 1) // limit if total else 0
+
+    return JSONResponse(
+        status_code=HTTPStatus.OK,
+        content=jsonable_encoder(
+            {
+                "jobs": jobs,
+                "page": page,
+                "page_count": page_count,
+                "total": total,
+                "limit": limit,
+                "job_type": job_type_norm,
+                "status": status_norm,
+                "user": user_norm,
+            }
+        ),
+    )
+
+
+@router.get("/admin/jobs/{job_type}/{job_id}")
+async def get_admin_job_detail(
+    job_type: str,
+    job_id: str,
+    db: DBHandling = Depends(get_db),
+    _: dict = Depends(get_current_admin_user),
+):
+    """Admin-only job detail endpoint.
+    - book_batch: returns batch + child items
+    - tts: returns one TTS job
+    - scrape: returns one scrape job
+    """
+    job_type_norm = (job_type or "").strip().lower()
+
+    if job_type_norm == "book_batch":
+        batch = await db.get_job_book_batch(job_id)
+        if not batch:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Book batch job not found")
+        items = await db.get_job_book_batch_items(job_id)
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content=jsonable_encoder(
+                {
+                    "job_type": "book_batch",
+                    "job_id": job_id,
+                    "batch": batch,
+                    "children": items,
+                }
+            ),
+        )
+
+    if job_type_norm == "tts":
+        tts_job = await db.get_job_tts(job_id)
+        if not tts_job:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="TTS job not found")
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content=jsonable_encoder(
+                {
+                    "job_type": "tts",
+                    "job_id": job_id,
+                    "job": tts_job,
+                }
+            ),
+        )
+
+    if job_type_norm == "scrape":
+        scrape_job = await db.get_job_scrape(job_id)
+        if not scrape_job:
+            raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail="Scrape job not found")
+        return JSONResponse(
+            status_code=HTTPStatus.OK,
+            content=jsonable_encoder(
+                {
+                    "job_type": "scrape",
+                    "job_id": job_id,
+                    "job": scrape_job,
+                }
+            ),
+        )
+
+    raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Invalid job_type")
+
 # =================================================================================
 
 
 # ===== VIEW COLLECTION ===========================================================
-@router.get("/view")
-def view():
-    return templates.TemplateResponse("view/view.html", {"request": {}})
-
-
 @router.get("/view/word")
 async def view_words(
     jlpt_level: str = "",
@@ -688,17 +775,16 @@ async def view_words(
     star_bool = parse_bool_param(star)
 
     result, page_count = await handle_view_words(db, current_user_id, jlpt_level, star_bool, limit, page)
-    return templates.TemplateResponse(
-        "view/word/view_words.html",
-        {"request": {}, "word_list": result, "page_count": page_count, "page": page,
-         "args": {"jlpt_level": jlpt_level, "star": star}}
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "word_list": result,
+                "page_count": page_count,
+                "page": page,
+                "args": {"jlpt_level": jlpt_level, "star": star},
+            }
+        )
     )
-
-
-@router.get("/view/search-word")
-def search_word():
-    """Serve the search word page"""
-    return templates.TemplateResponse("view/word/search_word.html", {"request": {}})
 
 
 @router.get("/api/view/search-word", dependencies=[Depends(rate_limiter(60, 60))])
@@ -737,9 +823,10 @@ async def view_specific_word(
     result, sentence_examples = await handle_view_specific_word(
         db, current_user_id, word_id, sen_limit, redis,
     )
-    return templates.TemplateResponse(
-        "view/word/view_specific_word.html",
-        {"request": {}, "word_details": result, "sen_ex": sentence_examples}
+    return JSONResponse(
+        content=jsonable_encoder(
+            {"word_details": result, "sen_ex": sentence_examples}
+        )
     )
 
 
@@ -821,7 +908,7 @@ async def text_to_speech(
         )
 
     try:
-        result = await tts_service.synthesize(text, lang, redis, voice_options=voice_options)
+        result = await tts_service.synthesize(text, lang, redis, voice_options=voice_options, db=db)
     except TTSAdapterError as exc:
         fallback = await tts_service.build_statica_fallback(text, lang, str(exc), db)
         if fallback:
@@ -971,10 +1058,6 @@ async def get_tts_job_audio(
     )
 
 
-@router.get("/view/book")
-async def view_books():
-    return templates.TemplateResponse("view/book/view_books.html", {"request": {}})
-
 @router.get("/api/view/book")
 async def view_books(
     star: bool | str = None,
@@ -995,7 +1078,9 @@ async def view_books(
     result, page_count = await handle_view_books(db, current_user, star_bool, limit, page)
     return JSONResponse(
         status_code=HTTPStatus.OK,
-        content={"book_list": result, "page_count": page_count, "page": page, "args": {"star": star}}
+        content=jsonable_encoder(
+            {"book_list": result, "page_count": page_count, "page": page, "args": {"star": star}}
+        )
     )
 
 
@@ -1006,9 +1091,10 @@ async def view_specific_book(
     current_user: dict = Depends(get_current_user_id)
 ):
     """View content of 1 book"""
-    return templates.TemplateResponse(
-        "view/book/view_specific_book.html",
-        {"request": {}, "book_details": await handle_view_specific_book(db, current_user, book_id)}
+    return JSONResponse(
+        content=jsonable_encoder(
+            {"book_details": await handle_view_specific_book(db, current_user, book_id)}
+        )
     )
 
 
@@ -1081,11 +1167,6 @@ async def delete_book_bg(
 
 
 # ===== PROGRESS % ================================================================
-@router.get("/progress")
-def progress():
-    return templates.TemplateResponse("progress/progress.html", {"request": {}})
-
-
 @router.get("/api/progress")
 async def api_progress(
     db: DBHandling = Depends(get_db),
@@ -1109,13 +1190,20 @@ async def quiz(
 ):
     """Quiz home page"""
     all_books = await get_all_book_name_and_id(db)
-    return templates.TemplateResponse(
-        "quiz/quiz_home.html",
-        {"request": {}, "all_books": all_books,
-         "args": {"jlpt_level": jlpt_level, "star": star, "select_book": select_book,
-                  "use_priority": use_priority, "get_distractors_from_db": get_distractors_from_db}}
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "all_books": all_books,
+                "args": {
+                    "jlpt_level": jlpt_level,
+                    "star": star,
+                    "select_book": select_book,
+                    "use_priority": use_priority,
+                    "get_distractors_from_db": get_distractors_from_db,
+                },
+            }
+        )
     )
-
 
 # ----- Quiz JP ---------
 @router.get("/quiz/jp")
@@ -1150,13 +1238,20 @@ async def quiz_jp(
         get_distractors_from_db=get_distractors_bool,
         redis=redis,
     )
-    return templates.TemplateResponse(
-        "quiz/quiz_run.html",
-        {"request": {}, "quizes": quizes, "mode": "jp",
-         "args": {"jlpt_level": jlpt_level, "star": star, "use_priority": use_priority,
-                  "get_distractors_from_db": get_distractors_from_db}}
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "quizes": quizes,
+                "mode": "jp",
+                "args": {
+                    "jlpt_level": jlpt_level,
+                    "star": star,
+                    "use_priority": use_priority,
+                    "get_distractors_from_db": get_distractors_from_db,
+                },
+            }
+        )
     )
-
 
 @router.get("/quiz/known")
 async def quiz_known(
@@ -1189,13 +1284,19 @@ async def quiz_known(
         get_distractors_from_db=get_distractors_bool,
         redis=redis,
     )
-    return templates.TemplateResponse(
-        "quiz/quiz_run.html",
-        {"request": {}, "quizes": quizes, "mode": "known",
-         "args": {"jlpt_level": jlpt_level, "star": star,
-                  "get_distractors_from_db": get_distractors_from_db}}
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "quizes": quizes,
+                "mode": "known",
+                "args": {
+                    "jlpt_level": jlpt_level,
+                    "star": star,
+                    "get_distractors_from_db": get_distractors_from_db,
+                },
+            }
+        )
     )
-
 
 # ----- Quiz EN ---------
 @router.get("/quiz/en")
@@ -1230,11 +1331,19 @@ async def quiz_en(
         get_distractors_from_db=get_distractors_bool,
         redis=redis,
     )
-    return templates.TemplateResponse(
-        "quiz/quiz_run.html",
-        {"request": {}, "quizes": quizes, "mode": "en",
-         "args": {"jlpt_level": jlpt_level, "star": star, "use_priority": use_priority,
-                  "get_distractors_from_db": get_distractors_from_db}}
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "quizes": quizes,
+                "mode": "en",
+                "args": {
+                    "jlpt_level": jlpt_level,
+                    "star": star,
+                    "use_priority": use_priority,
+                    "get_distractors_from_db": get_distractors_from_db,
+                },
+            }
+        )
     )
 
 

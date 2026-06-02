@@ -406,25 +406,26 @@ class DBHandling:
 
     async def get_exact_book(self, user_id: int = None, book_id: int = None) -> dict | None:
         """
-        Query a book with the exact name or its ID.
+        Query a book with its ID.
         Returns the row of that book as dict, None if fail to get.
         """
         if not book_id:
             return None
 
-        # Check if is starred by user
+        # Check whether this specific book is starred by user
         is_star = False
-        row = await self._fetchrow(
-            f"SELECT book_id FROM {TABLE_USER_BOOK_STAR} WHERE user_id = $1 AND star = true;",
-            user_id
-        )
-        if row:
-            is_star = True
+        if user_id:
+            row = await self._fetchrow(
+                f"SELECT 1 FROM {TABLE_USER_BOOK_STAR} WHERE user_id = $1 AND book_id = $2 AND star = true;",
+                user_id, book_id,
+            )
+            if row:
+                is_star = True
 
         # get the book
         row = await self._fetchrow(
-            f"SELECT id, created_at, name, object_name FROM {TABLE_BOOKS} WHERE id = $1;",
-            book_id
+            f"SELECT id, created_at, name, object_name FROM {TABLE_BOOKS} WHERE id = $1 AND status = 'FINISHED';",
+            book_id,
         )
         if row:
             return self._parse_book(row, is_star)
@@ -433,7 +434,9 @@ class DBHandling:
     async def list_books(self, user_id: int = None, star: bool = False,
                          limit: int = DEFAULT_LIMIT, offset: int = 0) -> List[dict]:
         """
-        Query 'books' table to get a list of books
+        Query 'books' table to get a list of books.
+        If star=False/None, get books no condition. Otherwise, get based on user_id
+        and star=True conditions.
 
         Input:
         - user_id: the user ID
@@ -444,47 +447,80 @@ class DBHandling:
 
         Output: a list of books (id, name, star, created_at)
         """
-        book_star_ids = set()
-        if star:
-            if not user_id:
-                return []
+        if star and not user_id:
+            return []
+        if limit is not None and limit < 1:
+            limit = DEFAULT_LIMIT
 
-            star_rows = await self._fetch(
-                f"SELECT book_id FROM {TABLE_USER_BOOK_STAR} WHERE status != 'PENDING' AND user_id = $1 AND star = true;",
-                user_id
-            )
-            for instance in star_rows:
-                book_star_ids.add(instance["book_id"])
-
-        if limit is None:
-            rows = await self._fetch(
-                f"SELECT id, name, created_at FROM {TABLE_BOOKS} ORDER BY id OFFSET $1;",
-                offset
-            )
+        if star and user_id:
+            query = f"""SELECT b.id, b.name, b.created_at, true AS star
+                    FROM {TABLE_BOOKS} AS b
+                    JOIN {TABLE_USER_BOOK_STAR} AS s
+                     ON s.book_id = b.id
+                     AND s.user_id = $1
+                     AND s.star = true
+                    WHERE b.status = 'FINISHED'
+                    ORDER BY b.id
+                    OFFSET $2"""
+            if limit is not None:
+                query += " LIMIT $3"
+                params = (user_id, offset, limit,)
+            else:
+                params = (user_id, offset,)
         else:
-            if limit < 1:
-                limit = DEFAULT_LIMIT
-            rows = await self._fetch(
-                f"SELECT id, name, created_at FROM {TABLE_BOOKS} ORDER BY id OFFSET $1 LIMIT $2;",
-                offset, limit
-            )
+            if user_id:
+                query = f"""SELECT b.id, b.name, b.created_at, COALESCE(s.star, false) AS star
+                            FROM {TABLE_BOOKS} AS b
+                            LEFT JOIN {TABLE_USER_BOOK_STAR} AS s
+                              ON s.book_id = b.id
+                             AND s.user_id = $1
+                             AND s.star = true
+                            WHERE b.status = 'FINISHED'
+                            ORDER BY b.id
+                            OFFSET $2"""
+                if limit is not None:
+                    query += " LIMIT $3"
+                    params = (user_id, offset, limit,)
+                else:
+                    params = (user_id, offset,)
+            else:
+                query = f"""SELECT b.id, b.name, b.created_at, false AS star
+                            FROM {TABLE_BOOKS} AS b
+                            WHERE b.status = 'FINISHED'
+                            ORDER BY b.id
+                            OFFSET $1"""
+                if limit is not None:
+                    query += " LIMIT $2"
+                    params = (offset, limit,)
+                else:
+                    params = (offset,)
+
+        query += ";"
+        rows = await self._fetch(query, *params)
 
         res = []
         for instance in rows:
-            res.append(self._parse_book(
-                instance, instance["id"] in book_star_ids
-            ))
+            res.append(self._parse_book(instance, bool(instance.get("star", False))))
         return res
 
-    async def count_books(self, star: bool = False) -> int:
+    async def count_books(self, user_id: int = None, star: bool = False) -> int:
         """Count books in table (with filters)"""
         if star:
+            if not user_id:
+                return 0
             row = await self._fetchrow(
-                f"SELECT COUNT(id) FROM {TABLE_BOOKS} WHERE star = true"
+                f"""SELECT COUNT(*)
+                FROM {TABLE_BOOKS} AS b
+                JOIN {TABLE_USER_BOOK_STAR} AS s
+                  ON s.book_id = b.id
+                 AND s.user_id = $1
+                 AND s.star = true
+                WHERE b.status != 'PENDING';""",
+                user_id,
             )
         else:
             row = await self._fetchrow(
-                f"SELECT COUNT(id) FROM {TABLE_BOOKS}"
+                f"SELECT COUNT(id) FROM {TABLE_BOOKS} WHERE status != 'PENDING'"
             )
         return row["count"] if row else 0
 
@@ -503,7 +539,15 @@ class DBHandling:
         )
         if status and self._get_rowcount(status) > 0:
             return True
-        return False
+        if status is None:
+            return False
+
+        # No existing row yet for this (user, book): create one.
+        status = await self._execute(
+            f"INSERT INTO {TABLE_USER_BOOK_STAR} (user_id, book_id, star) VALUES ($1, $2, $3);",
+            user_id, book_id, new_star_status,
+        )
+        return status is not None
 
     async def delete_book(self, book_id: int = None) -> bool:
         """Remove book by name (exact match) or id, will also remove all
@@ -569,6 +613,13 @@ class DBHandling:
             user_id, offset, limit
         )
         return self._parse_job_list(rows)
+
+    async def count_job_book_batches(self) -> int:
+        """Count all book job batches."""
+        row = await self._fetchrow(
+            f"SELECT COUNT(*) AS count FROM {TABLE_JOB_BOOK_BATCHES};"
+        )
+        return int(row["count"]) if row else 0
 
     async def create_job_book_batch(self, user_id: int, idempotency_key: str) -> Tuple[str, bool]:
         """Create or fetch a multi-file request batch by idempotency key, to table `job_book_batches`.
@@ -1030,7 +1081,30 @@ class DBHandling:
                 "priority": instance["priority"]
             }
 
-        if jlpt_level:
+        if star:
+            if jlpt_level:
+                jlpt_level = jlpt_level.upper()
+                rows = await self._fetch(
+                    f"""SELECT a.* FROM {TABLE_WORDS} AS a
+                    JOIN {TABLE_USER_WORD_PROGRESS} AS b
+                      ON b.word_id = a.id
+                     AND b.user_id = $1
+                     AND b.star = true
+                    WHERE a.jlpt_level = $2
+                    ORDER BY a.id OFFSET $3 LIMIT $4;""",
+                    user_id, jlpt_level, offset, limit,
+                )
+            else:
+                rows = await self._fetch(
+                    f"""SELECT a.* FROM {TABLE_WORDS} AS a
+                    JOIN {TABLE_USER_WORD_PROGRESS} AS b
+                      ON b.word_id = a.id
+                     AND b.user_id = $1
+                     AND b.star = true
+                    ORDER BY a.id OFFSET $2 LIMIT $3;""",
+                    user_id, offset, limit,
+                )
+        elif jlpt_level:
             jlpt_level = jlpt_level.upper()
             rows = await self._fetch(
                 f"SELECT * FROM {TABLE_WORDS} WHERE jlpt_level = $1 ORDER BY id OFFSET $2 LIMIT $3;",
@@ -1300,6 +1374,13 @@ class DBHandling:
         )
         return self._parse_job_tts(row) if row else None
 
+    async def count_job_tts(self) -> int:
+        """Count all async TTS jobs."""
+        row = await self._fetchrow(
+            f"SELECT COUNT(*) AS count FROM {TABLE_JOB_TTS};"
+        )
+        return int(row["count"]) if row else 0
+
     async def claim_job_tts(self, job_id: str) -> bool:
         """Claim queued async TTS job for processing.
 
@@ -1408,6 +1489,126 @@ class DBHandling:
             job_id,
         )
         return str(row["status"]) if row and row.get("status") else ""
+
+    async def get_job_scrape(self, job_id: str) -> dict | None:
+        """Get one scrape job by ID."""
+        row = await self._fetchrow(
+            f"SELECT * FROM {TABLE_JOB_SCRAPE} WHERE id = $1::uuid;",
+            job_id,
+        )
+        return self._parse_job_scrape(row) if row else None
+
+    async def count_job_scrape(self) -> int:
+        """Count all scrape jobs."""
+        row = await self._fetchrow(
+            f"SELECT COUNT(*) AS count FROM {TABLE_JOB_SCRAPE};"
+        )
+        return int(row["count"]) if row else 0
+
+    async def get_admin_jobs(self, job_type: str = "all", limit: int = DEFAULT_LIMIT,
+                             offset: int = 0, status: str = "", user: str = "") -> List[dict]:
+        """Get paginated admin jobs across sources (book_batch / tts / scrape)."""
+        if limit < 1:
+            limit = DEFAULT_LIMIT
+
+        where_clauses = []
+        params = []
+        param_idx = 1
+
+        if job_type and job_type != "all":
+            where_clauses.append(f"job_type = ${param_idx}")
+            params.append(job_type)
+            param_idx += 1
+
+        if status:
+            where_clauses.append(f"status = ${param_idx}")
+            params.append(status)
+            param_idx += 1
+
+        if user:
+            where_clauses.append(f"COALESCE(user_id::text, '') ILIKE ${param_idx}")
+            params.append(f"%{user}%")
+            param_idx += 1
+
+        where_sql = ""
+        if where_clauses:
+            where_sql = " WHERE " + " AND ".join(where_clauses)
+
+        params.extend([offset, limit])
+        rows = await self._fetch(
+            f"""SELECT * FROM (
+                SELECT id::text AS id, user_id, 'book_batch' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_BOOK_BATCHES}
+                UNION ALL
+                SELECT id::text AS id, NULL::int AS user_id, 'tts' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_TTS}
+                UNION ALL
+                SELECT id::text AS id, user_id, 'scrape' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_SCRAPE}
+            ) AS jobs
+            {where_sql}
+            ORDER BY created_at DESC
+            OFFSET ${param_idx} LIMIT ${param_idx + 1};""",
+            *params,
+        )
+
+        return [
+            {
+                "id": row["id"],
+                "user_id": row["user_id"],
+                "job_type": row["job_type"],
+                "status": row["status"],
+                "created_at": str(row["created_at"]),
+                "modified_at": str(row["modified_at"]),
+            }
+            for row in rows
+        ]
+
+    async def count_admin_jobs(self, job_type: str = "all", status: str = "", user: str = "") -> int:
+        """Count admin jobs across requested source(s)."""
+        where_clauses = []
+        params = []
+        param_idx = 1
+
+        if job_type and job_type != "all":
+            where_clauses.append(f"job_type = ${param_idx}")
+            params.append(job_type)
+            param_idx += 1
+
+        if status:
+            where_clauses.append(f"status = ${param_idx}")
+            params.append(status)
+            param_idx += 1
+
+        if user:
+            where_clauses.append(f"COALESCE(user_id::text, '') ILIKE ${param_idx}")
+            params.append(f"%{user}%")
+
+        where_sql = ""
+        if where_clauses:
+            where_sql = " WHERE " + " AND ".join(where_clauses)
+
+        row = await self._fetchrow(
+            f"""SELECT COUNT(*) AS count FROM (
+                SELECT id::text AS id, user_id, 'book_batch' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_BOOK_BATCHES}
+                UNION ALL
+                SELECT id::text AS id, NULL::int AS user_id, 'tts' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_TTS}
+                UNION ALL
+                SELECT id::text AS id, user_id, 'scrape' AS job_type, status,
+                    created_at, modified_at
+                FROM {TABLE_JOB_SCRAPE}
+            ) AS jobs
+            {where_sql};""",
+            *params,
+        )
+        return int(row["count"]) if row else 0
 
     async def replace_jlpt_levels(self, jlpt_levels: Dict[str, str]) -> bool:
         """Replace JLPT mapping table with a freshly scraped snapshot.
@@ -2005,6 +2206,21 @@ class DBHandling:
             "created_at": str(row["created_at"]),
             "modified_at": str(row["modified_at"]),
         }
+
+    def _parse_job_scrape(self, row) -> dict:
+        """Build a scrape job dict from a DB record."""
+        return {
+            "id": str(row["id"]),
+            "user_id": row["user_id"],
+            "idempotency_key": row["idempotency_key"],
+            "trigger_type": row["trigger_type"] or "",
+            "source": row["source"] or "",
+            "status": row["status"],
+            "error": row["error"] or "",
+            "created_at": str(row["created_at"]),
+            "modified_at": str(row["modified_at"]),
+        }
+
     # =======================================================================================
 
     # Quiz Helpers ==========================================================================

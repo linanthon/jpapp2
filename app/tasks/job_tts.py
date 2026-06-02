@@ -39,7 +39,7 @@ async def process_tts_job(job_id: str) -> None:
         voice_options = normalize_voice_options(job.get("voice_options", {}))
 
         try:
-            await tts_service.synthesize(text, lang, redis, voice_options=voice_options)
+            await tts_service.synthesize(text, lang, redis, voice_options=voice_options, db=db)
             await db.update_job_tts_finished(job_id)
         except TTSAdapterError as exc:
             fallback = await tts_service.build_statica_fallback(text, lang, str(exc), db)

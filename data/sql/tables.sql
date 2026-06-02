@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS user_sentence_progress (
 -- Store users favorite books
 CREATE TABLE IF NOT EXISTS user_book_star (
     user_id INT REFERENCES users(id) ON DELETE CASCADE,
-    book_id INT REFERENCES sentences(id) ON DELETE CASCADE,
+    book_id INT REFERENCES books(id) ON DELETE CASCADE,
     star BOOLEAN,
     PRIMARY KEY(user_id, book_id)
 );

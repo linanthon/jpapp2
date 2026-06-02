@@ -1,52 +1,66 @@
 ## About this project
-This is another version of the https://github.com/linanthon/jpapp. Focus on multi-user support, so the original project meaning might not make sense here.
+This is another version of the https://github.com/linanthon/jpapp. Now supports async, added multi-user, new UI. The multi-user support aspect might not make sense for the initial purpose (which is allowing user to insert the material they want to study what they chose), but for study purpose, it's included.
 
-Changes:
-- Flask --> FastAPI
-- psycopg2 --> asyncpg
-- DB: Adds user. Favorite and progress are now user specific
-- API: Adds auth
+The backend is built with AI's help. The frontend is all vibecode.
 
-TODO backend:
-- ~~Fix N+1 query~~
-- ~~Restructure~~
-- ~~Stop convert db Record~~
-- ~~Add progress page~~
-- ~~Accept word, vector/digital pdf files~~
-- ~~Move inserted file into storage (MinIO)~~
-- ~~Update sentence example when view word, avoid short/no meaning sentences~~
-- ~~Search by kana, romaji, EN~~
-- ~~API now is concurrent, insert will meet `process_data` bottle neck --> move to background job~~
-- ~~Move jlpt level data scraping into bg job~~
-- ~~Auto read jlpt level at start (after scrape)~~
-- ~~Can insert multiple files~~
-- ~~Redis LRU words + sentence examples~~
-- TTS
+Demo: 
 
-TODO frontend
-- Quiz update to Redis in session, update to DB once at end
-- Fix goBack auth problem
-- Fix view word filter adding infinite param
-- Fix view specific book page
-- Fix go back button in view specific
-- Quiz not starting
-- Unauthorize request goes to /v1/null
+Changes
+- Added user management: now has register, login, logout functions. Learning progress binds to individual user.
+- Added Redis: used to cache user's tokens; LRU words, sentence examples; be message stream for Taskiq; JLPT levels mapping.
+- Added Taskiq: used to handle background jobs: scraping JLPT level from Wikipedia, insert new material (book), Text To Speech generation. -> Now return job ID quickly after request to not wait for heavy processes, avoid bottle neck.
+- Added MinIO: storage used to store book's content instead of in DB. Returns download URL to frontend.
+- Updated search function: can now search in Kanji, Kana (the alphabets), Romaji and English. Implemented typo tolerance but this feature is limited so correct word is preferred.
+- Added Text To Speech (TTS): now playing audio will prioritise using TTS (applied for both JP and EN). Can toggle off to use the built-in pre-recorded audio approach (this is referred as StaticA in source code, only JP).
+- Added Progress page: see study progress
+- Added Job page (admin only): see initialized background jobs.
+- JLPT level mapping: startup app will auto read data to Redis in background. If no JLPT data, will auto queue a scrape job. Added endpoint for JLPT scraping (will replace current data).
+- Insert file/string: moved process to background job, allows inserting multiple files at once.
+- Moves Flask to FastAPI, psycopg2 to asynpg: supports async natively.
+- Others: bug fixes, N+1 queries, removed unecessary data type conversion, idempotent checks, ...
 
 ## How to run
 
-Install requirements:
+Create virtual environment then install requirements:
 * pip install requirements.txt
 
-Run each in separate command prompt:
-* minio server minio-data/
-* memurai
-* taskiq worker app.taskiq_broker:broker app.tasks --workers 3
+Run each in separate CMD/PowerShell:
+
+* MinIO
+  - Download `minio.exe`: https://dl.min.io/community/server/minio/release/windows-amd64/
+  - cd to your minio.exe directory
+  - Setup username password in your `.env` or:
+    - PowerShell:
+      - `$env:MINIO_ROOT_USER="miniouser"`
+      - `$env:MINIO_ROOT_PASSWORD="miniopass"`
+    - CMD:
+      - `set MINIO_ROOT_USER="miniouser"`
+      - `set MINIO_ROOT_PASSWORD="miniopass"`
+  - Run:
+    `{your-minio-exe} server {your-minio-data-folder-path}`
+    - PowerShell example: `./minio.exe server ./minio-data`
+
+* Memurai ("Redis")
+  - Download: https://www.memurai.com/get-memurai?version=windows-valkey
+  - Run `memurai`
+  - if opened before, can check with `memurai-cli ping`
+
+* Taskiq
+  - Installed in pip requirements 
+  - Run `taskiq worker app.taskiq_broker:broker app.tasks --workers {number-of-workers}`
 
 Uploads the audio files to MinIO (optional), check `scripts/Readme.md` for more details:
 `python scripts/upload_audio_to_storage.py`
 
+Setup your `.env` following the `.env_example` file.
+
 Start API server
-* python -m app.main
+* `python -m app.main`
+
+Start Frontend:
+* cd frontend
+* `npm run build`
+* `npm run dev` (local) / `npm start` (prod)
 
 App will auto load jlpt level data if existed in DB, otherwise call /v1/jlpt/scrape/bg/{source_id} to scrape and load data, currently only allow `source_id=1`.
 
