@@ -1,6 +1,8 @@
 ## About this project
 This is another version of the https://github.com/linanthon/jpapp. Now supports async, added multi-user, new UI. The multi-user support aspect might not make sense for the initial purpose (which is allowing user to insert the material they want to study what they chose), but for study purpose, it's included.
 
+The backend is built with AI's help. The frontend is all vibecode.
+
 Demo: 
 
 Changes
