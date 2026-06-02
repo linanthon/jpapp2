@@ -26,6 +26,7 @@ Run each in separate CMD/PowerShell:
 
 * MinIO
   - Download `minio.exe`: https://dl.min.io/community/server/minio/release/windows-amd64/
+  - cd to your minio.exe directory
   - Setup username password in your `.env` or:
     - PowerShell:
       - `$env:MINIO_ROOT_USER="miniouser"`
@@ -55,6 +56,7 @@ Start API server
 * `python -m app.main`
 
 Start Frontend:
+* cd frontend
 * `npm run build`
 * `npm run dev` (local) / `npm start` (prod)
 

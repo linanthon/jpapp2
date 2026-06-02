@@ -65,8 +65,8 @@ ESPEAK_BIN = os.getenv("ESPEAK_BIN", "espeak-ng")
 ESPEAK_EN_VOICE = os.getenv("ESPEAK_EN_VOICE", "en-us")
 TTS_TIMEOUT_MS = int(os.getenv("TTS_TIMEOUT_MS", 2000))
 TTS_MAX_TEXT_LEN = int(os.getenv("TTS_MAX_TEXT_LEN", 500))
-TTS_JP_SPEED_DEFAULT = float(os.getenv("TTS_JP_SPEED_DEFAULT", "0.95"))
-TTS_JP_HALF_TONE_DEFAULT = float(os.getenv("TTS_JP_HALF_TONE_DEFAULT", "-2.0"))
+TTS_JP_SPEED_DEFAULT = float(os.getenv("TTS_JP_SPEED_DEFAULT", "0.9"))
+TTS_JP_HALF_TONE_DEFAULT = float(os.getenv("TTS_JP_HALF_TONE_DEFAULT", "-2.5"))
 
 # Blueprint prefix
 bpv1_url_prefix = "/v1"
