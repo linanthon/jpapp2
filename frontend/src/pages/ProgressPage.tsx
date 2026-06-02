@@ -66,7 +66,6 @@ export function ProgressPage() {
           {Object.entries(progress).map(([bucket, metrics]) => (
             <article className="stat-card" key={bucket}>
               <h3>{bucket.toUpperCase()}</h3>
-              <p>{Object.keys(metrics).length} metrics</p>
               <ul className="metric-list">
                 {Object.entries(metrics).map(([name, value]) => (
                   <li key={name}>

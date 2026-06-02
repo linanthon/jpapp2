@@ -908,7 +908,7 @@ async def text_to_speech(
         )
 
     try:
-        result = await tts_service.synthesize(text, lang, redis, voice_options=voice_options)
+        result = await tts_service.synthesize(text, lang, redis, voice_options=voice_options, db=db)
     except TTSAdapterError as exc:
         fallback = await tts_service.build_statica_fallback(text, lang, str(exc), db)
         if fallback:
