@@ -17,6 +17,13 @@ function createIdempotencyKey() {
   return `idem-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function stripExtension(name: string) {
+  if (!name) {
+    return ''
+  }
+  return name.replace(/\.[^/.]+$/, '')
+}
+
 export function BookDetailPage() {
   const navigate = useNavigate()
   const { bookId } = useParams()
@@ -160,6 +167,11 @@ export function BookDetailPage() {
       return
     }
 
+    const confirmed = window.confirm('Delete this book? This action cannot be undone.')
+    if (!confirmed) {
+      return
+    }
+
     setDeleteMessage('')
     try {
       const result = await deleteBookInBackground(
@@ -214,7 +226,7 @@ export function BookDetailPage() {
         <>
           <article className="subpanel subpanel--full">
             <div className="row-head">
-              <h3>{bookPayload.book_details.name}</h3>
+              <h3>{stripExtension(bookPayload.book_details.name)}</h3>
               <button
                 className={`star-btn ${bookPayload.book_details.star ? 'star-btn--active' : ''}`}
                 type="button"

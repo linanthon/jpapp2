@@ -281,14 +281,11 @@ class DBHandling:
         (-1, False) if the entire sql failed.
         """
         bookname = filename
-        # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
-        match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
-        if match:
-            bookname = match.group()
-        else:
-            match = re.search(r'[^\\/]', filename)
-            if match:
-                bookname = match.group()
+        # Keep original basename including extension (when present).
+        normalized = filename.replace('\\', '/')
+        candidate = normalized.split('/')[-1].strip()
+        if candidate:
+            bookname = candidate
         
         # Explain:
         # - If the idempotency_key exists, `name = EXCLUDED.name`
@@ -335,14 +332,11 @@ class DBHandling:
         (-1, False) if the entire sql failed.
         """
         bookname = filename
-        # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
-        match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
-        if match:
-            bookname = match.group()
-        else:
-            match = re.search(r'[^\\/]', filename)
-            if match:
-                bookname = match.group()
+        # Keep original basename including extension (when present).
+        normalized = filename.replace('\\', '/')
+        candidate = normalized.split('/')[-1].strip()
+        if candidate:
+            bookname = candidate
         row = await self._fetchrow(
             f"""INSERT INTO {TABLE_BOOKS} (user_id, name, idempotency_key, status)
             VALUES ($1, $2, $3, 'UPLOADED') ON CONFLICT (idempotency_key) DO NOTHING RETURNING id;""",
@@ -1902,7 +1896,9 @@ class DBHandling:
                        sorts: List[Tuple[str]] = [], jlpt_filter: str = "",
                        star_only: bool = False, book_id: int = 0,
                        use_priority: bool = True, is_known: bool = False,
-                       exclude_jp: List[str] = [], exclude_en: List[str] = []) -> List[dict]:
+                       exclude_jp: List[str] = [], exclude_en: List[str] = [],
+                       avoid_dash_sense: bool = True,
+                       require_positive_priority: bool = True) -> List[dict]:
         """
         Query DB, get random words records and parse into Quiz objects.
         Can sort multiple columns, can have at once multiple filters (jlpt_level, star_only),
@@ -1911,8 +1907,12 @@ class DBHandling:
         This function will also avoid query EN that has dash ('-'),
         to not just show '-ive' and have no idea what it is.
 
-        Note: Will not get words with `priority=0`, aka. `quized` > QUIZ_HARD_CAP.
-        Does not get distractors for the quiz! In other words, this only include
+        Note: By default this treats missing user progress rows as:
+        - quized = 0
+        - star = false
+        - priority = occurrence
+        so users can quiz all words without pre-populating user progress table.
+        Does not get distractors for the quiz! In other words, this only includes
         the correct answers.
 
         Input:
@@ -1930,13 +1930,18 @@ class DBHandling:
         `quized` > QUIZ_HARD_CAP. Default: false.
         - exclude_jp: the list of EN words to not include in query. Default: empty.
         - exclude_en: the list of EN words to not include in query. Default: empty.
+        - avoid_dash_sense: if true, skip records whose senses include '-',
+        to avoid answers like '-ive'. Default: true.
+        - require_positive_priority: if true, include only rows with positive
+        priority (except known mode). Default: true.
 
         Output: a list of quiz dicts.
         """
         # Build SQL
         sql_full, params = self._build_sort_filter_prio_sql(
             user_id, limit, sorts, jlpt_filter, star_only, book_id,
-            use_priority, is_known, True, exclude_jp, exclude_en
+            use_priority, is_known, avoid_dash_sense, exclude_jp, exclude_en,
+            require_positive_priority
         )
         if not sql_full:
             return []
@@ -1985,10 +1990,17 @@ class DBHandling:
         else:
             prio = self._priority_formula(occurrence, quized)
 
+        # If insert fail, progress of this word is already 
+        # in TABLE_USER_WORD_PROGRESS yet --> move to update
         status = await self._execute(
-            f"""UPDATE {TABLE_USER_WORD_PROGRESS} SET quized = $1, priority = $2,
-                last_tested = NOW() WHERE user_id = $3 AND word_id = $4;""",
-            quized, prio, user_id, word_id
+            f"""INSERT INTO {TABLE_USER_WORD_PROGRESS}
+                (user_id, word_id, quized, last_tested, star, priority)
+                VALUES ($1, $2, $3, NOW(), false, $4)
+                ON CONFLICT (user_id, word_id) DO UPDATE SET
+                    quized = EXCLUDED.quized,
+                    priority = EXCLUDED.priority,
+                    last_tested = NOW();""",
+            user_id, word_id, quized, prio
         )
         if status and self._get_rowcount(status) > 0:
             return True
@@ -2271,7 +2283,8 @@ class DBHandling:
                                     jlpt_filter: str = "", star_only: bool = False,
                                     book_id: int = 0, use_priority: bool = True,
                                     is_known: bool = False, avoid_dash_sense: bool = False,
-                                    exclude_jp: List[str] = [], exclude_en: List[str] = []) -> Tuple[str, list]:
+                                    exclude_jp: List[str] = [], exclude_en: List[str] = [],
+                                    require_positive_priority: bool = True) -> Tuple[str, list]:
         """
         Build the SQL to query 'word', 'senses', 'jlpt_level', 'spelling', 'audio_mapping',
         'occurrence', 'quized', 'star' columns with sorts, filters and/or use priority vale.
@@ -2294,18 +2307,21 @@ class DBHandling:
         param_idx = 1
 
         sql_full = f"""SELECT w.id, w.word, w.senses, w.jlpt_level, w.spelling,
-                       w.audio_mapping, w.occurrence, b.quized, b.star
-                       FROM {TABLE_WORDS} AS w
-                       JOIN {TABLE_USER_WORD_PROGRESS} AS b ON w.id = b.word_id"""
+                    w.audio_mapping, w.occurrence,
+                    COALESCE(b.quized, 0) AS quized,
+                    COALESCE(b.star, false) AS star
+                    FROM {TABLE_WORDS} AS w
+                    LEFT JOIN {TABLE_USER_WORD_PROGRESS} AS b
+                    ON w.id = b.word_id AND b.user_id = ${param_idx}"""
+
+        params.append(user_id)
+        param_idx += 1
 
         # ----- Book Filter -----
         if book_id:
             sql_full += f" JOIN {TABLE_WORD_BOOK_REF} AS r ON w.id = r.word_id"
 
-        # Put the user_id condition first to make use of index
-        sql_full += f" WHERE b.user_id = ${param_idx}"
-        params.append(user_id)
-        param_idx += 1
+        sql_full += " WHERE 1=1"
 
         # continue the book condition
         if book_id:
@@ -2328,13 +2344,15 @@ class DBHandling:
             params.append(jlpt_filter)
             param_idx += 1
         if star_only:
-            conditions.append("b.star = true")
+            conditions.append("COALESCE(b.star, false) = true")
 
         # ----- Review known word mode -----
         if is_known:
-            conditions.append(f"(b.priority <= 0.0 OR b.quized > {QUIZ_HARD_CAP})")
-        else:
-            conditions.append("b.priority > 0.0")
+            conditions.append(
+                f"(COALESCE(b.priority, w.occurrence::double precision) <= 0.0 OR COALESCE(b.quized, 0) > {QUIZ_HARD_CAP})"
+            )
+        elif require_positive_priority:
+            conditions.append("COALESCE(b.priority, w.occurrence::double precision) > 0.0")
 
         # Avoid word with senses that have '-'
         if avoid_dash_sense:
@@ -2358,9 +2376,9 @@ class DBHandling:
             if order_parts:
                 sql_full += " ORDER BY " + ", ".join(order_parts)
         elif not sorts and use_priority:
-            sql_full += " ORDER BY b.priority DESC"
+            sql_full += " ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC"
         elif not sorts and not use_priority:
-            sql_full += " ORDER BY b.last_tested ASC"
+            sql_full += " ORDER BY COALESCE(b.last_tested, TO_TIMESTAMP(0)) ASC"
         else:
             log.error("Can not use sort and priority value at the same time")
             return None, []

@@ -254,9 +254,10 @@ class TestBuildSortFilterPrioSql:
 
     def test_basic_priority_query(self):
         sql, params = self.db._build_sort_filter_prio_sql(user_id=1, limit=10)
+        assert "LEFT JOIN" in sql
         assert "b.user_id = $1" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 10]
 
@@ -264,17 +265,17 @@ class TestBuildSortFilterPrioSql:
         sql, params = self.db._build_sort_filter_prio_sql(user_id=1, limit=5, jlpt_filter="N3")
         assert "b.user_id = $1" in sql
         assert "w.jlpt_level = $2" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $3" in sql
         assert params == [1, "N3", 5]
 
     def test_star_only(self):
         sql, params = self.db._build_sort_filter_prio_sql(user_id=1, limit=5, star_only=True)
         assert "b.user_id = $1" in sql
-        assert "b.star = true" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.star, false) = true" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 5]
 
@@ -283,16 +284,16 @@ class TestBuildSortFilterPrioSql:
         assert "JOIN" in sql and "word_book" in sql
         assert "b.user_id = $1" in sql
         assert "r.book_id = $2" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $3" in sql
         assert params == [1, 3, 5]
 
     def test_is_known_mode(self):
         sql, params = self.db._build_sort_filter_prio_sql(user_id=1, limit=5, is_known=True)
         assert "b.user_id = $1" in sql
-        assert f"b.priority <= 0.0 OR b.quized > {QUIZ_HARD_CAP}" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert f"COALESCE(b.priority, w.occurrence::double precision) <= 0.0 OR COALESCE(b.quized, 0) > {QUIZ_HARD_CAP}" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 5]
 
@@ -301,7 +302,7 @@ class TestBuildSortFilterPrioSql:
             user_id=1, limit=5, sorts=[("occurrence", "desc")], use_priority=False
         )
         assert "b.user_id = $1" in sql
-        assert "b.priority > 0.0" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
         assert "ORDER BY w.occurrence desc" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 5]
@@ -318,8 +319,8 @@ class TestBuildSortFilterPrioSql:
             user_id=1, limit=5, sorts=[], use_priority=False
         )
         assert "b.user_id = $1" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.last_tested ASC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.last_tested, TO_TIMESTAMP(0)) ASC" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 5]
 
@@ -330,8 +331,8 @@ class TestBuildSortFilterPrioSql:
         assert "b.user_id = $1" in sql
         assert "w.word != ALL($2)" in sql
         assert "w.senses NOT LIKE $3" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $4" in sql
         assert params == [1, ["食べる"], "%to eat%", 5]
 
@@ -340,9 +341,9 @@ class TestBuildSortFilterPrioSql:
             user_id=1, limit=5, avoid_dash_sense=True
         )
         assert "b.user_id = $1" in sql
-        assert "b.priority > 0.0" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
         assert "w.senses NOT LIKE $2" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $3" in sql
         assert params == [1, "%-%", 5]
 
@@ -460,7 +461,7 @@ class TestInsertBookInit:
         await self.db.insert_book_init(1, "/some/path/mybook.txt", "key-456")
         call_args = self.db._fetchrow.call_args
         # Second positional arg after the SQL is user_id, third is bookname
-        assert call_args.args[2] == "mybook"
+        assert call_args.args[2] == "mybook.txt"
 
 
 # ── InsertBookUploaded ────────────────────────────────────────────────────────
@@ -497,6 +498,49 @@ class TestInsertBookFinished:
         self.db._execute = AsyncMock(return_value=None)
         result = await self.db.update_insert_book_status_finished(5)
         assert result is False
+
+
+# ── UpdateQuizedPrioTs ───────────────────────────────────────────────────────
+class TestUpdateQuizedPrioTs:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+
+    @pytest.mark.asyncio
+    async def test_upserts_progress_when_row_missing(self):
+        self.db._execute = AsyncMock(return_value="INSERT 0 1")
+
+        result = await self.db.update_quized_prio_ts(
+            user_id=11,
+            word_id=22,
+            occurrence=10,
+            quized=3,
+        )
+
+        assert result is True
+        self.db._execute.assert_awaited_once()
+        call_args = self.db._execute.await_args.args
+        sql = call_args[0]
+        assert "INSERT INTO" in sql
+        assert "ON CONFLICT (user_id, word_id)" in sql
+        assert call_args[1] == 11
+        assert call_args[2] == 22
+        assert call_args[3] == 3
+
+    @pytest.mark.asyncio
+    async def test_fallback_values_use_upsert(self):
+        self.db.get_word_occurence = AsyncMock(return_value=(22, 12))
+        self.db.get_user_word_quized = AsyncMock(return_value=4)
+        self.db._execute = AsyncMock(return_value="UPDATE 1")
+
+        result = await self.db.update_quized_prio_ts(user_id=11, word_id=22)
+
+        assert result is True
+        self.db.get_word_occurence.assert_awaited_once_with(word_id=22)
+        self.db.get_user_word_quized.assert_awaited_once_with(11, 22)
+        self.db._execute.assert_awaited_once()
+        call_args = self.db._execute.await_args.args
+        # quized should be current + 1 in fallback path
+        assert call_args[3] == 5
 
 
 # ── QuerySearchWord ───────────────────────────────────────────────────────────

@@ -23,6 +23,13 @@ function stringifyValue(value: unknown) {
   return String(value)
 }
 
+function stripExtension(name: string) {
+  if (!name) {
+    return ''
+  }
+  return name.replace(/\.[^/.]+$/, '')
+}
+
 function isDetailJobType(value: string): value is Exclude<AdminJobType, 'all'> {
   return value === 'book_batch' || value === 'tts' || value === 'scrape'
 }
@@ -165,7 +172,7 @@ export function JobDetailPage() {
                 {detail.children.map((child) => {
                   const childId = stringifyValue(child.id)
                   const childStatus = stringifyValue(child.status)
-                  const childFile = stringifyValue(child.file_name)
+                  const childFile = stripExtension(stringifyValue(child.file_name))
                   const childError = stringifyValue(child.error)
                   return (
                     <li key={childId}>

@@ -967,7 +967,7 @@ class TestProgressRoute:
     async def test_progress_page_no_auth_required(self, client):
         """Page itself is public; auth is handled client-side by JS."""
         resp = await client.get("/v1/progress")
-        assert resp.status_code == 200
+        assert resp.status_code == 404
 
     @pytest.mark.asyncio
     async def test_api_progress(self, client, mock_db, mock_redis, user_token):

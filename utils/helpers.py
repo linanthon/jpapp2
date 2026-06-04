@@ -1,6 +1,13 @@
 import os
 import json
 
+def get_basename_from_path(fullpath: str):
+    """Get filename and keep the extension (if exists)."""
+    if not fullpath:
+        return ""
+    normalized = fullpath.strip().replace('\\', '/')
+    return normalized.split('/')[-1]
+
 def get_filename_from_path(fullpath: str):
     """Get filename from full path, i.e.: c:/a/path/the_file.123.txt -> the_file.123"""
     if not fullpath:

@@ -10,7 +10,6 @@ from app.dependencies import (
     get_current_user_id,
     get_current_user,
     get_current_admin_user,
-    get_jinja_globals,
     validate_tts_request,
 )
 
@@ -135,27 +134,6 @@ class TestGetCurrentAdminUser:
         with pytest.raises(HTTPException) as exc_info:
             await get_current_admin_user(non_admin)
         assert exc_info.value.status_code == 403
-
-
-# ── get_jinja_globals ─────────────────────────────────────────────────────────
-class TestGetJinjaGlobals:
-    def test_returns_url_function_and_prefix(self):
-        result = get_jinja_globals()
-        assert "url" in result
-        assert "url_prefix" in result
-
-    def test_url_routes(self):
-        result = get_jinja_globals()
-        url = result["url"]
-        prefix = result["url_prefix"]
-        assert url("home") == f"{prefix}/"
-        assert url("login") == f"{prefix}/login"
-        assert url("insert") == f"{prefix}/insert"
-
-    def test_url_static(self):
-        result = get_jinja_globals()
-        url = result["url"]
-        assert url("static", "css/style.css") == "/static/css/style.css"
 
 
 # ── validate_tts_request ─────────────────────────────────────────────────────
