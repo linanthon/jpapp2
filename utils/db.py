@@ -1990,10 +1990,17 @@ class DBHandling:
         else:
             prio = self._priority_formula(occurrence, quized)
 
+        # If insert fail, progress of this word is already 
+        # in TABLE_USER_WORD_PROGRESS yet --> move to update
         status = await self._execute(
-            f"""UPDATE {TABLE_USER_WORD_PROGRESS} SET quized = $1, priority = $2,
-                last_tested = NOW() WHERE user_id = $3 AND word_id = $4;""",
-            quized, prio, user_id, word_id
+            f"""INSERT INTO {TABLE_USER_WORD_PROGRESS}
+                (user_id, word_id, quized, last_tested, star, priority)
+                VALUES ($1, $2, $3, NOW(), false, $4)
+                ON CONFLICT (user_id, word_id) DO UPDATE SET
+                    quized = EXCLUDED.quized,
+                    priority = EXCLUDED.priority,
+                    last_tested = NOW();""",
+            user_id, word_id, quized, prio
         )
         if status and self._get_rowcount(status) > 0:
             return True

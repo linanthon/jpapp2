@@ -461,7 +461,7 @@ class TestInsertBookInit:
         await self.db.insert_book_init(1, "/some/path/mybook.txt", "key-456")
         call_args = self.db._fetchrow.call_args
         # Second positional arg after the SQL is user_id, third is bookname
-        assert call_args.args[2] == "mybook"
+        assert call_args.args[2] == "mybook.txt"
 
 
 # ── InsertBookUploaded ────────────────────────────────────────────────────────
@@ -498,6 +498,49 @@ class TestInsertBookFinished:
         self.db._execute = AsyncMock(return_value=None)
         result = await self.db.update_insert_book_status_finished(5)
         assert result is False
+
+
+# ── UpdateQuizedPrioTs ───────────────────────────────────────────────────────
+class TestUpdateQuizedPrioTs:
+    def setup_method(self):
+        self.db = DBHandling.__new__(DBHandling)
+
+    @pytest.mark.asyncio
+    async def test_upserts_progress_when_row_missing(self):
+        self.db._execute = AsyncMock(return_value="INSERT 0 1")
+
+        result = await self.db.update_quized_prio_ts(
+            user_id=11,
+            word_id=22,
+            occurrence=10,
+            quized=3,
+        )
+
+        assert result is True
+        self.db._execute.assert_awaited_once()
+        call_args = self.db._execute.await_args.args
+        sql = call_args[0]
+        assert "INSERT INTO" in sql
+        assert "ON CONFLICT (user_id, word_id)" in sql
+        assert call_args[1] == 11
+        assert call_args[2] == 22
+        assert call_args[3] == 3
+
+    @pytest.mark.asyncio
+    async def test_fallback_values_use_upsert(self):
+        self.db.get_word_occurence = AsyncMock(return_value=(22, 12))
+        self.db.get_user_word_quized = AsyncMock(return_value=4)
+        self.db._execute = AsyncMock(return_value="UPDATE 1")
+
+        result = await self.db.update_quized_prio_ts(user_id=11, word_id=22)
+
+        assert result is True
+        self.db.get_word_occurence.assert_awaited_once_with(word_id=22)
+        self.db.get_user_word_quized.assert_awaited_once_with(11, 22)
+        self.db._execute.assert_awaited_once()
+        call_args = self.db._execute.await_args.args
+        # quized should be current + 1 in fallback path
+        assert call_args[3] == 5
 
 
 # ── QuerySearchWord ───────────────────────────────────────────────────────────
