@@ -3,7 +3,7 @@ This is another version of the https://github.com/linanthon/jpapp. Now supports 
 
 The backend is built with AI's help. The frontend is all vibecode.
 
-Demo: 
+Demo: https://youtu.be/x8JvmkZiKsE
 
 Changes
 - Added user management: now has register, login, logout functions. Learning progress binds to individual user.
@@ -82,3 +82,6 @@ How to install:
 
 - eSpeak NG (EN)
   - Download the Windows `.msi` installer from https://github.com/espeak-ng/espeak-ng/releases and install it. If installation/user adds to PATH, keep `ESPEAK_BIN` in `app/config.py` as is. Otherwise, update it `ESPEAK_BIN` to your eSpeak location.
+
+## Others
+- The progress page/logic needs update to show properly

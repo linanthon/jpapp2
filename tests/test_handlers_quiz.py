@@ -181,6 +181,67 @@ class TestBuildQuizesJp:
         assert len(quiz["choices"]) == 4
         assert "to eat" in quiz["choices"]
 
+    @pytest.mark.asyncio
+    @patch("app.handlers.quiz.get_quiz_distractors")
+    async def test_backfills_when_strict_filter_returns_too_few(self, mock_get_distractors, mock_db, mock_pdata):
+        from schemas.quiz import QuizDistractors
+        mock_db.get_quiz.side_effect = [
+            [
+                {
+                    "word_id": 1, "jp": "食べる", "en": "to eat", "spelling": "タベル",
+                    "audio_mapping": ["ta", "be", "ru"], "quized": 3, "occurrence": 10, "star": False,
+                }
+            ],
+            [
+                {
+                    "word_id": 2, "jp": "飲む", "en": "to drink", "spelling": "ノム",
+                    "audio_mapping": ["no", "mu"], "quized": 1, "occurrence": 5, "star": False,
+                }
+            ],
+        ]
+        mock_get_distractors.return_value = QuizDistractors(
+            jp=["走る", "寝る", "読む"], en=["to run", "to sleep", "to read"]
+        )
+
+        res = await build_quizes("jp", mock_pdata, mock_db, user_id=1, limit=2)
+
+        assert len(res) == 2
+        assert set(res.keys()) == {1, 2}
+        assert mock_db.get_quiz.call_count == 2
+
+    @pytest.mark.asyncio
+    @patch("app.handlers.quiz.get_quiz_distractors")
+    async def test_backfills_from_non_positive_priority_when_still_short(self, mock_get_distractors, mock_db, mock_pdata):
+        from schemas.quiz import QuizDistractors
+        mock_db.get_quiz.side_effect = [
+            [
+                {
+                    "word_id": 1, "jp": "食べる", "en": "to eat", "spelling": "タベル",
+                    "audio_mapping": ["ta", "be", "ru"], "quized": 3, "occurrence": 10, "star": False,
+                }
+            ],
+            [],
+            [
+                {
+                    "word_id": 3, "jp": "読む", "en": "to read", "spelling": "ヨム",
+                    "audio_mapping": ["yo", "mu"], "quized": 50, "occurrence": 2, "star": False,
+                },
+                {
+                    "word_id": 4, "jp": "書く", "en": "to write", "spelling": "カク",
+                    "audio_mapping": ["ka", "ku"], "quized": 45, "occurrence": 1, "star": False,
+                },
+            ],
+        ]
+        mock_get_distractors.return_value = QuizDistractors(
+            jp=["走る", "寝る", "飲む"], en=["to run", "to sleep", "to drink"]
+        )
+
+        res = await build_quizes("jp", mock_pdata, mock_db, user_id=1, limit=3)
+
+        assert len(res) == 3
+        assert set(res.keys()) == {1, 3, 4}
+        assert mock_db.get_quiz.call_count == 3
+
 
 class TestBuildQuizesEn:
     @pytest.mark.asyncio

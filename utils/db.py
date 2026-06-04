@@ -281,14 +281,11 @@ class DBHandling:
         (-1, False) if the entire sql failed.
         """
         bookname = filename
-        # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
-        match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
-        if match:
-            bookname = match.group()
-        else:
-            match = re.search(r'[^\\/]', filename)
-            if match:
-                bookname = match.group()
+        # Keep original basename including extension (when present).
+        normalized = filename.replace('\\', '/')
+        candidate = normalized.split('/')[-1].strip()
+        if candidate:
+            bookname = candidate
         
         # Explain:
         # - If the idempotency_key exists, `name = EXCLUDED.name`
@@ -335,14 +332,11 @@ class DBHandling:
         (-1, False) if the entire sql failed.
         """
         bookname = filename
-        # Get the <file name> in /some/path/`<file name>`.txt or \ instead of /
-        match = re.search(r'[^\\/]+(?=\.[^\\.]+$)', filename)
-        if match:
-            bookname = match.group()
-        else:
-            match = re.search(r'[^\\/]', filename)
-            if match:
-                bookname = match.group()
+        # Keep original basename including extension (when present).
+        normalized = filename.replace('\\', '/')
+        candidate = normalized.split('/')[-1].strip()
+        if candidate:
+            bookname = candidate
         row = await self._fetchrow(
             f"""INSERT INTO {TABLE_BOOKS} (user_id, name, idempotency_key, status)
             VALUES ($1, $2, $3, 'UPLOADED') ON CONFLICT (idempotency_key) DO NOTHING RETURNING id;""",
@@ -1902,7 +1896,9 @@ class DBHandling:
                        sorts: List[Tuple[str]] = [], jlpt_filter: str = "",
                        star_only: bool = False, book_id: int = 0,
                        use_priority: bool = True, is_known: bool = False,
-                       exclude_jp: List[str] = [], exclude_en: List[str] = []) -> List[dict]:
+                       exclude_jp: List[str] = [], exclude_en: List[str] = [],
+                       avoid_dash_sense: bool = True,
+                       require_positive_priority: bool = True) -> List[dict]:
         """
         Query DB, get random words records and parse into Quiz objects.
         Can sort multiple columns, can have at once multiple filters (jlpt_level, star_only),
@@ -1930,16 +1926,23 @@ class DBHandling:
         `quized` > QUIZ_HARD_CAP. Default: false.
         - exclude_jp: the list of EN words to not include in query. Default: empty.
         - exclude_en: the list of EN words to not include in query. Default: empty.
+        - avoid_dash_sense: if true, skip records whose senses include '-',
+        to avoid answers like '-ive'. Default: true.
+        - require_positive_priority: if true, include only rows with positive
+        priority (except known mode). Default: true.
 
         Output: a list of quiz dicts.
         """
         # Build SQL
         sql_full, params = self._build_sort_filter_prio_sql(
             user_id, limit, sorts, jlpt_filter, star_only, book_id,
-            use_priority, is_known, True, exclude_jp, exclude_en
+            use_priority, is_known, avoid_dash_sense, exclude_jp, exclude_en,
+            require_positive_priority
         )
         if not sql_full:
             return []
+        
+        print("BBBBBBBBBBBB:", sql_full)
 
         # Query
         q_res = await self._fetch(sql_full, *params)
@@ -2271,7 +2274,8 @@ class DBHandling:
                                     jlpt_filter: str = "", star_only: bool = False,
                                     book_id: int = 0, use_priority: bool = True,
                                     is_known: bool = False, avoid_dash_sense: bool = False,
-                                    exclude_jp: List[str] = [], exclude_en: List[str] = []) -> Tuple[str, list]:
+                                    exclude_jp: List[str] = [], exclude_en: List[str] = [],
+                                    require_positive_priority: bool = True) -> Tuple[str, list]:
         """
         Build the SQL to query 'word', 'senses', 'jlpt_level', 'spelling', 'audio_mapping',
         'occurrence', 'quized', 'star' columns with sorts, filters and/or use priority vale.
@@ -2333,7 +2337,7 @@ class DBHandling:
         # ----- Review known word mode -----
         if is_known:
             conditions.append(f"(b.priority <= 0.0 OR b.quized > {QUIZ_HARD_CAP})")
-        else:
+        elif require_positive_priority:
             conditions.append("b.priority > 0.0")
 
         # Avoid word with senses that have '-'

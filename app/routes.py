@@ -33,7 +33,7 @@ from schemas.user import UserCreate, UserLogin, TokenResponse, TokenRefresh, Use
 from utils.auth import hash_password, create_access_token, create_refresh_token, verify_password, verify_token
 from utils.data import read_jlpt_from_db, JLPT_REDIS_KEY
 from utils.db import DBHandling
-from utils.helpers import (get_filename_from_path, get_file_extension_from_path, validate_jlpt_level,
+from utils.helpers import (get_filename_from_path, get_basename_from_path, get_file_extension_from_path, validate_jlpt_level,
                            parse_bool_param, validate_star)
 from utils.process_data import ProcessData
 from utils.storage import (upload_file_to_minio, upload_string_to_minio,
@@ -223,7 +223,7 @@ async def upload_file_bg(
     if not idem_key:
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail="Missing Idempotency-Key header")
 
-    file_name = get_filename_from_path(submittedFile.filename)
+    file_name = get_basename_from_path(submittedFile.filename)
     book_id, created = await db.insert_book_init(current_admin["id"], file_name, idem_key)
     if book_id <= 0:
         raise HTTPException(
@@ -371,7 +371,7 @@ async def upload_files_bg(
     failed_files: list[dict] = []
     for one_file in normalized_files:
         file_name = one_file["filename"]
-        object_name = f"uploads/{current_admin['id']}/{batch_id}/{uuid.uuid4().hex}_{get_filename_from_path(file_name)}"
+        object_name = f"uploads/{current_admin['id']}/{batch_id}/{uuid.uuid4().hex}_{get_basename_from_path(file_name)}"
         try:
             upload_url = generate_presigned_upload_url(
                 object_name,
@@ -1225,6 +1225,8 @@ async def quiz_jp(
     use_priority_bool = parse_bool_param(use_priority)
     get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
+    print("===LIMIT:", limit)
+
     quizes = await build_quizes(
         "jp",
         pdata,
@@ -1238,6 +1240,7 @@ async def quiz_jp(
         get_distractors_from_db=get_distractors_bool,
         redis=redis,
     )
+    print("AAAAAAAAAAAAAAAAAAAAAAAAAA:", len(quizes.keys()))
     return JSONResponse(
         content=jsonable_encoder(
             {

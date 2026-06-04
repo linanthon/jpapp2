@@ -26,8 +26,60 @@ async def build_quizes(mode: str, pdata: "ProcessData", db: "DBHandling", user_i
     For 'en' mode: question=EN, correct=JP, spelling/audio are empty.
     """
     res = {}
-    tests = await db.get_quiz(user_id=user_id, limit=limit, jlpt_filter=jlpt_level, star_only=star,
-                        book_id=book_id, use_priority=use_priority, is_known=is_known)
+    tests = await db.get_quiz(
+        user_id=user_id,
+        limit=limit,
+        jlpt_filter=jlpt_level,
+        star_only=star,
+        book_id=book_id,
+        use_priority=use_priority,
+        is_known=is_known,
+        avoid_dash_sense=True,
+        require_positive_priority=True,
+    )
+
+    # If strict dash-sense filtering yields too few questions, backfill from the
+    # remaining eligible pool so requested limit is respected whenever possible.
+    if len(tests) < limit:
+        exclude_jp = [item["jp"] for item in tests if item.get("jp")]
+        exclude_en = [item["en"] for item in tests if item.get("en")]
+        extras = await db.get_quiz(
+            user_id=user_id,
+            limit=limit - len(tests),
+            jlpt_filter=jlpt_level,
+            star_only=star,
+            book_id=book_id,
+            use_priority=use_priority,
+            is_known=is_known,
+            exclude_jp=exclude_jp,
+            exclude_en=exclude_en,
+            avoid_dash_sense=False,
+            require_positive_priority=True,
+        )
+        if extras:
+            tests.extend(extras)
+
+    # If still short, fill from non-positive-priority rows so requested count is
+    # satisfied when the user has enough words overall.
+    if len(tests) < limit and not is_known:
+        exclude_jp = [item["jp"] for item in tests if item.get("jp")]
+        exclude_en = [item["en"] for item in tests if item.get("en")]
+        extras = await db.get_quiz(
+            user_id=user_id,
+            limit=limit - len(tests),
+            jlpt_filter=jlpt_level,
+            star_only=star,
+            book_id=book_id,
+            use_priority=use_priority,
+            is_known=False,
+            exclude_jp=exclude_jp,
+            exclude_en=exclude_en,
+            avoid_dash_sense=False,
+            require_positive_priority=False,
+        )
+        if extras:
+            tests.extend(extras)
+
     for test_case in tests:
         if redis is not None:
             core_key = word_core_cache_key(test_case["word_id"])

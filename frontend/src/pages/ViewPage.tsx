@@ -21,6 +21,13 @@ function clampPage(page: number, pageCount: number) {
   return Math.min(Math.max(1, page), pageCount)
 }
 
+function stripExtension(name: string) {
+  if (!name) {
+    return ''
+  }
+  return name.replace(/\.[^/.]+$/, '')
+}
+
 export function ViewPage() {
   const token = getAccessToken()
   const [wordsStatus, setWordsStatus] = useState<'idle' | 'loading' | 'error' | 'ok'>(
@@ -450,7 +457,7 @@ export function ViewPage() {
                     <li key={String(item.book_id ?? index)}>
                       <div className="list-row">
                         <Link className="list-main" to={`/view/book/${item.book_id}`}>
-                          <strong>{item.name || 'Untitled'}</strong>
+                          <strong>{stripExtension(item.name) || 'Untitled'}</strong>
                           <span>Created: {item.created_at || '-'}</span>
                         </Link>
                         <button
