@@ -254,9 +254,10 @@ class TestBuildSortFilterPrioSql:
 
     def test_basic_priority_query(self):
         sql, params = self.db._build_sort_filter_prio_sql(user_id=1, limit=10)
+        assert "LEFT JOIN" in sql
         assert "b.user_id = $1" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 10]
 
@@ -264,17 +265,17 @@ class TestBuildSortFilterPrioSql:
         sql, params = self.db._build_sort_filter_prio_sql(user_id=1, limit=5, jlpt_filter="N3")
         assert "b.user_id = $1" in sql
         assert "w.jlpt_level = $2" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $3" in sql
         assert params == [1, "N3", 5]
 
     def test_star_only(self):
         sql, params = self.db._build_sort_filter_prio_sql(user_id=1, limit=5, star_only=True)
         assert "b.user_id = $1" in sql
-        assert "b.star = true" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.star, false) = true" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 5]
 
@@ -283,16 +284,16 @@ class TestBuildSortFilterPrioSql:
         assert "JOIN" in sql and "word_book" in sql
         assert "b.user_id = $1" in sql
         assert "r.book_id = $2" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $3" in sql
         assert params == [1, 3, 5]
 
     def test_is_known_mode(self):
         sql, params = self.db._build_sort_filter_prio_sql(user_id=1, limit=5, is_known=True)
         assert "b.user_id = $1" in sql
-        assert f"b.priority <= 0.0 OR b.quized > {QUIZ_HARD_CAP}" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert f"COALESCE(b.priority, w.occurrence::double precision) <= 0.0 OR COALESCE(b.quized, 0) > {QUIZ_HARD_CAP}" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 5]
 
@@ -301,7 +302,7 @@ class TestBuildSortFilterPrioSql:
             user_id=1, limit=5, sorts=[("occurrence", "desc")], use_priority=False
         )
         assert "b.user_id = $1" in sql
-        assert "b.priority > 0.0" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
         assert "ORDER BY w.occurrence desc" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 5]
@@ -318,8 +319,8 @@ class TestBuildSortFilterPrioSql:
             user_id=1, limit=5, sorts=[], use_priority=False
         )
         assert "b.user_id = $1" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.last_tested ASC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.last_tested, TO_TIMESTAMP(0)) ASC" in sql
         assert "LIMIT $2" in sql
         assert params == [1, 5]
 
@@ -330,8 +331,8 @@ class TestBuildSortFilterPrioSql:
         assert "b.user_id = $1" in sql
         assert "w.word != ALL($2)" in sql
         assert "w.senses NOT LIKE $3" in sql
-        assert "b.priority > 0.0" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $4" in sql
         assert params == [1, ["食べる"], "%to eat%", 5]
 
@@ -340,9 +341,9 @@ class TestBuildSortFilterPrioSql:
             user_id=1, limit=5, avoid_dash_sense=True
         )
         assert "b.user_id = $1" in sql
-        assert "b.priority > 0.0" in sql
+        assert "COALESCE(b.priority, w.occurrence::double precision) > 0.0" in sql
         assert "w.senses NOT LIKE $2" in sql
-        assert "ORDER BY b.priority DESC" in sql
+        assert "ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC" in sql
         assert "LIMIT $3" in sql
         assert params == [1, "%-%", 5]
 

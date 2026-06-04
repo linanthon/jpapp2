@@ -1225,8 +1225,6 @@ async def quiz_jp(
     use_priority_bool = parse_bool_param(use_priority)
     get_distractors_bool = parse_bool_param(get_distractors_from_db)
 
-    print("===LIMIT:", limit)
-
     quizes = await build_quizes(
         "jp",
         pdata,
@@ -1240,7 +1238,6 @@ async def quiz_jp(
         get_distractors_from_db=get_distractors_bool,
         redis=redis,
     )
-    print("AAAAAAAAAAAAAAAAAAAAAAAAAA:", len(quizes.keys()))
     return JSONResponse(
         content=jsonable_encoder(
             {

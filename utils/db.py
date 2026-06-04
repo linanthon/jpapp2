@@ -1907,8 +1907,12 @@ class DBHandling:
         This function will also avoid query EN that has dash ('-'),
         to not just show '-ive' and have no idea what it is.
 
-        Note: Will not get words with `priority=0`, aka. `quized` > QUIZ_HARD_CAP.
-        Does not get distractors for the quiz! In other words, this only include
+        Note: By default this treats missing user progress rows as:
+        - quized = 0
+        - star = false
+        - priority = occurrence
+        so users can quiz all words without pre-populating user progress table.
+        Does not get distractors for the quiz! In other words, this only includes
         the correct answers.
 
         Input:
@@ -1941,8 +1945,6 @@ class DBHandling:
         )
         if not sql_full:
             return []
-        
-        print("BBBBBBBBBBBB:", sql_full)
 
         # Query
         q_res = await self._fetch(sql_full, *params)
@@ -2298,18 +2300,21 @@ class DBHandling:
         param_idx = 1
 
         sql_full = f"""SELECT w.id, w.word, w.senses, w.jlpt_level, w.spelling,
-                       w.audio_mapping, w.occurrence, b.quized, b.star
-                       FROM {TABLE_WORDS} AS w
-                       JOIN {TABLE_USER_WORD_PROGRESS} AS b ON w.id = b.word_id"""
+                    w.audio_mapping, w.occurrence,
+                    COALESCE(b.quized, 0) AS quized,
+                    COALESCE(b.star, false) AS star
+                    FROM {TABLE_WORDS} AS w
+                    LEFT JOIN {TABLE_USER_WORD_PROGRESS} AS b
+                    ON w.id = b.word_id AND b.user_id = ${param_idx}"""
+
+        params.append(user_id)
+        param_idx += 1
 
         # ----- Book Filter -----
         if book_id:
             sql_full += f" JOIN {TABLE_WORD_BOOK_REF} AS r ON w.id = r.word_id"
 
-        # Put the user_id condition first to make use of index
-        sql_full += f" WHERE b.user_id = ${param_idx}"
-        params.append(user_id)
-        param_idx += 1
+        sql_full += " WHERE 1=1"
 
         # continue the book condition
         if book_id:
@@ -2332,13 +2337,15 @@ class DBHandling:
             params.append(jlpt_filter)
             param_idx += 1
         if star_only:
-            conditions.append("b.star = true")
+            conditions.append("COALESCE(b.star, false) = true")
 
         # ----- Review known word mode -----
         if is_known:
-            conditions.append(f"(b.priority <= 0.0 OR b.quized > {QUIZ_HARD_CAP})")
+            conditions.append(
+                f"(COALESCE(b.priority, w.occurrence::double precision) <= 0.0 OR COALESCE(b.quized, 0) > {QUIZ_HARD_CAP})"
+            )
         elif require_positive_priority:
-            conditions.append("b.priority > 0.0")
+            conditions.append("COALESCE(b.priority, w.occurrence::double precision) > 0.0")
 
         # Avoid word with senses that have '-'
         if avoid_dash_sense:
@@ -2362,9 +2369,9 @@ class DBHandling:
             if order_parts:
                 sql_full += " ORDER BY " + ", ".join(order_parts)
         elif not sorts and use_priority:
-            sql_full += " ORDER BY b.priority DESC"
+            sql_full += " ORDER BY COALESCE(b.priority, w.occurrence::double precision) DESC"
         elif not sorts and not use_priority:
-            sql_full += " ORDER BY b.last_tested ASC"
+            sql_full += " ORDER BY COALESCE(b.last_tested, TO_TIMESTAMP(0)) ASC"
         else:
             log.error("Can not use sort and priority value at the same time")
             return None, []
