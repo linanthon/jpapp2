@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS word_book (
 -- Store the reference of a word and the sentences contain it
 CREATE TABLE IF NOT EXISTS sentences (
     id SERIAL PRIMARY KEY,
-    sentence TEXT NOT NULL,
+    sentence TEXT UNIQUE NOT NULL,
     occurrence INT     -- count sentence occrences to decide if is popular or not (current auto alg)
 );
 
@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS sentences (
 CREATE TABLE IF NOT EXISTS word_sentence (
     sentence_id INT REFERENCES sentences(id) ON DELETE CASCADE,
     word_id INT REFERENCES words(id) ON DELETE CASCADE,
+    occurrence INT DEFAULT 1,
     PRIMARY KEY (word_id, sentence_id)
 );
 
@@ -69,6 +70,7 @@ CREATE TABLE IF NOT EXISTS word_sentence (
 CREATE TABLE IF NOT EXISTS sentence_book (
     sentence_id INT REFERENCES sentences(id) ON DELETE CASCADE,
     book_id INT REFERENCES books(id) ON DELETE CASCADE,
+    occurrence INT DEFAULT 1,
     PRIMARY KEY (sentence_id, book_id)
 );
 

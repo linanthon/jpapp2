@@ -38,7 +38,7 @@ async def build_quizes(mode: str, pdata: "ProcessData", db: "DBHandling", user_i
         require_positive_priority=True,
     )
 
-    # If strict dash-sense filtering yields too few questions, backfill from the
+    # If strict `avoid_dash_sense=True` yields too few questions, backfill from the
     # remaining eligible pool so requested limit is respected whenever possible.
     if len(tests) < limit:
         exclude_jp = [item["jp"] for item in tests if item.get("jp")]
@@ -59,8 +59,8 @@ async def build_quizes(mode: str, pdata: "ProcessData", db: "DBHandling", user_i
         if extras:
             tests.extend(extras)
 
-    # If still short, fill from non-positive-priority rows so requested count is
-    # satisfied when the user has enough words overall.
+    # If still short, fill from non-positive-priority rows (known words) so requested
+    # count is "satisfied" when the user has enough words overall.
     if len(tests) < limit and not is_known:
         exclude_jp = [item["jp"] for item in tests if item.get("jp")]
         exclude_en = [item["en"] for item in tests if item.get("en")]

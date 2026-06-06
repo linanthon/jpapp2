@@ -1300,12 +1300,13 @@ class DBHandling:
             return False
 
         rows = await self._fetch(
-            f"SELECT {obj_id_col} FROM {ref_table} WHERE {target_id_col} = ANY($1)",
+            f"SELECT {obj_id_col}, count FROM {ref_table} WHERE {target_id_col} = ANY($1)",
             obj_ids
         )
         for item in rows:
+            count = item["count"]
             obj_id = item[obj_id_col]
-            obj_decrements[obj_id] = obj_decrements.get(obj_id, 0) + 1
+            obj_decrements[obj_id] = count if count else obj_decrements.get(obj_id, 0) + 1
         return True
     
     async def _decrement_object_occurrence(self, obj_decrements: dict, table_name: str) -> bool:
@@ -1744,34 +1745,12 @@ class DBHandling:
 
         Output: the inserted sentence ID or the existed sentence ID. 0 if fail.
         """
-        # Check exist -> up occurrence
         row = await self._fetchrow(
-            f"SELECT id, occurrence FROM {TABLE_SENTENCES} WHERE sentence = $1;",
-            sentence
-        )
-        if row:
-            await self.update_sentence_occurence(row["id"], row["occurrence"] + 1)
-            return row["id"]
-
-        # Insert
-        row = await self._fetchrow(
-            f"INSERT INTO {TABLE_SENTENCES} (sentence, occurrence) VALUES ($1, 1) RETURNING id;",
+            f"""INSERT INTO {TABLE_SENTENCES} (sentence, occurrence) VALUES ($1, 1) ON CONFLICT (sentence)
+            DO UPDATE SET occurrence = COALESCE({TABLE_SENTENCES}.occurrence, 0) + 1 RETURNING id;""",
             sentence
         )
         return row["id"] if row else 0
-
-    async def update_sentence_occurence(self, sentence_id: int, new_count: int) -> bool:
-        """
-        Update a sentence's occurrence.
-        Return true if success, false if fail/not found.
-
-        TODO: Need update when implement quiz sentence
-        """
-        status = await self._execute(
-            f"UPDATE {TABLE_SENTENCES} SET occurrence = $1 WHERE id = $2;",
-            new_count, sentence_id
-        )
-        return status is not None
 
     async def update_sentence_star(self, sentence: str, new_star_status: bool = None) -> bool:
         """
@@ -1869,7 +1848,9 @@ class DBHandling:
             return False
 
         status = await self._execute(
-            f"INSERT INTO {TABLE_WORD_SENTENCE_REF} (word_id, sentence_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;",
+            f"""INSERT INTO {TABLE_WORD_SENTENCE_REF} (word_id, sentence_id) VALUES ($1, $2)
+            ON CONFLICT (word_id, sentence_id)
+            DO UPDATE SET occurrence = COALESCE({TABLE_WORD_SENTENCE_REF}.occurrence, 0) + 1;""",
             word_id, sentence_id
         )
         return status is not None
@@ -1885,7 +1866,9 @@ class DBHandling:
             return False
 
         status = await self._execute(
-            f"INSERT INTO {TABLE_SENTENCE_BOOK_REF} (sentence_id, book_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;",
+            f"""INSERT INTO {TABLE_SENTENCE_BOOK_REF} (sentence_id, book_id) VALUES ($1, $2)
+            ON CONFLICT (sentence_id, book_id)
+            DO UPDATE SET occurrence = COALESCE({TABLE_SENTENCE_BOOK_REF}.occurrence, 0) + 1;""",
             sentence_id, book_id
         )
         return status is not None

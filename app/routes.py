@@ -519,12 +519,15 @@ async def upload_string_bg(
     current_admin: dict = Depends(get_current_admin_user)
 ):
     """Handle upload JP text directly. Admin only. Upload to storage then
-    queue the string processing as a background task and return a job ID."""
+    queue the string processing as a background task and return a job ID.
+    
+    Note: this adds '.txt' at the end"""
     if not stringName or not stringBody:
         raise HTTPException(
             status_code=HTTPStatus.BAD_REQUEST,
             detail="Missing book name or content"
         )
+    stringName += ".txt"
     string_size_bytes = len(stringBody.encode("utf-8"))
     if string_size_bytes > MAX_INSERT_STRING_BYTES:
         raise HTTPException(
@@ -1363,7 +1366,7 @@ async def update_word_prio(
     current_user_id: int = Depends(get_current_user_id)
 ):
     """
-    Update word priority based on quiz result.
+    Update 1 word priority based on quiz result.
     Expects JSON: { 'word_id': int, 'is_correct': bool, 'quized': int, 'occurrence': int }
     """
     data = await request.json()

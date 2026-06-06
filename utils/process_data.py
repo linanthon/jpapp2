@@ -249,8 +249,9 @@ class ProcessData():
         """
         Get the word's Jamdict entry via `self.get_word_entry()`, parse its info
         into the returning Word:
-        - word (str): the Kanji form or Katakana form of the word (if no Kanji)
-        - eigo (bool): true if Katakana only word
+        - word (UnidicNode | str): the Fugashi result, or the Kanji form or Katakana
+        form of the word (if no Kanji).
+        - eigo (bool): true if Katakana only word.
         - forms (str): a string of joined list elements about other kanji forms the word has
         - spelling (str): the Katakana form
         - senses (str): this word's meanings and types (pos)
