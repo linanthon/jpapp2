@@ -209,6 +209,12 @@ async def bump_word_sentence_cache_version(redis: aioredis.Redis) -> int:
     """
     return int(await redis.incr(WORD_SENTENCE_VERSION_KEY))
 
+async def bump_search_word_cache_version(redis: aioredis.Redis) -> int:
+    """Bump search word version when admin deletes book (words of that
+    book are also deleted), so the next time the user search, they don't
+    got ghost result. The old version will eventually be timed out.
+    """
+    return int(await redis.incr(SEARCH_WORD_VERSION_KEY))
 
 # ===== Others =====
 def validate_tts_request(body: dict):

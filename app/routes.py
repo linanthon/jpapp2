@@ -9,7 +9,8 @@ import uuid
 
 from app.config import (bpv1_url_prefix, FAILED_LOGIN_LIMIT, REFRESH_TOKEN_EXPIRE_DAYS,
                         FAILED_LOGIN_BLOCK_MINUTES, ACCESS_TOKEN_EXPIRE_MINUTES,
-                        SEARCH_WORD_EXPIRE_MINUTES, MAX_INSERT_STRING_BYTES)
+                        SEARCH_WORD_EXPIRE_MINUTES, MAX_INSERT_STRING_BYTES,
+                        SEARCH_WORD_VERSION_KEY)
 from app.handlers.insert import compensate_insert_saga
 from app.handlers.progress import handle_progress
 from app.handlers.view import (handle_search_word, handle_view_specific_word, handle_view_words,
@@ -798,9 +799,11 @@ async def api_search_word(
     redis: aioredis.Redis = Depends(get_redis),
     current_user_id: int = Depends(get_current_user_id)
 ):
-    """Search for a word, returns JSON results"""
+    """Search for a word, save to cache with search version,
+    then retunrs JSON results."""
+    search_version = redis_get_json(redis, SEARCH_WORD_VERSION_KEY)
     normalized_word = word.strip()
-    cache_key = f"search_word:{normalized_word.lower()}"
+    cache_key = f"search_word:{search_version}:{normalized_word.lower()}"
     value = await redis_get_json(redis, cache_key)
     if value is not None:
         return JSONResponse(content=value)

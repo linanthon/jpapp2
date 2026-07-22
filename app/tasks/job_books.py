@@ -145,8 +145,10 @@ async def process_delete_job_book(job_id: str, book_id: int, object_name: str = 
 		if not deleted:
 			await db.update_job_book_batch_item_status(batch_item_id, "FAILED_PROCESS", error="Failed to delete book")
 			raise RuntimeError("Failed to delete book")
-
+		
+		# Increase search word version (so user won't get ghost results - see words no longer in DB)
 		if redis is not None:
+			await bump_search_word_cache_version(redis)
 			await bump_word_sentence_cache_version(redis)
 		await db.update_job_book_batch_item_status(batch_item_id, "FINISHED")
 	except Exception as e:
