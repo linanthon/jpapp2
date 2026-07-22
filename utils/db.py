@@ -571,7 +571,7 @@ class DBHandling:
 
         # Now delete book (this will cascade and delete sentence_book, word_book and user_book_star refs)
         status = await self._execute(
-            f"DELETE FROM {TABLE_BOOKS} WHERE id = $1", book_id
+            f"DELETE FROM {TABLE_BOOKS} WHERE id = $1;", book_id
         )
         if not status:
             return False
@@ -1300,13 +1300,13 @@ class DBHandling:
             return False
 
         rows = await self._fetch(
-            f"SELECT {obj_id_col}, count FROM {ref_table} WHERE {target_id_col} = ANY($1)",
+            f"SELECT {obj_id_col}, occurrence FROM {ref_table} WHERE {target_id_col} = ANY($1)",
             obj_ids
         )
         for item in rows:
-            count = item["count"]
+            occurrence = item["occurrence"]
             obj_id = item[obj_id_col]
-            obj_decrements[obj_id] = count if count else obj_decrements.get(obj_id, 0) + 1
+            obj_decrements[obj_id] = occurrence if occurrence else obj_decrements.get(obj_id, 0) + 1
         return True
     
     async def _decrement_object_occurrence(self, obj_decrements: dict, table_name: str) -> bool:
