@@ -12,6 +12,7 @@ from utils.process_data import ProcessData
 from utils.data import read_jlpt_from_db
 from app.config import (DB_USER, DB_PASS, REDIS_URL, bpv1_url_prefix, JLPT_CACHE_RELOAD_STREAM,
                         JLPT_CACHE_RELOAD_GROUP, JLPT_CACHE_RELOAD_BLOCK_MS, SEARCH_WORD_VERSION_KEY)
+from app.dependencies import redis_get_json
 from app.routes import router
 from utils.logger import get_logger
 
@@ -67,9 +68,9 @@ async def lifespan(app: FastAPI):
         app.state.redis = await aioredis.from_url(REDIS_URL, decode_responses=True)
         await app.state.redis.ping()  # Test connection
         # Set initial word search version if not found
-        search_version = await redis_get_json(redis, SEARCH_WORD_VERSION_KEY)
+        search_version = await redis_get_json(app.state.redis, SEARCH_WORD_VERSION_KEY)
         if not search_version:
-            await redis.setex(SEARCH_WORD_VERSION_KEY, "1")
+            await app.state.redis.set(SEARCH_WORD_VERSION_KEY, "1")
     except Exception as e:
         raise Exception(f"Error: Failed to connect to Redis: {e}")
 

@@ -103,9 +103,11 @@ class TestGetCurrentUser:
         request = _make_request()
         db = AsyncMock()
         redis = AsyncMock()
-        db.get_user_by_id.return_value = {"id": 1, "username": "user", "is_admin": False}
+        db.get_user_by_id.return_value = {"id": 1, "public_id": "019fa46b-6f9d-71e1-b824-1555a3f691f6",
+                                          "username": "user", "is_admin": False}
         user = await get_current_user(request, db, redis)
         assert user["id"] == 1
+        assert user["public_id"] == "019fa46b-6f9d-71e1-b824-1555a3f691f6"
 
     @pytest.mark.asyncio
     @patch("app.dependencies.get_current_user_id", new_callable=AsyncMock, return_value=99)

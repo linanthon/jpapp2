@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from app.config import DB_HOST, DB_PORT, TASKIQ_MAX_ATTEMPTS
 from utils.logger import get_logger
 from utils.helpers import normalize_voice_options
+from uuid6 import uuid7
 from schemas.constants import (TABLE_JLPT, TABLE_WORDS, TABLE_BOOKS, TABLE_SENTENCES, TABLE_WORD_BOOK_REF,
                               TABLE_WORD_SENTENCE_REF, TABLE_SENTENCE_BOOK_REF, DB_NAME,
                               SQL_TABLE_SCRIPT, DEFAULT_LIMIT, SQL_WORD_PRIO_SCRIPT, TABLE_USER,
@@ -183,12 +184,13 @@ class DBHandling:
         - password_hash: Hashed password
         - is_admin: Whether user is admin (default False)
 
-        Output: User ID if successful, -1 if failed
+        Output: User (internal) ID if successful, -1 if failed
         """
+        public_id = uuid7()
         row = await self._fetchrow(
-            f"""INSERT INTO {TABLE_USER} (username, email, password_hash, is_admin, created_at, modified_at)
-            VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id;""",
-            username, email, password_hash, is_admin
+            f"""INSERT INTO {TABLE_USER} (public_id, username, email, password_hash, is_admin, created_at, modified_at)
+            VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id;""",
+            public_id, username, email, password_hash, is_admin
         )
         return row["id"] if row else -1
 
@@ -199,7 +201,7 @@ class DBHandling:
         Output: User record or None if not found.
         """
         return await self._fetchrow(
-            f"SELECT id, username, email, is_admin, created_at FROM {TABLE_USER} WHERE id = $1;",
+            f"SELECT id, public_id, username, email, is_admin, created_at FROM {TABLE_USER} WHERE id = $1;",
             user_id
         )
 

@@ -6,6 +6,7 @@ bcrypt==4.0.0
 PyJWT==2.12.1
 python-multipart==0.0.22
 httpx==0.28.1
+uuid6==2025.0.1
 
 # Scarpe data
 beautifulsoup4==4.13.4

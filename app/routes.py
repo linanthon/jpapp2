@@ -79,7 +79,8 @@ async def register(
 
     return JSONResponse(
             status_code=HTTPStatus.CREATED,
-            content={"id": user["id"],"username": user["username"],"email": user["email"],"is_admin": user["is_admin"]}
+            content={"id": str(user["public_id"]),"username": user["username"],
+                     "email": user["email"],"is_admin": user["is_admin"]}
         )
 
 
@@ -193,7 +194,7 @@ async def get_current_profile(
 ):
     """Return current authenticated user's profile."""
     return {
-        "id": current_user["id"],
+        "id": current_user["public_id"],
         "username": current_user["username"],
         "email": current_user["email"],
         "is_admin": current_user["is_admin"],

@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS sentence_book (
 -- Store user info
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
+    public_id UUID UNIQUE,
     is_admin BOOLEAN DEFAULT FALSE,
     username TEXT NOT NULL UNIQUE,
     email TEXT UNIQUE,
